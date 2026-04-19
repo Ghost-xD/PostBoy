@@ -293,3 +293,75 @@ if (command === 'push') {
     console.log('Share these URLs with new users to download the installer.');
   }
 }
+
+// ─── RELEASE (git tag v*.*.* + push → GitHub Actions) ───────────────────────
+
+if (command === 'release') {
+  const dryRun = args.includes('--dry-run');
+  const skipBuild = args.includes('--skip-build');
+  const bumpArg = args.find(a => a.startsWith('--bump='));
+  const bumpSuffix = bumpArg ? ` ${bumpArg}` : '';
+  const remote = process.env.RELEASE_REMOTE || 'origin';
+  const deployScript = join(REPO_ROOT, 'deploy.mjs');
+
+  try {
+    execSync('git rev-parse --git-dir', { cwd: REPO_ROOT, stdio: 'pipe' });
+  } catch {
+    console.error('ERROR: not a git repository (expected deploy.mjs at repo root).');
+    process.exit(1);
+  }
+
+  if (!skipBuild) {
+    run(`${process.execPath} "${deployScript}" build${bumpSuffix}`, { cwd: REPO_ROOT });
+  }
+
+  const confPath = join(REPO_ROOT, TAURI_CONF);
+  const conf = JSON.parse(readFileSync(confPath, 'utf-8'));
+  const version = conf.version;
+  const tag = `v${version}`;
+
+  try {
+    execSync(`git rev-parse -q --verify refs/tags/${tag}`, { cwd: REPO_ROOT, stdio: 'pipe' });
+    console.error(`ERROR: tag ${tag} already exists locally. Delete it or bump the version.`);
+    process.exit(1);
+  } catch {
+    /* tag must not exist */
+  }
+
+  const relConf = TAURI_CONF.replace(/\\/g, '/');
+
+  if (dryRun) {
+    console.log('\nDRY RUN — would run:');
+    console.log(`  git add ${relConf} && git commit -m "chore: release ${tag}" (if ${relConf} changed)`);
+    console.log(`  git tag -a ${tag} -m "PostBoy ${tag}"`);
+    console.log(`  git push ${remote} <current-branch> (if not detached)`);
+    console.log(`  git push ${remote} ${tag}`);
+    process.exit(0);
+  }
+
+  const porcelain = execSync(`git status --porcelain -- "${TAURI_CONF}"`, {
+    encoding: 'utf-8',
+    cwd: REPO_ROOT,
+  }).trim();
+
+  if (porcelain) {
+    run(`git add -- "${TAURI_CONF}"`, { cwd: REPO_ROOT });
+    run(`git commit -m "chore: release ${tag}"`, { cwd: REPO_ROOT });
+  } else {
+    console.log(`Note: ${TAURI_CONF} unchanged — skipping commit (tag will point at HEAD).`);
+  }
+
+  run(`git tag -a "${tag}" -m "PostBoy ${tag}"`, { cwd: REPO_ROOT });
+
+  const branch = execSync('git rev-parse --abbrev-ref HEAD', {
+    encoding: 'utf-8',
+    cwd: REPO_ROOT,
+  }).trim();
+  if (branch !== 'HEAD') {
+    run(`git push ${remote} ${branch}`, { cwd: REPO_ROOT });
+  }
+
+  run(`git push ${remote} "${tag}"`, { cwd: REPO_ROOT });
+
+  log(`Pushed ${tag} to ${remote} — open Actions to confirm the Release workflow.`);
+}

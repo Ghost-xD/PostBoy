@@ -58,8 +58,9 @@ jobs:
         include:
           - runner: macos-latest
             target: aarch64-apple-darwin
-          - runner: macos-15-intel
-            target: x86_64-apple-darwin
+          # Intel macOS (legacy) — re-enable if you need x86_64 builds
+          # - runner: macos-15-intel
+          #   target: x86_64-apple-darwin
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: write

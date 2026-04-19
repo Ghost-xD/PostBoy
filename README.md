@@ -189,7 +189,7 @@ Generate request snippets in:
 ## Quick Start
 
 ```bash
-git clone https://github.com/moodysaroha/postboy.git
+git clone https://github.com/Ghost-xD/PostBoy.git
 cd postboy/PostBoy/PostBoy
 
 yarn install
