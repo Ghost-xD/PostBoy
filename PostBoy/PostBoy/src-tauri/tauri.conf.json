@@ -52,9 +52,9 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/moodysaroha/postboy/releases/latest/download/latest.json"
+        "https://github.com/Ghost-xD/PostBoy/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ5NjBENURDODU4N0Q5NEQKUldSTjJZZUYzTlZnMlEwZGxyQnIzclpkeUZoNldUNnlQVWVOVFdLRjBBWnMwTWZaaUhrQTR1bmIK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDEzNkM1MjI1MjczOEJCQzkKUldUSnV6Z25KVkpzRTNEVjNSWlVJOW5PalRwZUtWYXNNNWpCbVIwZXhaeW1iRk9xR1JUb3NBVjAK",
       "dangerousInsecureTransportProtocol": true
     }
   }
