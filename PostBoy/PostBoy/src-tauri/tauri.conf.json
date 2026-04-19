@@ -1,0 +1,61 @@
+{
+  "$schema": "https://schema.tauri.app/config/2.0.0",
+  "productName": "PostBoy",
+  "version": "0.0.21",
+  "identifier": "com.postboy.app",
+  "build": {
+    "beforeDevCommand": "yarn dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "yarn build",
+    "frontendDist": "../build"
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis",
+      "deb",
+      "appimage",
+      "dmg"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico"
+      }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "PostBoy",
+        "width": 1400,
+        "height": 900,
+        "resizable": true,
+        "maximized": true,
+        "center": true,
+        "visible": false,
+        "theme": "Dark"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/moodysaroha/postboy/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ5NjBENURDODU4N0Q5NEQKUldSTjJZZUYzTlZnMlEwZGxyQnIzclpkeUZoNldUNnlQVWVOVFdLRjBBWnMwTWZaaUhrQTR1bmIK",
+      "dangerousInsecureTransportProtocol": true
+    }
+  }
+}

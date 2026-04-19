@@ -1,0 +1,66 @@
+/* Collapsed Sidebar Styles */
+
+.sidebar.collapsed {
+  min-width: 50px;
+  max-width: 50px;
+}
+
+.sidebar.collapsed .sidebar-header,
+.sidebar.collapsed .sidebar-tabs,
+.sidebar.collapsed .sidebar-tab-pane,
+.sidebar.collapsed .drag-handle {
+  display: none;
+}
+
+.collapsed-controls {
+  display: none;
+  flex-direction: column;
+  padding: 0.5rem 0;
+  gap: 0.5rem;
+  align-items: center;
+  width: 100%;
+}
+
+.sidebar.collapsed .collapsed-controls {
+  display: flex;
+}
+
+.expand-btn,
+.collection-new-btn-collapsed,
+.collection-action-btn-collapsed {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 4px;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.expand-btn:hover,
+.collection-new-btn-collapsed:hover,
+.collection-action-btn-collapsed:hover {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.expand-icon {
+  font-size: 14px;
+  display: inline-block;
+}
+
+/* Collapsed sidebar vertical text */
+.sidebar.collapsed .sidebar-label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin: 1rem 0;
+  font-weight: 500;
+}
