@@ -1456,11 +1456,14 @@
     /* The whole app already runs the pitch-black + blue theme via the root
        CSS variables in static/app.css, so we don't redeclare them here.
        The blue wave in the nav is the visual seam between the nav strip and
-       the body. */
-    width: 80vw;
-    max-width: 80vw;
-    height: 80vh;
-    max-height: 80vh;
+       the body. Non-fullscreen sits at 96vw/96vh — almost edge-to-edge but
+       leaves a hairline of the host app visible so it still feels like a
+       modal. Fullscreen (the .tools-fullscreen modifier below) goes the
+       remaining ~4% and drops the border-radius. */
+    width: 96vw;
+    max-width: 96vw;
+    height: 96vh;
+    max-height: 96vh;
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
     border-radius: 12px;
