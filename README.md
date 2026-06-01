@@ -185,6 +185,9 @@ Generate request snippets in:
 - [Node.js](https://nodejs.org/) 18+
 - [Yarn](https://yarnpkg.com/)
 - [Rust](https://www.rust-lang.org/tools/install) stable (1.70+)
+- **For the AI Chatbot feature only** (default-on, see [AI Chatbot](#ai-chatbot-optional)):
+  - CMake 3.18+
+  - A C/C++ toolchain — MSVC on Windows, Xcode CLT on macOS, build-essential on Linux
 
 ## Quick Start
 
@@ -201,9 +204,52 @@ yarn tauri dev
 | `yarn tauri dev` | Desktop app with hot reload |
 | `yarn dev` | Frontend only (Vite dev server) |
 | `yarn tauri build` | Production build (MSI, NSIS, DMG, AppImage, deb) |
+| `yarn tauri build -- --no-default-features` | Production build **without** the AI Chatbot (no CMake / C++ toolchain required) |
 | `yarn test` | Run tests |
 | `yarn test -- --coverage` | Run tests with coverage report |
 | `yarn check` | Svelte type checking |
+
+## AI Chatbot (optional)
+
+PostBoy ships with an optional, fully-local AI chatbot that can list collections, run saved requests, summarize responses, and edit variables — all by calling the same code paths the UI uses. It runs entirely on your CPU via embedded [llama.cpp](https://github.com/ggml-org/llama.cpp) (no external binaries, no cloud, no telemetry).
+
+### Enable / disable at build time
+
+The chatbot is gated behind the `chatbot` Cargo feature, which is **on by default**.
+
+```bash
+# Full build (chatbot included — requires CMake + C/C++ compiler).
+yarn tauri build
+
+# Build without the chatbot — no CMake or native toolchain needed.
+yarn tauri build -- --no-default-features
+```
+
+When built without the feature, the UI hides every chatbot entry point automatically (a single always-on Tauri command `ai_supported` reports the build flag to the frontend).
+
+### Using the chatbot
+
+1. Open with `Ctrl+Shift+I` (or **Tools → AI Chatbot**).
+2. Switch to the **Models** tab → pick a model → **Download**.
+   - Downloads try **Hugging Face** first, then **Kaggle** as a fallback.
+   - Files land in `<app data>/ai/models/`. About 400 MB – 2.5 GB per model depending on size.
+3. Click **Load** to load the model into RAM (first load is the slow one).
+4. Switch back to **Chat** and ask things like:
+   - *"List my collections"*
+   - *"Run the `getUsers` request from My API"*
+   - *"Why did my last request fail?"*
+
+Tool calls are executed immediately (full autonomy) but every call is recorded in the **Action Log** tab for review. Toggle **Tools** off in the chat input row to make the model describe instead of act.
+
+### Supported models (out of the box)
+
+| Model | Size | Best for |
+|-------|------|----------|
+| Qwen 2.5 0.5B Instruct (Q4_K_M) | ~400 MB | Fastest. Good for short tool-only tasks on weak CPUs. |
+| Qwen 2.5 1.5B Instruct (Q4_K_M) | ~1.0 GB | Recommended default — strong tool-calling, runs fast on most laptops. |
+| Phi 3.5 Mini Instruct (Q4_K_M) | ~2.4 GB | Best reasoning of the three; slower. |
+
+Adding a new model is a JSON entry away — edit [`PostBoy/PostBoy/src-tauri/resources/models.json`](PostBoy/PostBoy/src-tauri/resources/models.json) with the GGUF download URLs.
 
 ## Deploy (Self-Hosted Update Server)
 

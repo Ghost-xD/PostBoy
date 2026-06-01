@@ -68,6 +68,8 @@
       { keys: 'Ctrl + L', label: 'Clear events' },
     ]},
     { title: 'Tools', items: [
+      { keys: 'Ctrl + Shift + M', label: 'Son of Anton' },
+      { keys: 'Ctrl + Shift + Enter', label: 'Toggle Tools panel fullscreen', sub: true },
       { keys: 'Ctrl + Shift + J', label: 'JWT Decoder' },
       { keys: 'Ctrl + Shift + E', label: 'Base64 / URL Encoder' },
       { keys: 'Ctrl + D', label: 'Toggle Encode / Decode', sub: true },

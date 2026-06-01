@@ -7,7 +7,7 @@
   import { 
     responseLayout, responsePanelHeight, leftSidebarWidth, rightSidebarWidth,
     leftSidebarCollapsed, rightSidebarCollapsed, activeSidebarTab,
-    activeRequestTab, activeResponseTab, showShortcuts, showToolsPanel, showDiffTool, toggleResponseLayout, getUIState, restoreUIState
+    activeRequestTab, activeResponseTab, showShortcuts, showToolsPanel, showDiffTool, toolsFullscreen, toggleResponseLayout, getUIState, restoreUIState
   } from '$lib/stores/uiStore';
   import { wsConnect, wsDisconnect, clearWsMessages } from '$lib/stores/wsStore';
   import { sseConnect, sseDisconnect, clearSseMessages } from '$lib/stores/sseStore';
@@ -31,9 +31,11 @@
   import SettingsPanel from '$lib/components/SettingsPanel.svelte';
   import DiagnosticsPanel from '$lib/components/DiagnosticsPanel.svelte';
   import CookieJarPanel from '$lib/components/CookieJarPanel.svelte';
+  import ChatbotPanel from '$lib/components/ChatbotPanel.svelte';
   import DiffTool from '$lib/components/DiffTool.svelte';
   import SearchPicker from '$lib/components/SearchPicker.svelte';
   import { loadSettings } from '$lib/stores/settingsStore';
+  import { chatbotSupported, chatbotStatus, initChatbotFeature, loadDefaultModel } from '$lib/stores/chatbotStore';
 
   let version = '';
   let collections: any[] = [];
@@ -42,6 +44,10 @@
   let responsePanelRef: ResponsePanel;
   let showSearchPicker = false;
   let diffFullscreen = false;
+
+  // Reset Tools modal fullscreen each time it opens. (Keeping fullscreen
+  // sticky across opens is unintuitive when switching between modal kinds.)
+  $: if (!$showToolsPanel) toolsFullscreen.set(false);
 
   function handleSearchPickerSelect(e: CustomEvent<string>) {
     showSearchPicker = false;
@@ -95,6 +101,7 @@
     listenForRustUpdate();
     setupAppMenu();
     loadSettings();
+    initChatbotFeature();
   });
 
   async function setupAppMenu() {
@@ -130,15 +137,26 @@
         ],
       });
 
+      const toolsItems: any[] = [
+        await MenuItem.new({ id: 'jwt-decoder', text: 'JWT Decoder', accelerator: 'CmdOrCtrl+Shift+J', action: () => showToolsPanel.update(v => v === 'jwt' ? false : 'jwt') }),
+        await MenuItem.new({ id: 'encoder', text: 'Base64 / URL Encoder', accelerator: 'CmdOrCtrl+Shift+E', action: () => showToolsPanel.update(v => v === 'encoder' ? false : 'encoder') }),
+        await MenuItem.new({ id: 'sql-runner', text: 'SQL Query Runner', accelerator: 'CmdOrCtrl+Shift+Q', action: () => showToolsPanel.update(v => v === 'sql' ? false : 'sql') }),
+        await MenuItem.new({ id: 'cookie-jar', text: 'Cookie Jar', accelerator: 'CmdOrCtrl+Shift+X', action: () => showToolsPanel.update(v => v === 'cookies' ? false : 'cookies') }),
+        await MenuItem.new({ id: 'diagnostics', text: 'Network Diagnostics', accelerator: 'CmdOrCtrl+Shift+N', action: () => showToolsPanel.update(v => v === 'diagnostics' ? false : 'diagnostics') }),
+        await MenuItem.new({ id: 'diff-tool', text: 'Diff / Compare', accelerator: 'CmdOrCtrl+Shift+B', action: () => showDiffTool.update(v => !v) }),
+      ];
+
+      if ($chatbotSupported) {
+        toolsItems.unshift(
+          await MenuItem.new({ id: 'ai-chatbot', text: 'Son of Anton', accelerator: 'CmdOrCtrl+Shift+M', action: () => showToolsPanel.update(v => v === 'chatbot' ? false : 'chatbot') }),
+          await PredefinedMenuItem.new({ item: 'Separator' }),
+        );
+      }
+
       const toolsSubmenu = await Submenu.new({
         text: 'Tools',
         items: [
-          await MenuItem.new({ id: 'jwt-decoder', text: 'JWT Decoder', accelerator: 'CmdOrCtrl+Shift+J', action: () => showToolsPanel.update(v => v === 'jwt' ? false : 'jwt') }),
-          await MenuItem.new({ id: 'encoder', text: 'Base64 / URL Encoder', accelerator: 'CmdOrCtrl+Shift+E', action: () => showToolsPanel.update(v => v === 'encoder' ? false : 'encoder') }),
-          await MenuItem.new({ id: 'sql-runner', text: 'SQL Query Runner', accelerator: 'CmdOrCtrl+Shift+Q', action: () => showToolsPanel.update(v => v === 'sql' ? false : 'sql') }),
-          await MenuItem.new({ id: 'cookie-jar', text: 'Cookie Jar', accelerator: 'CmdOrCtrl+Shift+X', action: () => showToolsPanel.update(v => v === 'cookies' ? false : 'cookies') }),
-          await MenuItem.new({ id: 'diagnostics', text: 'Network Diagnostics', accelerator: 'CmdOrCtrl+Shift+N', action: () => showToolsPanel.update(v => v === 'diagnostics' ? false : 'diagnostics') }),
-          await MenuItem.new({ id: 'diff-tool', text: 'Diff / Compare', accelerator: 'CmdOrCtrl+Shift+B', action: () => showDiffTool.update(v => !v) }),
+          ...toolsItems,
           await PredefinedMenuItem.new({ item: 'Separator' }),
           await MenuItem.new({ id: 'copy-curl', text: 'Copy as cURL', accelerator: 'CmdOrCtrl+Shift+K', action: () => requestBuilderRef?.copyAsCurl() }),
           await MenuItem.new({ id: 'code-gen', text: 'Code Generation', accelerator: 'CmdOrCtrl+Shift+G', action: () => requestBuilderRef?.openCodeGen() }),
@@ -323,6 +341,38 @@
       if (e.ctrlKey && e.shiftKey && e.key === 'N') {
         e.preventDefault();
         showToolsPanel.update(v => v === 'diagnostics' ? false : 'diagnostics');
+        return;
+      }
+
+      // Ctrl+Shift+Enter — toggle Tools panel fullscreen (only when the
+      // tools panel is open).
+      if (e.ctrlKey && e.shiftKey && e.key === 'Enter') {
+        if ($showToolsPanel) {
+          e.preventDefault();
+          toolsFullscreen.update((v) => !v);
+        }
+        return;
+      }
+
+      // Ctrl+Shift+M — AI Chatbot: toggle the panel. The model itself is
+      // loaded in the background at app start (see initChatbotFeature), so
+      // the shortcut is purely a UI toggle now.
+      if (e.ctrlKey && e.shiftKey && (e.key === 'M' || e.key === 'm')) {
+        if ($chatbotSupported) {
+          e.preventDefault();
+          showToolsPanel.update((v) => (v === 'chatbot' ? false : 'chatbot'));
+          // If somehow the background load didn't fire (e.g. user installed
+          // a model after launch), kick it now.
+          if (!get(chatbotStatus).engineLoaded) {
+            loadDefaultModel().then((res) => {
+              if (res.kind === 'no-models') {
+                addLog('AI: no model installed yet — pick one from the Models tab.', 'warn');
+              } else if (res.kind === 'error') {
+                addLog(`AI: failed to load ${res.modelId} — ${res.message}`, 'error');
+              }
+            });
+          }
+        }
         return;
       }
 
@@ -1137,10 +1187,21 @@
 <SearchPicker bind:show={showSearchPicker} on:select={handleSearchPickerSelect} />
 
 {#if $showToolsPanel}
-  <div class="tools-overlay" role="dialog" tabindex="-1" on:click={() => showToolsPanel.set(false)}>
-    <div class="tools-modal" role="presentation" on:click|stopPropagation on:keydown|stopPropagation>
+  <div
+    class="tools-overlay"
+    role="dialog"
+    tabindex="-1"
+    on:click={() => showToolsPanel.set(false)}
+    on:keydown={(e) => { if (e.key === 'Escape') showToolsPanel.set(false); }}
+  >
+    <div class="tools-modal" class:tools-fullscreen={$toolsFullscreen} role="presentation" on:click|stopPropagation on:keydown|stopPropagation>
       <div class="tools-header">
         <div class="tools-tabs">
+          {#if $chatbotSupported}
+            <button class="tools-tab" class:active={$showToolsPanel === 'chatbot'} on:click={() => showToolsPanel.set('chatbot')} title="Ctrl+Shift+M">
+              Son of Anton
+            </button>
+          {/if}
           <button class="tools-tab" class:active={$showToolsPanel === 'jwt'} on:click={() => showToolsPanel.set('jwt')} title="Ctrl+Shift+J">
             JWT Decoder
           </button>
@@ -1160,12 +1221,23 @@
             Settings
           </button>
         </div>
-        <button class="tools-close" on:click={() => showToolsPanel.set(false)} title="Close (Esc)">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>
-        </button>
+        <div class="tools-header-actions">
+          <button class="tools-close" on:click={() => toolsFullscreen.update(v => !v)} title={$toolsFullscreen ? 'Exit fullscreen (Ctrl+Shift+Enter)' : 'Fullscreen (Ctrl+Shift+Enter)'}>
+            {#if $toolsFullscreen}
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 0a.5.5 0 0 1 .5.5v4A1.5 1.5 0 0 1 4.5 6h-4a.5.5 0 0 1 0-1h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 1 .5-.5Zm5 0a.5.5 0 0 1 .5.5v4a.5.5 0 0 0 .5.5h4a.5.5 0 0 1 0 1h-4A1.5 1.5 0 0 1 10 4.5v-4a.5.5 0 0 1 .5-.5ZM0 10.5a.5.5 0 0 1 .5-.5h4A1.5 1.5 0 0 1 6 11.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 1-.5-.5Zm10 1a1.5 1.5 0 0 1 1.5-1.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 0-.5.5v4a.5.5 0 0 1-1 0v-4Z"/></svg>
+            {:else}
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 1a.5.5 0 0 0-.5.5v4a.5.5 0 0 1-1 0v-4A1.5 1.5 0 0 1 1.5 0h4a.5.5 0 0 1 0 1h-4ZM10 .5a.5.5 0 0 1 .5-.5h4A1.5 1.5 0 0 1 16 1.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 1-.5-.5ZM.5 10a.5.5 0 0 1 .5.5v4a.5.5 0 0 0 .5.5h4a.5.5 0 0 1 0 1h-4A1.5 1.5 0 0 1 0 14.5v-4a.5.5 0 0 1 .5-.5Zm15 0a.5.5 0 0 1 .5.5v4a1.5 1.5 0 0 1-1.5 1.5h-4a.5.5 0 0 1 0-1h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 1 .5-.5Z"/></svg>
+            {/if}
+          </button>
+          <button class="tools-close" on:click={() => showToolsPanel.set(false)} title="Close (Esc)">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>
+          </button>
+        </div>
       </div>
       <div class="tools-body">
-        {#if $showToolsPanel === 'jwt'}
+        {#if $showToolsPanel === 'chatbot'}
+          <ChatbotPanel />
+        {:else if $showToolsPanel === 'jwt'}
           <JwtDecoderPanel />
         {:else if $showToolsPanel === 'encoder'}
           <EncoderPanel />
@@ -1184,7 +1256,13 @@
 {/if}
 
 {#if $showDiffTool}
-  <div class="diff-overlay" role="dialog" tabindex="-1" on:click={() => showDiffTool.set(false)}>
+  <div
+    class="diff-overlay"
+    role="dialog"
+    tabindex="-1"
+    on:click={() => showDiffTool.set(false)}
+    on:keydown={(e) => { if (e.key === 'Escape') showDiffTool.set(false); }}
+  >
     <div class="diff-modal" class:diff-fullscreen={diffFullscreen} role="presentation" on:click|stopPropagation on:keydown|stopPropagation>
       <div class="diff-modal-header">
         <span class="diff-modal-title">Diff / Compare</span>
@@ -1371,6 +1449,16 @@
     flex-direction: column;
     overflow: hidden;
     animation: toolsSlideIn 200ms ease-out;
+    transition: width 0.2s ease, height 0.2s ease, max-width 0.2s ease, max-height 0.2s ease, border-radius 0.2s ease;
+  }
+
+  .tools-modal.tools-fullscreen {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+    border: none;
   }
 
   @keyframes toolsSlideIn {
@@ -1417,8 +1505,14 @@
     background: var(--bg-tertiary);
   }
 
-  .tools-close {
+  .tools-header-actions {
     margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .tools-close {
     display: flex;
     align-items: center;
     justify-content: center;

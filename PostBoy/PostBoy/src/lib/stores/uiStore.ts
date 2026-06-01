@@ -17,7 +17,11 @@ export const activeResponseTab = writable<'preview' | 'headers' | 'console' | 'd
 
 // Modals and overlays
 export const showShortcuts = writable<boolean>(false);
-export const showToolsPanel = writable<false | 'jwt' | 'encoder' | 'sql' | 'diagnostics' | 'settings' | 'cookies'>(false);
+export const showToolsPanel = writable<false | 'jwt' | 'encoder' | 'sql' | 'diagnostics' | 'settings' | 'cookies' | 'chatbot'>(false);
+// Tools panel fullscreen toggle. Exposed as a store so any component
+// (e.g. ChatbotPanel) can react to it for layout adjustments, and the
+// global keyboard handler can flip it without poking component state.
+export const toolsFullscreen = writable<boolean>(false);
 
 // Diff Tool has its own dedicated modal (not part of the tools panel)
 export const showDiffTool = writable<boolean>(false);

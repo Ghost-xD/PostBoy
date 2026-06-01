@@ -1,3 +1,5 @@
+#[cfg(feature = "chatbot")]
+mod ai;
 mod commands;
 mod database;
 mod http_client;
@@ -8,6 +10,14 @@ mod sse_client;
 
 use tauri::Manager;
 use tauri::Emitter;
+
+/// Always-compiled feature probe. Returns whether this build of PostBoy
+/// includes the chatbot feature. The frontend uses this to hide chatbot UI
+/// entirely when the build was produced with `--no-default-features`.
+#[tauri::command]
+fn ai_supported() -> bool {
+    cfg!(feature = "chatbot")
+}
 
 const UPDATE_SERVER: Option<&str> = option_env!("UPDATE_SERVER");
 const UPDATE_TOKEN: Option<&str> = option_env!("UPDATE_TOKEN");
@@ -227,7 +237,7 @@ async fn perform_update(app: tauri::AppHandle) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(
             tauri_plugin_sql::Builder::new()
                 .add_migrations("sqlite:postboy.db", database::get_migrations())
@@ -239,7 +249,12 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_opener::init());
+
+    #[cfg(feature = "chatbot")]
+    let builder = builder.manage(ai::AiState::new());
+
+    builder
         .setup(|app| {
             use tauri::WebviewWindowBuilder;
             use tauri::WebviewUrl;
@@ -324,67 +339,158 @@ pub fn run() {
 
             Ok(())
         })
-            .invoke_handler(tauri::generate_handler![
-                commands::get_version,
-                commands::get_update_token,
-                check_for_update,
-                perform_update,
-                http_client::execute_http_request,
-                commands::db_create_collection,
-            commands::db_get_collections,
-            commands::db_get_collection,
-            commands::db_update_collection,
-            commands::db_delete_collection,
-            commands::db_create_request,
-            commands::db_get_requests,
-            commands::db_get_request,
-            commands::db_update_request,
-            commands::db_delete_request,
-            commands::db_add_history,
-            commands::db_get_history,
-            commands::db_delete_history,
-            commands::db_clear_history,
-            commands::db_set_setting,
-            commands::db_get_setting,
-            commands::db_get_all_settings,
-            commands::db_export_collections,
-            commands::db_import_collections,
-            commands::show_save_dialog,
-            commands::show_open_dialog,
-            commands::write_file,
-            commands::read_file,
-            commands::read_file_base64,
-            commands::db_get_variables,
-            commands::db_set_variable,
-            commands::db_delete_variable,
-            commands::db_clear_variables,
-            commands::db_rename_collection,
-            commands::db_rename_request,
-            commands::db_reorder_requests,
-            commands::db_move_request,
-            commands::db_export_single_collection,
-            commands::db_import_single_collection,
-            commands::db_create_folder,
-            commands::db_move_collection,
-            ws_client::ws_connect,
-            ws_client::ws_send,
-            ws_client::ws_disconnect,
-            sse_client::sse_connect,
-            sse_client::sse_disconnect,
-            commands::db_get_cookies,
-            commands::db_get_cookies_for_url,
-            commands::db_set_cookie,
-            commands::db_delete_cookie,
-            commands::db_clear_cookies,
-            commands::db_clear_all_cookies,
-            sql_client::sql_connect,
-            sql_client::sql_query,
-            sql_client::sql_disconnect,
-            net_client::dns_resolve,
-            net_client::port_check,
-            net_client::ping_host,
-            net_client::trace_route,
-        ])
+        .invoke_handler({
+            #[cfg(feature = "chatbot")]
+            {
+                tauri::generate_handler![
+                    ai_supported,
+                    commands::get_version,
+                    commands::get_update_token,
+                    check_for_update,
+                    perform_update,
+                    http_client::execute_http_request,
+                    commands::db_create_collection,
+                    commands::db_get_collections,
+                    commands::db_get_collection,
+                    commands::db_update_collection,
+                    commands::db_delete_collection,
+                    commands::db_create_request,
+                    commands::db_get_requests,
+                    commands::db_get_request,
+                    commands::db_update_request,
+                    commands::db_delete_request,
+                    commands::db_add_history,
+                    commands::db_get_history,
+                    commands::db_delete_history,
+                    commands::db_clear_history,
+                    commands::db_set_setting,
+                    commands::db_get_setting,
+                    commands::db_get_all_settings,
+                    commands::db_export_collections,
+                    commands::db_import_collections,
+                    commands::show_save_dialog,
+                    commands::show_open_dialog,
+                    commands::write_file,
+                    commands::read_file,
+                    commands::read_file_base64,
+                    commands::db_get_variables,
+                    commands::db_set_variable,
+                    commands::db_delete_variable,
+                    commands::db_clear_variables,
+                    commands::db_rename_collection,
+                    commands::db_rename_request,
+                    commands::db_reorder_requests,
+                    commands::db_move_request,
+                    commands::db_export_single_collection,
+                    commands::db_import_single_collection,
+                    commands::db_create_folder,
+                    commands::db_move_collection,
+                    ws_client::ws_connect,
+                    ws_client::ws_send,
+                    ws_client::ws_disconnect,
+                    sse_client::sse_connect,
+                    sse_client::sse_disconnect,
+                    commands::db_get_cookies,
+                    commands::db_get_cookies_for_url,
+                    commands::db_set_cookie,
+                    commands::db_delete_cookie,
+                    commands::db_clear_cookies,
+                    commands::db_clear_all_cookies,
+                    sql_client::sql_connect,
+                    sql_client::sql_query,
+                    sql_client::sql_disconnect,
+                    net_client::dns_resolve,
+                    net_client::port_check,
+                    net_client::ping_host,
+                    net_client::trace_route,
+                    ai::commands::ai_get_status,
+                    ai::commands::ai_list_models,
+                    ai::commands::ai_list_installed,
+                    ai::commands::ai_download_model,
+                    ai::commands::ai_cancel_download,
+                    ai::commands::ai_pause_download,
+                    ai::commands::ai_resume_download,
+                    ai::commands::ai_delete_model,
+                    ai::commands::ai_load_engine,
+                    ai::commands::ai_unload_engine,
+                    ai::commands::ai_chat_send,
+                    ai::commands::ai_chat_cancel,
+                    ai::commands::ai_get_action_log,
+                    ai::commands::ai_clear_action_log,
+                    ai::commands::ai_list_chats,
+                    ai::commands::ai_get_chat,
+                    ai::commands::ai_save_chat,
+                    ai::commands::ai_delete_chat,
+                    ai::commands::ai_delete_all_chats,
+                    ai::commands::ai_get_suggestion_corpus,
+                ]
+            }
+            #[cfg(not(feature = "chatbot"))]
+            {
+                tauri::generate_handler![
+                    ai_supported,
+                    commands::get_version,
+                    commands::get_update_token,
+                    check_for_update,
+                    perform_update,
+                    http_client::execute_http_request,
+                    commands::db_create_collection,
+                    commands::db_get_collections,
+                    commands::db_get_collection,
+                    commands::db_update_collection,
+                    commands::db_delete_collection,
+                    commands::db_create_request,
+                    commands::db_get_requests,
+                    commands::db_get_request,
+                    commands::db_update_request,
+                    commands::db_delete_request,
+                    commands::db_add_history,
+                    commands::db_get_history,
+                    commands::db_delete_history,
+                    commands::db_clear_history,
+                    commands::db_set_setting,
+                    commands::db_get_setting,
+                    commands::db_get_all_settings,
+                    commands::db_export_collections,
+                    commands::db_import_collections,
+                    commands::show_save_dialog,
+                    commands::show_open_dialog,
+                    commands::write_file,
+                    commands::read_file,
+                    commands::read_file_base64,
+                    commands::db_get_variables,
+                    commands::db_set_variable,
+                    commands::db_delete_variable,
+                    commands::db_clear_variables,
+                    commands::db_rename_collection,
+                    commands::db_rename_request,
+                    commands::db_reorder_requests,
+                    commands::db_move_request,
+                    commands::db_export_single_collection,
+                    commands::db_import_single_collection,
+                    commands::db_create_folder,
+                    commands::db_move_collection,
+                    ws_client::ws_connect,
+                    ws_client::ws_send,
+                    ws_client::ws_disconnect,
+                    sse_client::sse_connect,
+                    sse_client::sse_disconnect,
+                    commands::db_get_cookies,
+                    commands::db_get_cookies_for_url,
+                    commands::db_set_cookie,
+                    commands::db_delete_cookie,
+                    commands::db_clear_cookies,
+                    commands::db_clear_all_cookies,
+                    sql_client::sql_connect,
+                    sql_client::sql_query,
+                    sql_client::sql_disconnect,
+                    net_client::dns_resolve,
+                    net_client::port_check,
+                    net_client::ping_host,
+                    net_client::trace_route,
+                ]
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
