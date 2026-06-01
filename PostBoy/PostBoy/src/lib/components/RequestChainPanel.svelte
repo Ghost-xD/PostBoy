@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { db, http } from '$lib/api/tauri';
   import { variables, flattenJsonPaths } from '$lib/stores/variableStore';
   import { addLog } from '$lib/stores/consoleStore';
@@ -7,24 +10,34 @@
     type Chain, type ChainStep, type ChainExtraction, type StepResult,
   } from '$lib/utils/chainRunner';
 
-  export let collectionId: number;
-  export let collections: any[];
-  export let onClose: () => void;
-  export let initialChainId: string | null = null;
-  export let initialResults: StepResult[] | null = null;
+  interface Props {
+    collectionId: number;
+    collections: any[];
+    onClose: () => void;
+    initialChainId?: string | null;
+    initialResults?: StepResult[] | null;
+  }
 
-  let chains: Chain[] = [];
-  let selectedChainId: string | null = null;
-  let isRunning = false;
-  let stepResults: StepResult[] = [];
-  let editingName = false;
-  let nameInput = '';
+  let {
+    collectionId,
+    collections,
+    onClose,
+    initialChainId = null,
+    initialResults = null
+  }: Props = $props();
 
-  let testingStepId: string | null = null;
-  let stepPaths: Map<string, Array<{ path: string; value: string }>> = new Map();
-  let showResults = false;
-  let expandedBodies = new Set<number>();
-  let copiedIdx: number | null = null;
+  let chains: Chain[] = $state([]);
+  let selectedChainId: string | null = $state(null);
+  let isRunning = $state(false);
+  let stepResults: StepResult[] = $state([]);
+  let editingName = $state(false);
+  let nameInput = $state('');
+
+  let testingStepId: string | null = $state(null);
+  let stepPaths: Map<string, Array<{ path: string; value: string }>> = $state(new Map());
+  let showResults = $state(false);
+  let expandedBodies = $state(new Set<number>());
+  let copiedIdx: number | null = $state(null);
   let activeResultTab: Map<number, 'body' | 'headers'> = new Map();
 
   function toggleBody(idx: number) {
@@ -68,18 +81,18 @@
     activeResultTab = new Map(activeResultTab);
   }
 
-  $: resultsPassed = stepResults.filter(r => r.status === 'success').length;
-  $: resultsFailed = stepResults.filter(r => r.status === 'error').length;
-  $: resultsSkipped = stepResults.filter(r => r.status === 'skipped').length;
-  $: resultsTotalTime = stepResults.reduce((sum, r) => sum + (r.response?.time || 0), 0);
+  let resultsPassed = $derived(stepResults.filter(r => r.status === 'success').length);
+  let resultsFailed = $derived(stepResults.filter(r => r.status === 'error').length);
+  let resultsSkipped = $derived(stepResults.filter(r => r.status === 'skipped').length);
+  let resultsTotalTime = $derived(stepResults.reduce((sum, r) => sum + (r.response?.time || 0), 0));
 
   function backToBuilder() {
     showResults = false;
   }
 
-  $: collection = collections.find(c => c.id === collectionId);
-  $: requests = collection?.requests || [];
-  $: currentChain = chains.find(c => c.id === selectedChainId) || null;
+  let collection = $derived(collections.find(c => c.id === collectionId));
+  let requests = $derived(collection?.requests || []);
+  let currentChain = $derived(chains.find(c => c.id === selectedChainId) || null);
 
   async function init() {
     chains = await loadChains(collectionId);
@@ -279,17 +292,17 @@
   }
 </script>
 
-<div class="chain-overlay" role="dialog" tabindex="-1" use:portal on:click={onClose} on:keydown={(e) => { if (e.key === 'Escape') onClose(); }}>
-  <div class="chain-modal" role="presentation" on:click|stopPropagation on:keypress|stopPropagation>
+<div class="chain-overlay" role="dialog" tabindex="-1" use:portal onclick={onClose} onkeydown={(e) => { if (e.key === 'Escape') onClose(); }}>
+  <div class="chain-modal" role="presentation" onclick={stopPropagation(bubble('click'))} onkeypress={stopPropagation(bubble('keypress'))}>
     <!-- HEADER -->
     <div class="cm-header">
       <h3>Chain Builder — {collection?.name || 'Collection'}</h3>
-      <button class="cm-close" on:click={onClose}>×</button>
+      <button class="cm-close" onclick={onClose}>×</button>
     </div>
 
     <!-- CHAIN SELECTOR -->
     <div class="cm-selector">
-      <select bind:value={selectedChainId} on:change={() => { stepResults = []; }}>
+      <select bind:value={selectedChainId} onchange={() => { stepResults = []; }}>
         {#if chains.length === 0}
           <option value={null}>-- No chains --</option>
         {/if}
@@ -297,14 +310,14 @@
           <option value={chain.id}>{chain.name}</option>
         {/each}
       </select>
-      <button class="cm-btn primary" on:click={newChain}>+ New</button>
+      <button class="cm-btn primary" onclick={newChain}>+ New</button>
       {#if currentChain}
         {#if editingName}
-          <input class="cm-name-input" bind:value={nameInput} on:keydown={(e) => { if (e.key === 'Enter') finishRename(); if (e.key === 'Escape') editingName = false; }} on:blur={finishRename} />
+          <input class="cm-name-input" bind:value={nameInput} onkeydown={(e) => { if (e.key === 'Enter') finishRename(); if (e.key === 'Escape') editingName = false; }} onblur={finishRename} />
         {:else}
-          <button class="cm-btn" on:click={startRename}>Rename</button>
+          <button class="cm-btn" onclick={startRename}>Rename</button>
         {/if}
-        <button class="cm-btn danger" on:click={deleteChain}>Delete</button>
+        <button class="cm-btn danger" onclick={deleteChain}>Delete</button>
       {/if}
     </div>
 
@@ -322,8 +335,8 @@
           {#if resultsSkipped > 0}<span class="cr-pill skip">{resultsSkipped} skipped</span>{/if}
           <span class="cr-pill time">{resultsTotalTime < 1000 ? `${resultsTotalTime}ms` : `${(resultsTotalTime/1000).toFixed(2)}s`}</span>
           <span class="cr-topbar-actions">
-            <button class="cr-link-btn" on:click={expandAllBodies}>Expand All</button>
-            <button class="cr-link-btn" on:click={collapseAllBodies}>Collapse All</button>
+            <button class="cr-link-btn" onclick={expandAllBodies}>Expand All</button>
+            <button class="cr-link-btn" onclick={collapseAllBodies}>Collapse All</button>
           </span>
         </div>
 
@@ -382,17 +395,17 @@
               <!-- Response body toggle -->
               {#if result.response?.body || result.response?.headers}
                 <div class="cr-card-toggle-row">
-                  <button class="cr-card-toggle" on:click={() => toggleBody(idx)}>
+                  <button class="cr-card-toggle" onclick={() => toggleBody(idx)}>
                     {expandedBodies.has(idx) ? '▼' : '▶'} Response
                   </button>
                   {#if expandedBodies.has(idx)}
                     <div class="cr-card-tabs">
-                      <button class="cr-tab" class:active={getResultTab(idx) === 'body'} on:click={() => setResultTab(idx, 'body')}>Body</button>
+                      <button class="cr-tab" class:active={getResultTab(idx) === 'body'} onclick={() => setResultTab(idx, 'body')}>Body</button>
                       {#if result.response?.headers}
-                        <button class="cr-tab" class:active={getResultTab(idx) === 'headers'} on:click={() => setResultTab(idx, 'headers')}>Headers</button>
+                        <button class="cr-tab" class:active={getResultTab(idx) === 'headers'} onclick={() => setResultTab(idx, 'headers')}>Headers</button>
                       {/if}
                     </div>
-                    <button class="cr-copy-btn" on:click={() => copyBody(idx)}>
+                    <button class="cr-copy-btn" onclick={() => copyBody(idx)}>
                       {copiedIdx === idx ? '✓ Copied' : 'Copy'}
                     </button>
                   {/if}
@@ -409,12 +422,12 @@
 
       <!-- RESULTS FOOTER -->
       <div class="cm-footer">
-        <button class="cm-btn" on:click={backToBuilder}>← Back to Builder</button>
+        <button class="cm-btn" onclick={backToBuilder}>← Back to Builder</button>
         <div class="cm-footer-right">
-          <button class="cm-btn run" on:click={() => { showResults = false; runChain(); }} disabled={!currentChain || currentChain.steps.length === 0 || isRunning}>
+          <button class="cm-btn run" onclick={() => { showResults = false; runChain(); }} disabled={!currentChain || currentChain.steps.length === 0 || isRunning}>
             Re-run Chain
           </button>
-          <button class="cm-btn" on:click={onClose}>Close</button>
+          <button class="cm-btn" onclick={onClose}>Close</button>
         </div>
       </div>
 
@@ -436,18 +449,18 @@
           <div class="cm-step" class:error={result?.status === 'error'} class:success={result?.status === 'success'}>
             <div class="cm-step-header">
               <span class="cm-step-num">Step {stepIdx + 1}</span>
-              <select bind:value={step.requestId} on:change={() => { stepPaths.delete(step.id); stepPaths = new Map(stepPaths); chains = [...chains]; }}>
+              <select bind:value={step.requestId} onchange={() => { stepPaths.delete(step.id); stepPaths = new Map(stepPaths); chains = [...chains]; }}>
                 {#each requests as req}
                   <option value={req.id}>{req.method} {req.name}</option>
                 {/each}
               </select>
-              <button class="cm-btn sm" on:click={() => testStep(step)} disabled={testingStepId === step.id || isRunning}>
+              <button class="cm-btn sm" onclick={() => testStep(step)} disabled={testingStepId === step.id || isRunning}>
                 {testingStepId === step.id ? '...' : '▶ Test'}
               </button>
               <div class="cm-step-actions">
-                <button class="cm-btn sm" on:click={() => moveStep(step.id, -1)} disabled={stepIdx === 0} title="Move up">↑</button>
-                <button class="cm-btn sm" on:click={() => moveStep(step.id, 1)} disabled={stepIdx === currentChain.steps.length - 1} title="Move down">↓</button>
-                <button class="cm-btn sm danger" on:click={() => removeStep(step.id)} title="Remove step">×</button>
+                <button class="cm-btn sm" onclick={() => moveStep(step.id, -1)} disabled={stepIdx === 0} title="Move up">↑</button>
+                <button class="cm-btn sm" onclick={() => moveStep(step.id, 1)} disabled={stepIdx === currentChain.steps.length - 1} title="Move down">↓</button>
+                <button class="cm-btn sm danger" onclick={() => removeStep(step.id)} title="Remove step">×</button>
               </div>
             </div>
 
@@ -466,16 +479,16 @@
             <div class="cm-extractions">
               <div class="cm-ext-header">
                 <span class="cm-ext-label">Extractions</span>
-                <button class="cm-btn sm primary" on:click={() => addExtraction(step.id)}>+ Add</button>
+                <button class="cm-btn sm primary" onclick={() => addExtraction(step.id)}>+ Add</button>
               </div>
               {#each step.extractions as ext, extIdx}
                 <div class="cm-ext-row">
-                  <input class="cm-ext-input" placeholder="JSON path (e.g. data.token)" bind:value={ext.jsonPath} on:input={() => { chains = [...chains]; }} />
+                  <input class="cm-ext-input" placeholder="JSON path (e.g. data.token)" bind:value={ext.jsonPath} oninput={() => { chains = [...chains]; }} />
                   <span class="cm-ext-arrow">→</span>
                   <span class="cm-ext-brace">{`{{`}</span>
-                  <input class="cm-ext-input var" placeholder="variableName" bind:value={ext.variableName} on:input={() => { chains = [...chains]; }} />
+                  <input class="cm-ext-input var" placeholder="variableName" bind:value={ext.variableName} oninput={() => { chains = [...chains]; }} />
                   <span class="cm-ext-brace">{`}}`}</span>
-                  <button class="cm-ext-rm" on:click={() => removeExtraction(step.id, extIdx)}>×</button>
+                  <button class="cm-ext-rm" onclick={() => removeExtraction(step.id, extIdx)}>×</button>
                 </div>
               {/each}
               {#if step.extractions.length === 0}
@@ -489,7 +502,7 @@
                 <span class="cm-paths-label">Discovered paths (click to add):</span>
                 <div class="cm-paths-list">
                   {#each paths.slice(0, 40) as p}
-                    <button class="cm-path-btn" on:click={() => addPathAsExtraction(step.id, p)} title={p.value}>
+                    <button class="cm-path-btn" onclick={() => addPathAsExtraction(step.id, p)} title={p.value}>
                       <span class="cm-path-name">{p.path}</span>
                       <span class="cm-path-val">{p.value.length > 25 ? p.value.slice(0, 25) + '...' : p.value}</span>
                     </button>
@@ -530,7 +543,7 @@
           {/if}
         {/each}
 
-        <button class="cm-add-step" on:click={addStep}>+ Add Step</button>
+        <button class="cm-add-step" onclick={addStep}>+ Add Step</button>
       {:else}
         <div class="cm-empty">Select or create a chain to start.</div>
       {/if}
@@ -538,10 +551,10 @@
 
     <!-- FOOTER -->
     <div class="cm-footer">
-      <button class="cm-btn" on:click={onClose}>Cancel</button>
+      <button class="cm-btn" onclick={onClose}>Cancel</button>
       <div class="cm-footer-right">
-        <button class="cm-btn primary" on:click={saveAndClose} disabled={!currentChain}>Save</button>
-        <button class="cm-btn run" on:click={runChain} disabled={!currentChain || currentChain.steps.length === 0 || isRunning}>
+        <button class="cm-btn primary" onclick={saveAndClose} disabled={!currentChain}>Save</button>
+        <button class="cm-btn run" onclick={runChain} disabled={!currentChain || currentChain.steps.length === 0 || isRunning}>
           {isRunning ? '⏳ Running...' : '▶ Run Chain'}
         </button>
       </div>
@@ -558,18 +571,18 @@
     align-items: center; justify-content: center; z-index: 1000;
   }
   .chain-modal {
-    background: #2b2d31; border-radius: 8px;
+    background: var(--bg-tertiary); border-radius: 8px;
     width: 680px; max-width: 94vw; max-height: 92vh;
     display: flex; flex-direction: column;
     box-shadow: 0 4px 24px rgba(0,0,0,0.5);
   }
-  .chain-modal:has(.cr-results-body) {
+  .chain-modal:has(:global(.cr-results-body)) {
     width: 860px; height: 85vh;
   }
 
   .cm-header {
     display: flex; justify-content: space-between; align-items: center;
-    padding: 14px 20px; border-bottom: 1px solid #3e4045;
+    padding: 14px 20px; border-bottom: 1px solid var(--border-color);
   }
   .cm-header h3 { margin: 0; color: #f2f3f5; font-size: 15px; }
   .cm-close {
@@ -580,17 +593,17 @@
 
   .cm-selector {
     display: flex; align-items: center; gap: 8px;
-    padding: 10px 20px; border-bottom: 1px solid #3e4045;
+    padding: 10px 20px; border-bottom: 1px solid var(--border-color);
     background: #313338;
   }
   .cm-selector select {
-    flex: 1; padding: 7px 10px; background: #1e1f22;
-    border: 1px solid #3e4045; border-radius: 4px;
+    flex: 1; padding: 7px 10px; background: var(--bg-secondary);
+    border: 1px solid var(--border-color); border-radius: 4px;
     color: #dbdee1; font-size: 13px;
   }
   .cm-selector select:focus { outline: none; border-color: #5865f2; }
   .cm-name-input {
-    width: 120px; padding: 6px 8px; background: #1e1f22;
+    width: 120px; padding: 6px 8px; background: var(--bg-secondary);
     border: 1px solid #5865f2; border-radius: 4px;
     color: #dbdee1; font-size: 13px; outline: none;
   }
@@ -620,7 +633,7 @@
   }
 
   .cm-step {
-    width: 100%; background: #313338; border: 1px solid #3e4045;
+    width: 100%; background: #313338; border: 1px solid var(--border-color);
     border-radius: 6px; padding: 12px 14px;
     transition: border-color 0.15s;
   }
@@ -635,8 +648,8 @@
     text-transform: uppercase; letter-spacing: 0.03em; min-width: 44px;
   }
   .cm-step-header select {
-    flex: 1; padding: 6px 8px; background: #1e1f22;
-    border: 1px solid #3e4045; border-radius: 4px;
+    flex: 1; padding: 6px 8px; background: var(--bg-secondary);
+    border: 1px solid var(--border-color); border-radius: 4px;
     color: #dbdee1; font-size: 12px;
   }
   .cm-step-header select:focus { outline: none; border-color: #5865f2; }
@@ -667,8 +680,8 @@
     display: flex; align-items: center; gap: 4px; margin-bottom: 5px;
   }
   .cm-ext-input {
-    flex: 1; padding: 5px 7px; background: #1e1f22;
-    border: 1px solid #3e4045; border-radius: 3px;
+    flex: 1; padding: 5px 7px; background: var(--bg-secondary);
+    border: 1px solid var(--border-color); border-radius: 3px;
     color: #dbdee1; font-size: 11px; font-family: monospace;
   }
   .cm-ext-input:focus { outline: none; border-color: #5865f2; }
@@ -690,7 +703,7 @@
   }
   .cm-path-btn {
     display: flex; gap: 6px; padding: 3px 8px;
-    background: #1e1f22; border: 1px solid #3e4045;
+    background: var(--bg-secondary); border: 1px solid var(--border-color);
     border-radius: 3px; cursor: pointer; font-size: 10px;
     color: #dbdee1; transition: border-color 0.1s;
   }
@@ -703,11 +716,11 @@
     margin-top: 8px; padding: 5px 8px; border-radius: 3px;
     font-size: 11px;
   }
-  .cm-step-result.pending { color: #949ba4; background: #2b2d31; }
+  .cm-step-result.pending { color: #949ba4; background: var(--bg-tertiary); }
   .cm-step-result.running { color: #e8c56c; background: #3a3520; }
   .cm-step-result.success { color: #57f287; background: #1a3322; }
   .cm-step-result.error { color: #ed4245; background: #3a1a1a; }
-  .cm-step-result.skipped { color: #949ba4; background: #2b2d31; font-style: italic; }
+  .cm-step-result.skipped { color: #949ba4; background: var(--bg-tertiary); font-style: italic; }
 
   .cm-connector {
     display: flex; justify-content: center; padding: 2px 0;
@@ -724,7 +737,7 @@
 
   .cm-footer {
     display: flex; justify-content: space-between; align-items: center;
-    padding: 12px 20px; border-top: 1px solid #3e4045;
+    padding: 12px 20px; border-top: 1px solid var(--border-color);
   }
   .cm-footer-right { display: flex; gap: 8px; }
 
@@ -740,8 +753,8 @@
     align-items: center;
     gap: 8px;
     padding: 10px 20px;
-    background: #2b2d31;
-    border-bottom: 1px solid #3e4045;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
     flex-shrink: 0;
   }
   .cr-topbar-icon {
@@ -790,7 +803,7 @@
 
   .cr-card {
     background: #313338;
-    border: 1px solid #3e4045;
+    border: 1px solid var(--border-color);
     border-radius: 6px;
     margin-bottom: 12px;
     overflow: hidden;
@@ -893,7 +906,7 @@
     align-items: center;
     gap: 8px;
     padding: 6px 12px;
-    background: #1e1f22;
+    background: var(--bg-secondary);
     border-radius: 4px;
     font-size: 12px;
     font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
@@ -922,7 +935,7 @@
     align-items: center;
     gap: 0;
     padding: 0 16px;
-    border-top: 1px solid #3e4045;
+    border-top: 1px solid var(--border-color);
     min-height: 36px;
   }
   .cr-card-toggle {
@@ -979,7 +992,7 @@
     line-height: 1.6;
     max-height: 300px;
     overflow: auto;
-    background: #1e1f22;
-    border-top: 1px solid #3e4045;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
   }
 </style>

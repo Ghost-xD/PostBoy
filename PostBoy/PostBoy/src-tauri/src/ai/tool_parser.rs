@@ -90,7 +90,11 @@ the saved definition. The two tools return clearly different payloads: \
 the first call when more are needed. E.g. \"list APIs under my sovstream \
 collection\" → `list_collections` → match name → `list_requests` with that \
 id → reply. \"Run my login request and show me the response\" → resolve id \
-→ `run_request` → summarize. You can call up to ~12 tools per turn.\n\n\
+→ `run_request` → summarize. \"List every saved request\" / \"show all my \
+requests across all collections\" → call `list_requests` with NO arguments \
+(omit `collection_id`); the tool will return every request across every \
+collection in one call — do NOT refuse and do NOT ask which collection. You \
+can call up to ~12 tools per turn.\n\n\
 5. **Use tool results before replying.** Integrate the data into your \
 answer. Never re-ask the user for something a result already contains.\n\n\
 6. **Don't invent data.** If a tool returns an empty list, no match, or an \

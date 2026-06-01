@@ -23,6 +23,7 @@ export interface StepResponse {
   statusText: string;
   body: string;
   time: number;
+  headers?: Record<string, string>;
 }
 
 export interface ExtractedValue {
@@ -210,6 +211,7 @@ export async function executeStep(
     statusText: response.statusText || '',
     body: response.body || '',
     time: response.responseTime || 0,
+    headers: response.headers || undefined,
   };
 
   const extractedValues = extractValues(response.body || '', extractions);

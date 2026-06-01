@@ -1,7 +1,14 @@
 <script lang="ts">
+  import { run, createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { createEventDispatcher, onMount, onDestroy } from 'svelte';
 
-  export let show = false;
+  interface Props {
+    show?: boolean;
+  }
+
+  let { show = $bindable(false) }: Props = $props();
 
   const dispatch = createEventDispatcher<{ select: string; close: void }>();
 
@@ -18,7 +25,7 @@
     { id: 'response',    label: 'Response Body', shortcut: '3', icon: '📄' },
   ];
 
-  let selectedIndex = 0;
+  let selectedIndex = $state(0);
 
   function handleKeydown(e: KeyboardEvent) {
     if (!show) return;
@@ -70,9 +77,11 @@
     close();
   }
 
-  $: if (show) {
-    selectedIndex = 0;
-  }
+  run(() => {
+    if (show) {
+      selectedIndex = 0;
+    }
+  });
 
   onMount(() => {
     window.addEventListener('keydown', handleKeydown, true);
@@ -84,8 +93,8 @@
 </script>
 
 {#if show}
-  <div class="picker-overlay" on:click={handleBackdrop} role="presentation">
-    <div class="picker" on:click|stopPropagation role="presentation">
+  <div class="picker-overlay" onclick={handleBackdrop} role="presentation">
+    <div class="picker" onclick={stopPropagation(bubble('click'))} role="presentation">
       <div class="picker-header">
         <span class="picker-title">Search in...</span>
         <span class="picker-hint">↑↓ navigate · Enter select · 1-3 jump · Esc close</span>
@@ -94,8 +103,8 @@
         {#each options as option, i}
           <button
             class="picker-option {selectedIndex === i ? 'selected' : ''}"
-            on:click={() => selectOption(option.id)}
-            on:mouseenter={() => { selectedIndex = i; }}
+            onclick={() => selectOption(option.id)}
+            onmouseenter={() => { selectedIndex = i; }}
           >
             <span class="option-icon">{option.icon}</span>
             <span class="option-label">{option.label}</span>
@@ -120,7 +129,7 @@
 
   .picker {
     background: var(--bg-secondary, #2b2d31);
-    border: 1px solid var(--border-color, #3e4045);
+    border: 1px solid var(--border-color, var(--border-color));
     border-radius: 10px;
     width: 320px;
     max-height: fit-content;
@@ -139,7 +148,7 @@
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    border-bottom: 1px solid var(--border-color, #3e4045);
+    border-bottom: 1px solid var(--border-color, var(--border-color));
   }
 
   .picker-title {

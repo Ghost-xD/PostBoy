@@ -39,23 +39,23 @@
     duration_ms: number;
   }
 
-  let hostname = '';
-  let port = '';
+  let hostname = $state('');
+  let port = $state('');
 
-  let dnsStatus: DiagStatus = 'idle';
-  let portStatus: DiagStatus = 'idle';
-  let pingStatus: DiagStatus = 'idle';
-  let traceStatus: DiagStatus = 'idle';
+  let dnsStatus = $state<DiagStatus>('idle');
+  let portStatus = $state<DiagStatus>('idle');
+  let pingStatus = $state<DiagStatus>('idle');
+  let traceStatus = $state<DiagStatus>('idle');
 
-  let dnsResult: DnsResult | null = null;
-  let portResult: PortCheckResult | null = null;
-  let pingResult: PingResult | null = null;
-  let traceResult: TraceResult | null = null;
+  let dnsResult: DnsResult | null = $state(null);
+  let portResult: PortCheckResult | null = $state(null);
+  let pingResult: PingResult | null = $state(null);
+  let traceResult: TraceResult | null = $state(null);
 
-  let dnsError = '';
-  let portError = '';
-  let pingError = '';
-  let traceError = '';
+  let dnsError = $state('');
+  let portError = $state('');
+  let pingError = $state('');
+  let traceError = $state('');
 
   function extractHostname(input: string): string {
     let s = input.trim();
@@ -106,8 +106,8 @@
     return extractPort(hostname) || 80;
   }
 
-  $: canRun = hostname.trim().length > 0;
-  $: anyRunning = dnsStatus === 'running' || portStatus === 'running' || pingStatus === 'running' || traceStatus === 'running';
+  let canRun = $derived(hostname.trim().length > 0);
+  let anyRunning = $derived(dnsStatus === 'running' || portStatus === 'running' || pingStatus === 'running' || traceStatus === 'running');
 
   async function runDns() {
     const host = getEffectiveHost();
@@ -207,7 +207,7 @@
         class="diag-input"
         bind:value={hostname}
         placeholder="e.g. api.example.com or https://example.com:8080/path"
-        on:keydown={handleKeydown}
+        onkeydown={handleKeydown}
       />
     </div>
     <div class="diag-input-group" style="width:100px">
@@ -218,11 +218,11 @@
         class="diag-input"
         bind:value={port}
         placeholder="auto"
-        on:keydown={handleKeydown}
+        onkeydown={handleKeydown}
       />
     </div>
     <div class="diag-input-group diag-btn-group">
-      <button class="diag-run-btn" on:click={runAll} disabled={!canRun || anyRunning}>
+      <button class="diag-run-btn" onclick={runAll} disabled={!canRun || anyRunning}>
         {#if anyRunning}
           <svg class="diag-spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/></svg>
           Running…
@@ -231,7 +231,7 @@
           Run All
         {/if}
       </button>
-      <button class="diag-reset-btn" on:click={resetAll} title="Clear results">
+      <button class="diag-reset-btn" onclick={resetAll} title="Clear results">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
       </button>
     </div>
@@ -248,7 +248,7 @@
           <span class="card-title">DNS Resolve</span>
           <span class="card-status status-{dnsStatus}">{dnsStatus}</span>
         </div>
-        <button class="card-run-btn" on:click={runDns} disabled={!canRun || dnsStatus === 'running'}>Run</button>
+        <button class="card-run-btn" onclick={runDns} disabled={!canRun || dnsStatus === 'running'}>Run</button>
       </div>
       <div class="card-body">
         {#if dnsStatus === 'idle'}
@@ -278,7 +278,7 @@
           <span class="card-title">Port Check</span>
           <span class="card-status status-{portStatus}">{portStatus}</span>
         </div>
-        <button class="card-run-btn" on:click={runPortCheck} disabled={!canRun || portStatus === 'running'}>Run</button>
+        <button class="card-run-btn" onclick={runPortCheck} disabled={!canRun || portStatus === 'running'}>Run</button>
       </div>
       <div class="card-body">
         {#if portStatus === 'idle'}
@@ -312,7 +312,7 @@
           <span class="card-title">Ping</span>
           <span class="card-status status-{pingStatus}">{pingStatus}</span>
         </div>
-        <button class="card-run-btn" on:click={runPing} disabled={!canRun || pingStatus === 'running'}>Run</button>
+        <button class="card-run-btn" onclick={runPing} disabled={!canRun || pingStatus === 'running'}>Run</button>
       </div>
       <div class="card-body">
         {#if pingStatus === 'idle'}
@@ -345,7 +345,7 @@
           <span class="card-title">Trace Route</span>
           <span class="card-status status-{traceStatus}">{traceStatus}</span>
         </div>
-        <button class="card-run-btn" on:click={runTrace} disabled={!canRun || traceStatus === 'running'}>Run</button>
+        <button class="card-run-btn" onclick={runTrace} disabled={!canRun || traceStatus === 'running'}>Run</button>
       </div>
       <div class="card-body">
         {#if traceStatus === 'idle'}

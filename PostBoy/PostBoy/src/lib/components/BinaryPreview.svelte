@@ -2,22 +2,26 @@
   import { base64ToDataUrl, getImageMimeType, formatBytes } from '$lib/utils/responseUtils';
   import type { ResponseTypeInfo } from '$lib/utils/responseUtils';
 
-  export let body: string = '';
-  export let typeInfo: ResponseTypeInfo;
-  export let contentType: string = '';
+  interface Props {
+    body?: string;
+    typeInfo: ResponseTypeInfo;
+    contentType?: string;
+  }
 
-  let imageError = false;
-  let imageLoaded = false;
-  let naturalWidth = 0;
-  let naturalHeight = 0;
+  let { body = '', typeInfo, contentType = '' }: Props = $props();
 
-  $: dataUrl = typeInfo.type === 'image'
+  let imageError = $state(false);
+  let imageLoaded = $state(false);
+  let naturalWidth = $state(0);
+  let naturalHeight = $state(0);
+
+  let dataUrl = $derived(typeInfo.type === 'image'
     ? base64ToDataUrl(body, getImageMimeType(contentType))
     : typeInfo.type === 'pdf'
       ? base64ToDataUrl(body, 'application/pdf')
-      : '';
+      : '');
 
-  $: sizeBytes = Math.ceil(body.length * 3 / 4);
+  let sizeBytes = $derived(Math.ceil(body.length * 3 / 4));
 
   function handleImageLoad(e: Event) {
     const img = e.target as HTMLImageElement;
@@ -67,7 +71,7 @@
         <span class="binary-dimensions">{naturalWidth} × {naturalHeight}</span>
       {/if}
     </div>
-    <button class="download-btn" on:click={downloadBinary} title="Download file">
+    <button class="download-btn" onclick={downloadBinary} title="Download file">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
       Download
     </button>
@@ -90,8 +94,8 @@
           <img
             src={dataUrl}
             alt="Response preview"
-            on:load={handleImageLoad}
-            on:error={handleImageError}
+            onload={handleImageLoad}
+            onerror={handleImageError}
             class="preview-image"
             class:loaded={imageLoaded}
           />
@@ -143,7 +147,7 @@
     justify-content: space-between;
     padding: 8px 12px;
     background: var(--bg-secondary, #2b2d31);
-    border-bottom: 1px solid var(--border-color, #3e4045);
+    border-bottom: 1px solid var(--border-color, var(--border-color));
     flex-shrink: 0;
   }
 
@@ -186,7 +190,7 @@
     padding: 5px 12px;
     background: transparent;
     color: #949ba4;
-    border: 1px solid #3e4045;
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     font-size: 12px;
     cursor: pointer;
@@ -205,7 +209,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #1e1f22;
+    background: var(--bg-secondary);
   }
 
   .image-container {

@@ -26,6 +26,66 @@ use llama_cpp_2::sampling::LlamaSampler;
 
 static BACKEND: OnceLock<&'static LlamaBackend> = OnceLock::new();
 
+/// GBNF grammar that constrains what the model can emit BETWEEN
+/// `<tool_call>` and `</tool_call>`. It accepts any well-formed
+/// `{"name": <one of our tools>, "arguments": <any valid JSON object>}`
+/// followed by the closing tag. Applied lazily via `grammar_lazy` — text
+/// emitted BEFORE the `<tool_call>` trigger is completely unconstrained,
+/// so the model is still free to write prose for normal chat replies.
+///
+/// What this fixes:
+/// - Malformed JSON inside `<tool_call>` (extra trailing commas, missing
+///   quotes, etc.) — the grammar mask makes those tokens unreachable.
+/// - Hallucinated tool names — only the eight enumerated names are valid.
+/// - Truncation right after the JSON — the model has to emit
+///   `</tool_call>` before EOS is allowed.
+///
+/// What this does NOT fix:
+/// - The model deciding to refuse instead of calling a tool. Grammar
+///   sampling only kicks in once the trigger has been emitted; we still
+///   need a capable model (and the existing intercepts) for the
+///   tool-vs-refusal decision.
+const TOOL_CALL_GRAMMAR: &str = r#"
+root         ::= ws "{" ws "\"name\"" ws ":" ws tool-name ws "," ws "\"arguments\"" ws ":" ws json-object ws "}" ws "</tool_call>"
+
+tool-name    ::= "\"list_collections\""
+              | "\"list_requests\""
+              | "\"inspect_request\""
+              | "\"get_request\""
+              | "\"run_request\""
+              | "\"get_variables\""
+              | "\"set_variable\""
+              | "\"get_history\""
+              | "\"get_last_response\""
+
+json-value   ::= json-string | json-number | json-boolean | "null" | json-object | json-array
+
+json-object  ::= "{" ws "}"
+              | "{" ws json-pair (ws "," ws json-pair)* ws "}"
+
+json-pair    ::= json-string ws ":" ws json-value
+
+json-array   ::= "[" ws "]"
+              | "[" ws json-value (ws "," ws json-value)* ws "]"
+
+json-string  ::= "\"" json-char* "\""
+
+json-char    ::= [^"\\] | "\\" json-esc
+
+json-esc     ::= ["\\/bfnrt] | "u" hex hex hex hex
+
+hex          ::= [0-9a-fA-F]
+
+json-boolean ::= "true" | "false"
+
+json-number  ::= "-"? json-int json-frac? json-exp?
+json-int     ::= "0" | [1-9] [0-9]*
+json-frac    ::= "." [0-9]+
+json-exp     ::= [eE] ("-" | "+")? [0-9]+
+
+ws           ::= [ \t\n\r]*
+"#;
+
 fn backend() -> Result<&'static LlamaBackend, String> {
     if let Some(b) = BACKEND.get() {
         return Ok(b);
@@ -147,13 +207,42 @@ impl Engine {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_micros() as u32)
             .unwrap_or(1234);
-        // Keep the sampler minimal to be resilient across llama-cpp-2 minor versions.
-        // `dist(seed)` + `greedy()` is the documented baseline and matches the
-        // upstream `simple` example.
-        let mut sampler = LlamaSampler::chain_simple([
-            LlamaSampler::dist(seed),
-            LlamaSampler::greedy(),
-        ]);
+        // Sampler chain. The previous `dist + greedy` baseline allowed small
+        // models to enter degenerate repetition loops (e.g. streaming
+        // `X-WebGL-Enabled: false` forever when asked an ambiguous prompt),
+        // because once the model assigned ~all probability mass to a token,
+        // every subsequent sample picked the same token. A modest repetition
+        // penalty on the last 64 tokens makes those loops impossible. Slight
+        // temperature + top-k/top-p keeps tool-call JSON deterministic enough
+        // while still allowing the model to recover from a stuck token.
+        //
+        // A lazy grammar sampler is also attached: until the model emits
+        // `<tool_call>`, the grammar is inert; once it has, the grammar
+        // forces the JSON body to be well-formed and to use one of our real
+        // tool names, terminated by `</tool_call>`. We tolerate grammar
+        // construction failures (e.g. an llama-cpp-2 version that doesn't
+        // accept some grammar feature) by simply omitting the sampler — the
+        // engine keeps working, just without that extra guarantee.
+        let grammar_sampler = LlamaSampler::grammar_lazy(
+            &self.model,
+            TOOL_CALL_GRAMMAR,
+            "root",
+            ["<tool_call>"],
+            &[],
+        )
+        .ok();
+
+        let mut samplers: Vec<LlamaSampler> = Vec::with_capacity(6);
+        samplers.push(LlamaSampler::penalties(64, 1.15, 0.0, 0.0));
+        if let Some(g) = grammar_sampler {
+            samplers.push(g);
+        }
+        samplers.push(LlamaSampler::top_k(40));
+        samplers.push(LlamaSampler::top_p(0.95, 1));
+        samplers.push(LlamaSampler::temp(0.6));
+        samplers.push(LlamaSampler::dist(seed));
+
+        let mut sampler = LlamaSampler::chain_simple(samplers);
 
         let mut decoder = encoding_rs::UTF_8.new_decoder();
         let mut n_cur = batch.n_tokens();

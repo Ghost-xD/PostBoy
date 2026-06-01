@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run, preventDefault } from 'svelte/legacy';
+
   import { onMount, onDestroy, tick } from 'svelte';
   import { ai } from '$lib/api/tauri';
   import {
@@ -29,11 +31,11 @@
   import { toolsFullscreen } from '$lib/stores/uiStore';
 
   type SubTab = 'chat' | 'log' | 'history' | 'models';
-  let subTab: SubTab = 'chat';
+  let subTab: SubTab = $state('chat');
 
-  let inputText = '';
-  let inputEl: HTMLTextAreaElement | null = null;
-  let messageListEl: HTMLDivElement | null = null;
+  let inputText = $state('');
+  let inputEl: HTMLTextAreaElement | null = $state(null);
+  let messageListEl: HTMLDivElement | null = $state(null);
 
   // ---- Composer autocomplete -------------------------------------------------
   // Suggestion source loaded once (and refreshed after each saved turn). The
@@ -48,9 +50,9 @@
   let corpusPhrases: Array<{ text: string; frequency: number }> = [];
   let corpusRequests: Array<{ name: string; collection: string | null }> = [];
   let corpusCollections: string[] = [];
-  let suggestions: Suggestion[] = [];
-  let suggestionIndex = -1;
-  let showSuggestions = false;
+  let suggestions: Suggestion[] = $state([]);
+  let suggestionIndex = $state(-1);
+  let showSuggestions = $state(false);
 
   // Starter templates the model is good at answering. Mirrors the
   // PATTERN_TEMPLATES idea from HealthCheckServer but tuned to PostBoy.
@@ -141,11 +143,15 @@
     return out.slice(0, 8);
   }
 
-  $: suggestions = inputText ? computeSuggestions(inputText) : [];
-  $: if (suggestions.length === 0) {
-    showSuggestions = false;
-    suggestionIndex = -1;
-  }
+  run(() => {
+    suggestions = inputText ? computeSuggestions(inputText) : [];
+  });
+  run(() => {
+    if (suggestions.length === 0) {
+      showSuggestions = false;
+      suggestionIndex = -1;
+    }
+  });
 
   function pickSuggestion(s: Suggestion) {
     inputText = s.text;
@@ -174,11 +180,11 @@
   let unlistenEngineLoaded: (() => void) | null = null;
 
   let activeDownloadSource: Record<string, string> = {};
-  let streamingStartTs: number | null = null;
+  let streamingStartTs: number | null = $state(null);
 
   // For deriving "is model picked but not loaded?" callouts
-  $: hasEngine = $chatbotStatus.engineLoaded;
-  $: installedCount = $chatbotStatus.installedModelIds.length;
+  let hasEngine = $derived($chatbotStatus.engineLoaded);
+  let installedCount = $derived($chatbotStatus.installedModelIds.length);
 
   onMount(async () => {
     await initChatbotFeature();
@@ -279,8 +285,41 @@
       .catch((e) => console.warn('[chatbot] saveCurrentChat failed', e));
   }
 
-  async function send() {
-    const text = inputText.trim();
+  // Suggested prompts shown on the empty state. Clicking one fires `send`
+  // directly with the prompt text — no need to put it in the composer first.
+  // Each entry has an inline Lucide-style SVG; we render via {@html} since
+  // the markup is fully controlled here.
+  type StarterPrompt = {
+    prompt: string;
+    subtitle: string;
+    iconSvg: string;
+  };
+  const ICON_BASE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+  const STARTER_PROMPTS: StarterPrompt[] = [
+    {
+      prompt: 'list my collections',
+      subtitle: 'See every saved request grouped by folder',
+      iconSvg: `${ICON_BASE}<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
+    },
+    {
+      prompt: 'hit get IRP token',
+      subtitle: 'Run the auth request and grab a fresh token',
+      iconSvg: `${ICON_BASE}<circle cx="8" cy="15" r="4"/><line x1="10.85" y1="12.15" x2="19" y2="4"/><line x1="18" y1="5" x2="20" y2="7"/><line x1="15" y1="8" x2="17" y2="10"/></svg>`,
+    },
+    {
+      prompt: 'why did my last request fail?',
+      subtitle: 'Debug the previous call from the action log',
+      iconSvg: `${ICON_BASE}<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+    },
+    {
+      prompt: 'summarize the last response',
+      subtitle: 'Quick TL;DR of the most recent API call',
+      iconSvg: `${ICON_BASE}<path d="M12 3 9.7 8.5 4 10.7l5.7 2.2L12 18.5l2.3-5.6L20 10.7l-5.7-2.2z"/><path d="m19 3 .8 1.7L21.5 5.5l-1.7.8L19 8l-.8-1.7L16.5 5.5l1.7-.8z"/><path d="m5 17 .6 1.3L7 19l-1.4.7L5 21l-.6-1.3L3 19l1.4-.7z"/></svg>`,
+    },
+  ];
+
+  async function send(overrideText?: string) {
+    const text = (overrideText ?? inputText).trim();
     if (!text || $isStreaming) return;
 
     if (!$chatbotStatus.engineLoaded) {
@@ -602,7 +641,7 @@
   // single piece of state can drive feedback for the whole-message copy
   // (`msg-<ts>`), a code block (`code-<ts>-<idx>`), a JSON body
   // (`body-<ts>-<idx>`), or a single JSON field (`field-<ts>-<idx>-<key>`).
-  let copiedKey: string | null = null;
+  let copiedKey: string | null = $state(null);
   let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function copyToKey(key: string, text: string) {
@@ -754,23 +793,23 @@
 <div class="chatbot-panel" class:fullscreen={$toolsFullscreen}>
   <div class="cb-toolbar">
     <div class="cb-tabs">
-      <button class="cb-tab" class:active={subTab === 'chat'} on:click={() => (subTab = 'chat')}>
+      <button class="cb-tab" class:active={subTab === 'chat'} onclick={() => (subTab = 'chat')}>
         Chat
       </button>
-      <button class="cb-tab" class:active={subTab === 'history'} on:click={() => (subTab = 'history')}>
+      <button class="cb-tab" class:active={subTab === 'history'} onclick={() => (subTab = 'history')}>
         History {$chatHistory.length > 0 ? `(${$chatHistory.length})` : ''}
       </button>
-      <button class="cb-tab" class:active={subTab === 'log'} on:click={() => (subTab = 'log')}>
+      <button class="cb-tab" class:active={subTab === 'log'} onclick={() => (subTab = 'log')}>
         Action Log {$actionLog.length > 0 ? `(${$actionLog.length})` : ''}
       </button>
-      <button class="cb-tab" class:active={subTab === 'models'} on:click={() => (subTab = 'models')}>
+      <button class="cb-tab" class:active={subTab === 'models'} onclick={() => (subTab = 'models')}>
         Models
       </button>
     </div>
     <div class="cb-toolbar-actions">
       <button
         class="cb-toolbar-btn"
-        on:click={newChatHandler}
+        onclick={newChatHandler}
         disabled={$isStreaming}
         title="New chat — saves the current chat to history and starts fresh"
       >
@@ -800,10 +839,31 @@
         {#if $messages.length === 0 && !$streamingAssistant && !$isStreaming}
           <div class="cb-empty">
             <div class="cb-empty-title">Son of Anton</div>
-            <div class="cb-empty-hint">
-              Ask things like "list my collections", "run getUsers from MyAPI", or
-              "why did my last request fail?". The assistant uses tools to read
-              your data and run requests directly.
+            <div class="cb-empty-sub">
+              {$chatbotStatus.engineLoaded
+                ? 'Try one of these to start, or just type your own question below.'
+                : 'Press Ctrl+Shift+M to load the model, then pick a starter prompt below.'}
+            </div>
+            <div class="cb-empty-prompts">
+              {#each STARTER_PROMPTS as item, i}
+                <button
+                  type="button"
+                  class="cb-empty-prompt"
+                  style="animation-delay: {i * 60}ms"
+                  onclick={() => send(item.prompt)}
+                  disabled={!$chatbotStatus.engineLoaded || $isStreaming}
+                  title={!$chatbotStatus.engineLoaded ? 'Load a model first (Ctrl+Shift+M)' : 'Send this prompt'}
+                >
+                  <span class="cb-empty-prompt-icon" aria-hidden="true">{@html item.iconSvg}</span>
+                  <span class="cb-empty-prompt-body">
+                    <span class="cb-empty-prompt-label">{item.prompt}</span>
+                    <span class="cb-empty-prompt-sub">{item.subtitle}</span>
+                  </span>
+                  <span class="cb-empty-prompt-arrow" aria-hidden="true">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+                  </span>
+                </button>
+              {/each}
             </div>
           </div>
         {/if}
@@ -825,7 +885,7 @@
                             type="button"
                             class="cb-copy-btn"
                             class:done={copiedKey === `body-${msg.timestamp}-${segIdx}`}
-                            on:click={() => copyToKey(`body-${msg.timestamp}-${segIdx}`, seg.raw.trim())}
+                            onclick={() => copyToKey(`body-${msg.timestamp}-${segIdx}`, seg.raw.trim())}
                             title={copiedKey === `body-${msg.timestamp}-${segIdx}` ? 'Copied' : 'Copy entire body'}
                             aria-label="Copy entire body"
                           >
@@ -846,7 +906,7 @@
                                   type="button"
                                   class="cb-copy-btn"
                                   class:done={copiedKey === `field-${msg.timestamp}-${segIdx}-${row.key}`}
-                                  on:click={() => copyToKey(`field-${msg.timestamp}-${segIdx}-${row.key}`, jsonCopyValue(row.value))}
+                                  onclick={() => copyToKey(`field-${msg.timestamp}-${segIdx}-${row.key}`, jsonCopyValue(row.value))}
                                   title={copiedKey === `field-${msg.timestamp}-${segIdx}-${row.key}` ? 'Copied' : `Copy ${row.key}`}
                                   aria-label={`Copy ${row.key}`}
                                 >
@@ -871,7 +931,7 @@
                             type="button"
                             class="cb-copy-btn"
                             class:done={copiedKey === `code-${msg.timestamp}-${segIdx}`}
-                            on:click={() => copyToKey(`code-${msg.timestamp}-${segIdx}`, seg.content)}
+                            onclick={() => copyToKey(`code-${msg.timestamp}-${segIdx}`, seg.content)}
                             title={copiedKey === `code-${msg.timestamp}-${segIdx}` ? 'Copied' : 'Copy block'}
                             aria-label="Copy block"
                           >
@@ -897,7 +957,7 @@
                     type="button"
                     class="cb-copy-btn"
                     class:done={copiedKey === `msg-${msg.timestamp}`}
-                    on:click={() => copyMessage(msg.content, msg.timestamp ?? 0)}
+                    onclick={() => copyMessage(msg.content, msg.timestamp ?? 0)}
                     title={copiedKey === `msg-${msg.timestamp}` ? 'Copied' : 'Copy response'}
                     aria-label={copiedKey === `msg-${msg.timestamp}` ? 'Copied' : 'Copy response'}
                   >
@@ -940,8 +1000,8 @@
                 class:active={suggestionIndex === i}
                 role="option"
                 aria-selected={suggestionIndex === i}
-                on:mousedown|preventDefault={() => pickSuggestion(s)}
-                on:mouseenter={() => (suggestionIndex = i)}
+                onmousedown={preventDefault(() => pickSuggestion(s))}
+                onmouseenter={() => (suggestionIndex = i)}
               >
                 <span class="cb-sugg-kind cb-sugg-kind-{s.kind}" title={s.kind}>
                   {#if s.kind === 'phrase'}
@@ -967,7 +1027,7 @@
         <div class="cb-composer" class:disabled={installedCount === 0}>
           <button
             class="cb-icon-btn ghost"
-            on:click={resetConversation}
+            onclick={resetConversation}
             disabled={$messages.length === 0 && !$streamingAssistant}
             title="Clear conversation"
             aria-label="Clear conversation"
@@ -980,10 +1040,10 @@
           <textarea
             bind:this={inputEl}
             bind:value={inputText}
-            on:input={onInputChange}
-            on:keydown={handleInputKeydown}
-            on:focus={() => { if (inputText) showSuggestions = true; }}
-            on:blur={() => setTimeout(() => (showSuggestions = false), 120)}
+            oninput={onInputChange}
+            onkeydown={handleInputKeydown}
+            onfocus={() => { if (inputText) showSuggestions = true; }}
+            onblur={() => setTimeout(() => (showSuggestions = false), 120)}
             use:autoResize
             placeholder={installedCount > 0
               ? 'Ask the assistant…'
@@ -992,7 +1052,7 @@
             disabled={$isStreaming}
           ></textarea>
         {#if $isStreaming}
-          <button class="cb-icon-btn primary stop" on:click={cancel} aria-label="Stop">
+          <button class="cb-icon-btn primary stop" onclick={cancel} aria-label="Stop">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
               <rect x="6" y="6" width="12" height="12" rx="1.5"/>
             </svg>
@@ -1000,7 +1060,7 @@
         {:else}
           <button
             class="cb-icon-btn primary"
-            on:click={send}
+            onclick={() => send()}
             disabled={!inputText.trim() || installedCount === 0}
             aria-label="Send"
           >
@@ -1017,7 +1077,7 @@
     <div class="cb-log">
       <div class="cb-log-header">
         <span class="cb-log-title">Tool calls in this session</span>
-        <button class="cb-clear" on:click={clearActionLogHandler} disabled={$actionLog.length === 0}>
+        <button class="cb-clear" onclick={clearActionLogHandler} disabled={$actionLog.length === 0}>
           Clear
         </button>
       </div>
@@ -1046,7 +1106,7 @@
     <div class="cb-log">
       <div class="cb-log-header">
         <span class="cb-log-title">Saved chats</span>
-        <button class="cb-clear" on:click={deleteAllChatsHandler} disabled={$chatHistory.length === 0}>
+        <button class="cb-clear" onclick={deleteAllChatsHandler} disabled={$chatHistory.length === 0}>
           Delete all
         </button>
       </div>
@@ -1059,7 +1119,7 @@
             <button
               type="button"
               class="cb-history-open"
-              on:click={() => openChatHandler(row.id)}
+              onclick={() => openChatHandler(row.id)}
               disabled={$isStreaming}
               title={row.title}
             >
@@ -1073,7 +1133,7 @@
               class="cb-history-del"
               title="Delete this chat"
               aria-label="Delete chat"
-              on:click={(e) => deleteChatHandler(row.id, e)}
+              onclick={(e) => deleteChatHandler(row.id, e)}
             >
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="3 6 5 6 21 6"/>
@@ -1096,7 +1156,7 @@
             Downloaded to <code>&lt;app data&gt;/ai/models/</code>. Sources: Hugging Face first, Kaggle fallback.
           </div>
         </div>
-        <button class="cb-clear" on:click={() => { refreshModels(); refreshStatus(); }}>Refresh</button>
+        <button class="cb-clear" onclick={() => { refreshModels(); refreshStatus(); }}>Refresh</button>
       </div>
       <div class="cb-model-list">
         {#each $availableModels as model}
@@ -1124,18 +1184,18 @@
             <div class="cb-model-actions">
               {#if installed && isActive}
                 <span class="cb-active-pill">Active</span>
-                <button class="cb-btn" on:click={unloadEngine}>Unload</button>
+                <button class="cb-btn" onclick={unloadEngine}>Unload</button>
               {:else if installed}
-                <button class="cb-btn primary" on:click={() => loadEngine(model.id)}>Load</button>
-                <button class="cb-btn danger" on:click={() => deleteModel(model.id)}>Delete</button>
+                <button class="cb-btn primary" onclick={() => loadEngine(model.id)}>Load</button>
+                <button class="cb-btn danger" onclick={() => deleteModel(model.id)}>Delete</button>
               {:else if isDownloading}
-                <button class="cb-btn" on:click={() => pauseDownload(model.id)}>Pause</button>
-                <button class="cb-btn danger" on:click={() => cancelDownload(model.id)}>Cancel</button>
+                <button class="cb-btn" onclick={() => pauseDownload(model.id)}>Pause</button>
+                <button class="cb-btn danger" onclick={() => cancelDownload(model.id)}>Cancel</button>
               {:else if isPaused}
-                <button class="cb-btn primary" on:click={() => resumeDownload(model.id)}>Resume</button>
-                <button class="cb-btn danger" on:click={() => cancelDownload(model.id)}>Cancel</button>
+                <button class="cb-btn primary" onclick={() => resumeDownload(model.id)}>Resume</button>
+                <button class="cb-btn danger" onclick={() => cancelDownload(model.id)}>Cancel</button>
               {:else}
-                <button class="cb-btn primary" on:click={() => downloadModel(model.id)}>Download</button>
+                <button class="cb-btn primary" onclick={() => downloadModel(model.id)}>Download</button>
               {/if}
             </div>
           </div>
@@ -1221,25 +1281,28 @@
   }
 
   .cb-tab {
-    padding: 4px 12px;
+    padding: 5px 14px;
     background: transparent;
     border: 1px solid transparent;
-    border-radius: 4px;
-    color: var(--text-secondary, #b5bac1);
+    border-radius: 6px;
+    color: var(--text-secondary, #8a94a6);
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
     transition: all 0.15s;
   }
 
   .cb-tab.active {
-    background: var(--bg-tertiary, #2b2d31);
-    color: var(--text-primary, #f2f3f5);
-    border-color: var(--border-color, #3f4147);
+    background: color-mix(in srgb, var(--accent-color, #4d8df6) 14%, transparent);
+    color: var(--accent-color, #4d8df6);
+    border-color: color-mix(in srgb, var(--accent-color, #4d8df6) 40%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-color, #4d8df6) 18%, transparent) inset;
   }
 
   .cb-tab:hover:not(.active) {
-    color: var(--text-primary, #f2f3f5);
+    color: var(--text-primary, #e6ecf5);
+    background: color-mix(in srgb, var(--accent-color, #4d8df6) 6%, transparent);
   }
 
   .cb-status {
@@ -1322,30 +1385,181 @@
   .cb-empty {
     margin: auto;
     text-align: center;
-    max-width: 420px;
+    width: 100%;
+    max-width: 720px;
     color: var(--text-secondary, #b5bac1);
-    padding: 32px 16px;
+    padding: 40px 16px;
   }
 
   .cb-empty-title {
-    font-size: 20px;
+    font-size: 28px;
     font-weight: 700;
-    color: var(--text-primary, #f2f3f5);
+    letter-spacing: -0.02em;
     margin-bottom: 8px;
-    letter-spacing: -0.01em;
+    background: linear-gradient(135deg, #ffffff 0%, var(--accent-color) 110%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
 
+  .cb-empty-sub {
+    font-size: 13px;
+    color: var(--text-secondary, #8a94a6);
+    margin-bottom: 26px;
+    opacity: 0.75;
+  }
+
+  /* Hint text in the action-log and history tabs still uses this class. */
   .cb-empty-hint {
     font-size: 13px;
     line-height: 1.6;
   }
 
+  .cb-empty-prompts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+    text-align: left;
+  }
+
+  .cb-empty-prompt {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    background: #0a0a0a;
+    border: 1px solid #1f1f1f;
+    border-radius: 14px;
+    padding: 16px 18px;
+    font-family: inherit;
+    color: var(--text-primary, #f2f3f5);
+    cursor: pointer;
+    text-align: left;
+    transition:
+      background 0.18s ease,
+      border-color 0.18s ease,
+      transform 0.18s ease,
+      box-shadow 0.18s ease;
+    animation: cbPromptIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Subtle conic-gradient glow that fades in on hover. Positioned behind
+     the content so the icon/label/arrow stay crisp. */
+  .cb-empty-prompt::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, transparent 0%, color-mix(in srgb, var(--accent-color) 60%, transparent) 50%, transparent 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+            mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+  }
+
+  .cb-empty-prompt:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent-color) 8%, #050505);
+    transform: translateY(-1px);
+    box-shadow: 0 10px 28px var(--accent-glow);
+  }
+
+  .cb-empty-prompt:hover:not(:disabled)::before {
+    opacity: 1;
+  }
+
+  .cb-empty-prompt:hover:not(:disabled) .cb-empty-prompt-arrow {
+    transform: translateX(2px);
+    color: var(--accent-color);
+  }
+
+  .cb-empty-prompt:hover:not(:disabled) .cb-empty-prompt-icon {
+    background: color-mix(in srgb, var(--accent-color) 22%, transparent);
+  }
+
+  .cb-empty-prompt:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  .cb-empty-prompt:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .cb-empty-prompt-icon {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--accent-color) 13%, transparent);
+    color: var(--accent-color);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.18s ease;
+  }
+
+  .cb-empty-prompt-body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .cb-empty-prompt-label {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--text-primary, #f2f3f5);
+    line-height: 1.3;
+  }
+
+  .cb-empty-prompt-sub {
+    font-size: 12px;
+    color: var(--text-secondary, #8a94a6);
+    line-height: 1.45;
+    opacity: 0.8;
+  }
+
+  .cb-empty-prompt-arrow {
+    flex-shrink: 0;
+    color: var(--text-secondary, #8a94a6);
+    opacity: 0.5;
+    align-self: center;
+    transition: transform 0.18s ease, color 0.18s ease, opacity 0.18s ease;
+  }
+
+  .cb-empty-prompt:hover:not(:disabled) .cb-empty-prompt-arrow {
+    opacity: 1;
+  }
+
+  @keyframes cbPromptIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Messages use a responsive readable column.
+     - On narrow panels: fills the available width (max-width yields to
+       width: 100%), so no awkward gutters next to the full-width toolbar.
+     - On wide panels: caps at a comfortable reading width so lines don't
+       stretch unreadably. Fullscreen mode below removes the cap entirely. */
   .cb-msg {
     display: flex;
     align-items: flex-start;
     gap: 10px;
-    max-width: 720px;
     width: 100%;
+    max-width: 1100px;
     margin: 0 auto;
     animation: cb-msg-in 0.18s ease-out both;
   }
@@ -1462,7 +1676,7 @@
   .cb-msg-body :global(.cb-code) {
     margin: 6px 0;
     padding: 10px 12px;
-    background: #1e1f22;
+    background: var(--bg-secondary);
     border: 1px solid var(--border-color, #3f4147);
     border-radius: 8px;
     font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
@@ -1502,14 +1716,14 @@
     border: 1px solid var(--border-color, #3f4147);
     border-radius: 8px;
     overflow: hidden;
-    background: #1e1f22;
+    background: var(--bg-secondary);
   }
   .cb-code-block .cb-code-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 4px 8px 4px 12px;
-    background: #2b2d31;
+    background: var(--bg-tertiary);
     border-bottom: 1px solid var(--border-color, #3f4147);
     font-size: 10.5px;
     text-transform: uppercase;
@@ -1523,14 +1737,14 @@
     border: 1px solid var(--border-color, #3f4147);
     border-radius: 8px;
     overflow: hidden;
-    background: #1e1f22;
+    background: var(--bg-secondary);
   }
   .cb-json-block .cb-json-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 4px 8px 4px 12px;
-    background: #2b2d31;
+    background: var(--bg-tertiary);
     border-bottom: 1px solid var(--border-color, #3f4147);
     font-size: 10.5px;
     text-transform: uppercase;

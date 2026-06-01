@@ -163,12 +163,12 @@ export async function captureCookies(
       await db.setCookie(collectionId, cookie);
       saved++;
     } catch (err) {
-      addLog('warn', `Failed to save cookie ${cookie.name}: ${err}`);
+      addLog(`Failed to save cookie ${cookie.name}: ${err}`, 'warn');
     }
   }
 
   if (saved > 0) {
-    addLog('info', `Captured ${saved} cookie(s) from response`);
+    addLog(`Captured ${saved} cookie(s) from response`, 'info');
   }
 
   return saved;
@@ -186,7 +186,7 @@ export async function injectCookies(
       .map((c: any) => `${c.name}=${c.value}`)
       .join('; ');
   } catch (err) {
-    addLog('warn', `Failed to inject cookies: ${err}`);
+    addLog(`Failed to inject cookies: ${err}`, 'warn');
     return '';
   }
 }

@@ -38,9 +38,9 @@ pub fn tools_schema_json() -> String {
         },
         {
             "name": "list_requests",
-            "description": "List all saved requests inside a collection.",
+            "description": "List saved requests. Pass `collection_id` to scope to one collection; OMIT it to list every saved request across ALL collections (each entry includes its `collection_id` and `collection_name`). Prefer omitting `collection_id` whenever the user says \"all requests\" / \"every request\" / \"what requests do I have\".",
             "arguments": {
-                "collection_id": { "type": "integer", "description": "Collection id from list_collections" }
+                "collection_id": { "type": "integer", "description": "OPTIONAL — collection id from list_collections. Omit to list across all collections." }
             }
         },
         {
@@ -227,7 +227,7 @@ pub async fn dispatch(app: AppHandle, name: &str, args: Value) -> Value {
             let id = args.get("collection_id").and_then(|v| v.as_i64());
             match id {
                 Some(id) => list_requests(&app, id),
-                None => Err("collection_id is required".into()),
+                None => list_all_requests(&app),
             }
         }
         "inspect_request" | "get_request" => match resolve_request_id(&app, &args) {
@@ -304,6 +304,45 @@ fn list_requests(app: &AppHandle, collection_id: i64) -> Result<Value, String> {
                 "name": row.get::<_, String>(1)?,
                 "method": row.get::<_, String>(2)?,
                 "url": row.get::<_, String>(3)?,
+            }))
+        })
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r.map_err(|e| e.to_string())?);
+    }
+    Ok(json!({ "requests": out }))
+}
+
+/// List every saved request across every collection in one shot. Used when
+/// the caller invokes `list_requests` without a `collection_id`. Each entry
+/// carries its `collection_id` and `collection_name` so the model (or the
+/// frontend) can group/format without a second round-trip.
+///
+/// `collection_id` is read as `Option<i64>` because the legacy schema
+/// allowed NULL there for orphaned requests; we surface that as JSON
+/// `null` and the formatter buckets those under "(uncategorized)".
+fn list_all_requests(app: &AppHandle) -> Result<Value, String> {
+    let conn = open_db(app)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT r.id, r.name, r.method, r.url, r.collection_id,
+                    COALESCE(c.name, '') AS collection_name
+             FROM requests r
+             LEFT JOIN collections c ON c.id = r.collection_id
+             ORDER BY collection_name COLLATE NOCASE ASC,
+                      r.sort_order ASC, r.created_at DESC",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(json!({
+                "id": row.get::<_, i64>(0)?,
+                "name": row.get::<_, String>(1)?,
+                "method": row.get::<_, String>(2)?,
+                "url": row.get::<_, String>(3)?,
+                "collection_id": row.get::<_, Option<i64>>(4)?,
+                "collection_name": row.get::<_, String>(5)?,
             }))
         })
         .map_err(|e| e.to_string())?;
@@ -431,20 +470,26 @@ fn get_history(app: &AppHandle, limit: i64) -> Result<Value, String> {
     let conn = open_db(app)?;
     let mut stmt = conn
         .prepare(
-            "SELECT method, url, status_code, response_time, response_body, executed_at
+            "SELECT method, url, status_code, response_time, response_headers, response_body, executed_at
              FROM history ORDER BY executed_at DESC LIMIT ?",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([limit], |row| {
-            let body: Option<String> = row.get(4)?;
+            let headers_str: Option<String> = row.get(4)?;
+            let body: Option<String> = row.get(5)?;
+            let headers = headers_str
+                .as_deref()
+                .and_then(|s| serde_json::from_str::<Value>(s).ok())
+                .unwrap_or_else(|| json!({}));
             Ok(json!({
                 "method": row.get::<_, String>(0)?,
                 "url": row.get::<_, String>(1)?,
                 "status": row.get::<_, Option<i64>>(2)?,
                 "responseTime": row.get::<_, Option<i64>>(3)?,
+                "headers": headers,
                 "body": body.map(|b| truncate_body(&b)),
-                "executedAt": row.get::<_, String>(5)?,
+                "executedAt": row.get::<_, String>(6)?,
             }))
         })
         .map_err(|e| e.to_string())?;

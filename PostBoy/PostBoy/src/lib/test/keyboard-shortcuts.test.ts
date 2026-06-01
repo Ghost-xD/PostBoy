@@ -305,7 +305,7 @@ describe('Keyboard Shortcuts', () => {
     });
 
     it('Ctrl+D should toggle back to encode', () => {
-      let direction: 'encode' | 'decode' = 'decode';
+      let direction: 'encode' | 'decode' = 'decode' as 'encode' | 'decode';
       const e = makeKeyEvent({ key: 'd', ctrlKey: true });
 
       if (e.ctrlKey && !e.shiftKey && e.key === 'd') {
@@ -327,7 +327,7 @@ describe('Keyboard Shortcuts', () => {
     });
 
     it('Ctrl+M should toggle back to base64', () => {
-      let mode: 'base64' | 'url' = 'url';
+      let mode: 'base64' | 'url' = 'url' as 'base64' | 'url';
       const e = makeKeyEvent({ key: 'm', ctrlKey: true });
 
       if (e.ctrlKey && !e.shiftKey && e.key === 'm') {
@@ -372,7 +372,7 @@ describe('Keyboard Shortcuts', () => {
 
   describe('Tools panel toggle shortcuts', () => {
     it('Ctrl+Shift+J should toggle JWT panel', () => {
-      let toolsPanel: false | 'jwt' | 'encoder' = false;
+      let toolsPanel: false | 'jwt' | 'encoder' = false as false | 'jwt' | 'encoder';
       const e = makeKeyEvent({ key: 'J', ctrlKey: true, shiftKey: true });
 
       if (e.ctrlKey && e.shiftKey && e.key === 'J') {
@@ -388,7 +388,7 @@ describe('Keyboard Shortcuts', () => {
     });
 
     it('Ctrl+Shift+E should toggle Encoder panel', () => {
-      let toolsPanel: false | 'jwt' | 'encoder' = false;
+      let toolsPanel: false | 'jwt' | 'encoder' = false as false | 'jwt' | 'encoder';
       const e = makeKeyEvent({ key: 'E', ctrlKey: true, shiftKey: true });
 
       if (e.ctrlKey && e.shiftKey && e.key === 'E') {
@@ -403,21 +403,21 @@ describe('Keyboard Shortcuts', () => {
     });
 
     it('opening JWT should close Encoder and vice versa', () => {
-      let toolsPanel: false | 'jwt' | 'encoder' = 'encoder';
+      let toolsPanel: false | 'jwt' | 'encoder' = 'encoder' as false | 'jwt' | 'encoder';
 
       // Press Ctrl+Shift+J while encoder is open
-      toolsPanel = toolsPanel === 'jwt' ? false : 'jwt';
+      toolsPanel = (toolsPanel as false | 'jwt' | 'encoder') === 'jwt' ? false : 'jwt';
       expect(toolsPanel).toBe('jwt');
 
       // Press Ctrl+Shift+E while JWT is open
-      toolsPanel = toolsPanel === 'encoder' ? false : 'encoder';
+      toolsPanel = (toolsPanel as false | 'jwt' | 'encoder') === 'encoder' ? false : 'encoder';
       expect(toolsPanel).toBe('encoder');
     });
   });
 
   describe('WebSocket shortcuts', () => {
     it('Ctrl+Enter should map to connect when disconnected', () => {
-      const wsStatus = 'disconnected';
+      const wsStatus = 'disconnected' as 'disconnected' | 'connecting' | 'connected';
       const e = makeKeyEvent({ key: 'Enter', ctrlKey: true });
       let action = '';
 
@@ -441,7 +441,7 @@ describe('Keyboard Shortcuts', () => {
     });
 
     it('Ctrl+Enter should do nothing when connecting', () => {
-      const wsStatus = 'connecting';
+      const wsStatus = 'connecting' as 'disconnected' | 'connecting' | 'connected';
       const e = makeKeyEvent({ key: 'Enter', ctrlKey: true });
       let action = '';
 

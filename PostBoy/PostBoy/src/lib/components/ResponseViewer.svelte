@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { onMount, onDestroy } from 'svelte';
   import { EditorView, basicSetup } from 'codemirror';
   import { json } from '@codemirror/lang-json';
@@ -7,18 +9,25 @@
   import { SearchQuery, setSearchQuery, findNext, findPrevious, getSearchQuery, search } from '@codemirror/search';
   import { LARGE_RESPONSE_THRESHOLD, TRUNCATED_PREVIEW_SIZE, formatBytes } from '$lib/utils/responseUtils';
   
-  export let value = '';
-  export let language: 'json' | 'text' | 'html' | 'xml' = 'json';
-  export let wordWrap = true;
-  export let searchQuery = '';
-  
-  let editorDiv: HTMLDivElement;
-  let view: EditorView;
-  let showingFull = false;
-  let loadingFull = false;
+  interface Props {
+    value?: string;
+    language?: 'json' | 'text' | 'html' | 'xml';
+    wordWrap?: boolean;
+    searchQuery?: string;
+  }
 
-  $: isLarge = value.length > LARGE_RESPONSE_THRESHOLD;
-  $: displayValue = computeDisplayValue(value, showingFull);
+  let {
+    value = '',
+    language = 'json',
+    wordWrap = true,
+    searchQuery = ''
+  }: Props = $props();
+  
+  let editorDiv: HTMLDivElement | undefined = $state();
+  let view: EditorView | undefined = $state();
+  let showingFull = $state(false);
+  let loadingFull = $state(false);
+
 
   function computeDisplayValue(raw: string, full: boolean): string {
     let working = raw;
@@ -65,12 +74,6 @@
     findPrevious(view);
   }
 
-  $: if (view && searchQuery !== undefined) {
-    const q = searchQuery
-      ? new SearchQuery({ search: searchQuery, caseSensitive: false })
-      : new SearchQuery({ search: '' });
-    view.dispatch({ effects: setSearchQuery.of(q) });
-  }
   
   onMount(() => {
     const extensions = [
@@ -83,7 +86,7 @@
           fontSize: '13px',
           border: '1px solid var(--border-color)',
           borderRadius: '4px',
-          backgroundColor: '#282c34',
+          backgroundColor: '#000000',
           height: '100%',
         },
         '.cm-scroller': {
@@ -91,14 +94,33 @@
           lineHeight: '1.6',
           height: '100%',
           overflow: 'auto',
-        },
-        '.cm-gutters': {
-          backgroundColor: '#21252b',
-          color: '#5c6370',
-          border: 'none',
+          backgroundColor: '#000000',
         },
         '.cm-content': {
+          backgroundColor: '#000000',
           caretColor: 'transparent',
+        },
+        '.cm-gutters': {
+          backgroundColor: '#000000 !important',
+          color: '#5c6370',
+          border: 'none',
+          borderRight: 'none',
+        },
+        '.cm-gutter': {
+          backgroundColor: '#000000',
+        },
+        '.cm-lineNumbers .cm-gutterElement': {
+          backgroundColor: '#000000',
+        },
+        '.cm-activeLineGutter': {
+          backgroundColor: '#000000',
+          color: '#7b8398',
+        },
+        '.cm-activeLine': {
+          backgroundColor: 'transparent',
+        },
+        '.cm-foldGutter': {
+          backgroundColor: '#000000',
         },
         '.cm-searchMatch': {
           backgroundColor: 'rgba(240, 177, 50, 0.3) !important',
@@ -139,22 +161,36 @@
     }
   });
 
-  $: if (view) {
-    const newDoc = displayValue;
-    if (newDoc !== view.state.doc.toString()) {
-      view.dispatch({
-        changes: {
-          from: 0,
-          to: view.state.doc.length,
-          insert: newDoc,
-        },
-      });
-    }
-  }
 
-  $: if (!isLarge) {
-    showingFull = false;
-  }
+  let isLarge = $derived(value.length > LARGE_RESPONSE_THRESHOLD);
+  run(() => {
+    if (!isLarge) {
+      showingFull = false;
+    }
+  });
+  let displayValue = $derived(computeDisplayValue(value, showingFull));
+  run(() => {
+    if (view && searchQuery !== undefined) {
+      const q = searchQuery
+        ? new SearchQuery({ search: searchQuery, caseSensitive: false })
+        : new SearchQuery({ search: '' });
+      view.dispatch({ effects: setSearchQuery.of(q) });
+    }
+  });
+  run(() => {
+    if (view) {
+      const newDoc = displayValue;
+      if (newDoc !== view.state.doc.toString()) {
+        view.dispatch({
+          changes: {
+            from: 0,
+            to: view.state.doc.length,
+            insert: newDoc,
+          },
+        });
+      }
+    }
+  });
 </script>
 
 {#if isLarge && !showingFull}
@@ -166,7 +202,7 @@
     <span>
       Large response ({formatBytes(value.length)}) — showing first {formatBytes(TRUNCATED_PREVIEW_SIZE)}
     </span>
-    <button class="show-full-btn" on:click={showFullResponse} disabled={loadingFull}>
+    <button class="show-full-btn" onclick={showFullResponse} disabled={loadingFull}>
       {loadingFull ? 'Loading...' : 'Show full response'}
     </button>
   </div>

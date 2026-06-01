@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { run, stopPropagation, createBubbler } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { onMount } from 'svelte';
   import { activeTab, updateActiveTab, updateActiveTabBatch, updateTab, activeTabId } from '$lib/stores/tabStore';
   import { get } from 'svelte/store';
@@ -18,7 +21,11 @@
   import { initSseListeners } from '$lib/stores/sseStore';
   import { captureCookies, injectCookies } from '$lib/stores/cookieStore';
 
-  export let onHistoryUpdate: () => Promise<void> = async () => {};
+  interface Props {
+    onHistoryUpdate?: () => Promise<void>;
+  }
+
+  let { onHistoryUpdate = async () => {} }: Props = $props();
 
   // --- Header templates ---
   interface HeaderTemplate {
@@ -32,9 +39,9 @@
     { name: 'Bearer Auth', headers: [{ key: 'Authorization', value: 'Bearer {{accessToken}}' }] },
   ];
 
-  let customTemplates: HeaderTemplate[] = [];
-  let showTemplateDropdown = false;
-  let docsMode: 'edit' | 'preview' = 'edit';
+  let customTemplates: HeaderTemplate[] = $state([]);
+  let showTemplateDropdown = $state(false);
+  let docsMode: 'edit' | 'preview' = $state('edit');
 
   onMount(async () => {
     initWsListeners();
@@ -74,7 +81,7 @@
   }
 
   // --- cURL export ---
-  let curlCopied = false;
+  let curlCopied = $state(false);
   let curlCopiedTimeout: ReturnType<typeof setTimeout> | null = null;
 
   export async function copyAsCurl() {
@@ -104,8 +111,8 @@
   // --- Code generation ---
   export function openCodeGen() { showCodeGenModal = true; }
   export function toggleDocsMode() { docsMode = docsMode === 'edit' ? 'preview' : 'edit'; }
-  let showCodeGenModal = false;
-  let codeGenLanguage = 'fetch';
+  let showCodeGenModal = $state(false);
+  let codeGenLanguage = $state('fetch');
 
   function portal(node: HTMLElement) {
     document.body.appendChild(node);
@@ -116,7 +123,7 @@
     return { method, url, headers: headers.filter(h => h.key && h.value), body: bodyContent, bodyType, authType, authToken, authUsername, authPassword, authApiKey, authApiValue };
   }
 
-  $: generatedCode = showCodeGenModal ? generators[codeGenLanguage]?.generate(getCodeGenOptions()) || '' : '';
+  let generatedCode = $derived(showCodeGenModal ? generators[codeGenLanguage]?.generate(getCodeGenOptions()) || '' : '');
 
   async function copyGeneratedCode() {
     await navigator.clipboard.writeText(generatedCode);
@@ -163,7 +170,7 @@
     return result;
   }
 
-  $: highlightedCode = showCodeGenModal ? highlightCode(generatedCode, generators[codeGenLanguage]?.language || 'javascript') : '';
+  let highlightedCode = $derived(showCodeGenModal ? highlightCode(generatedCode, generators[codeGenLanguage]?.language || 'javascript') : '');
 
   // --- Auto-format ---
   export function formatBody() {
@@ -199,38 +206,42 @@
     }
   }
 
-  $: isCurrentTabSending = $sendingTabIds.has($activeTab.id);
+  let isCurrentTabSending = $derived($sendingTabIds.has($activeTab.id));
 
   // Reactive getters from active tab
-  $: method = $activeTab.method;
-  $: isWsMethod = method === 'WS' || method === 'WSS';
-  $: isSseMethod = method === 'SSE';
+  let method = $derived($activeTab.method);
+  let isWsMethod = $derived(method === 'WS' || method === 'WSS');
+  let isSseMethod = $derived(method === 'SSE');
 
-  $: url = $activeTab.url;
-  $: params = $activeTab.params;
-  $: headers = $activeTab.headers;
-  $: bodyType = $activeTab.bodyType;
-  $: bodyContent = $activeTab.bodyContent;
-  $: formDataPairs = $activeTab.formDataPairs;
-  $: formUrlencodedPairs = $activeTab.formUrlencodedPairs;
-  $: graphqlQuery = $activeTab.graphqlQuery;
-  $: graphqlVariables = $activeTab.graphqlVariables;
-  $: binaryFileName = $activeTab.binaryFileName;
-  $: binaryFilePath = $activeTab.binaryFilePath;
-  $: binaryFileSize = $activeTab.binaryFileSize;
-  $: authType = $activeTab.authType;
-  $: authUsername = $activeTab.authUsername;
-  $: authPassword = $activeTab.authPassword;
-  $: authToken = $activeTab.authToken;
-  $: authApiKey = $activeTab.authApiKey;
-  $: authApiValue = $activeTab.authApiValue;
+  let url = $derived($activeTab.url);
+  let params = $derived($activeTab.params);
+  let headers = $derived($activeTab.headers);
+  let bodyType = $derived($activeTab.bodyType);
+  let bodyContent = $derived($activeTab.bodyContent);
+  let formDataPairs = $derived($activeTab.formDataPairs);
+  let formUrlencodedPairs = $derived($activeTab.formUrlencodedPairs);
+  let graphqlQuery = $derived($activeTab.graphqlQuery);
+  let graphqlVariables = $derived($activeTab.graphqlVariables);
+  let binaryFileName = $derived($activeTab.binaryFileName);
+  let binaryFilePath = $derived($activeTab.binaryFilePath);
+  let binaryFileSize = $derived($activeTab.binaryFileSize);
+  let authType = $derived($activeTab.authType);
+  let authUsername = $derived($activeTab.authUsername);
+  let authPassword = $derived($activeTab.authPassword);
+  let authToken = $derived($activeTab.authToken);
+  let authApiKey = $derived($activeTab.authApiKey);
+  let authApiValue = $derived($activeTab.authApiValue);
 
   // Local body content for JsonEditor two-way binding
-  let localBodyContent = '';
-  $: localBodyContent = bodyContent;
-  $: if (localBodyContent !== bodyContent) {
-    updateActiveTab('bodyContent', localBodyContent);
-  }
+  let localBodyContent = $state('');
+  run(() => {
+    localBodyContent = bodyContent;
+  });
+  run(() => {
+    if (localBodyContent !== bodyContent) {
+      updateActiveTab('bodyContent', localBodyContent);
+    }
+  });
 
   function handleUrlInput(e: Event) {
     const input = e.target as HTMLInputElement;
@@ -708,27 +719,27 @@
         type="text" 
         id="url-input"
         value={url}
-        on:input={handleUrlInput}
-        on:paste={handlePaste}
+        oninput={handleUrlInput}
+        onpaste={handlePaste}
         placeholder={isWsMethod ? 'Enter WebSocket URL (ws:// or wss://)' : isSseMethod ? 'Enter SSE endpoint URL' : 'Enter request URL or paste curl command'}
         class="url-input"
-        on:keypress={(e) => e.key === 'Enter' && !isWsMethod && !isSseMethod && sendRequest()}
+        onkeypress={(e) => e.key === 'Enter' && !isWsMethod && !isSseMethod && sendRequest()}
       />
       <div class="bar-actions">
-        <button class="action-icon-btn {curlCopied ? 'copied' : ''}" on:click={copyAsCurl} title="Copy as cURL (Ctrl+Shift+K)">
+        <button class="action-icon-btn {curlCopied ? 'copied' : ''}" onclick={copyAsCurl} title="Copy as cURL (Ctrl+Shift+K)">
           {#if curlCopied}
             <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/></svg>
           {:else}
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 17.929H6c-1.105 0-2-.912-2-2.036V5.036C4 3.912 4.895 3 6 3h8c1.105 0 2 .912 2 2.036v1.866"/><rect x="8" y="7" width="12" height="14" rx="2"/></svg>
           {/if}
         </button>
-        <button class="action-icon-btn" on:click={() => showCodeGenModal = true} title="Generate Code (Ctrl+Shift+G)">
+        <button class="action-icon-btn" onclick={() => showCodeGenModal = true} title="Generate Code (Ctrl+Shift+G)">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
         </button>
       </div>
     </div>
     {#if !isWsMethod && !isSseMethod}
-    <button id="send-btn" on:click={sendRequest} class="send-btn" disabled={isCurrentTabSending} title="Send Request (Ctrl+Enter)">
+    <button id="send-btn" onclick={sendRequest} class="send-btn" disabled={isCurrentTabSending} title="Send Request (Ctrl+Enter)">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       {isCurrentTabSending ? 'Sending...' : 'Send'}
     </button>
@@ -747,7 +758,7 @@
   <div class="request-tabs">
     <button 
       class="tab-btn {$activeRequestTab === 'params' ? 'active' : ''}" 
-      on:click={() => activeRequestTab.set('params')}
+      onclick={() => activeRequestTab.set('params')}
       title="Params (Ctrl+P)"
     >
       Params
@@ -755,21 +766,21 @@
     </button>
     <button 
       class="tab-btn {$activeRequestTab === 'body' ? 'active' : ''}"
-      on:click={() => activeRequestTab.set('body')}
+      onclick={() => activeRequestTab.set('body')}
       title="Body (Ctrl+B)"
     >
       Body
     </button>
     <button 
       class="tab-btn {$activeRequestTab === 'auth' ? 'active' : ''}"
-      on:click={() => activeRequestTab.set('auth')}
+      onclick={() => activeRequestTab.set('auth')}
       title="Authorization (Ctrl+Shift+A)"
     >
       Authorization
     </button>
     <button 
       class="tab-btn {$activeRequestTab === 'headers' ? 'active' : ''}"
-      on:click={() => activeRequestTab.set('headers')}
+      onclick={() => activeRequestTab.set('headers')}
       title="Headers (Ctrl+H)"
     >
       Headers
@@ -777,7 +788,7 @@
     </button>
     <button
       class="tab-btn {$activeRequestTab === 'docs' ? 'active' : ''}"
-      on:click={() => activeRequestTab.set('docs')}
+      onclick={() => activeRequestTab.set('docs')}
       title="Documentation (Ctrl+D)"
     >
       Docs
@@ -793,22 +804,22 @@
             <input 
               type="text" 
               value={param.key} 
-              on:input={(e) => updateParam(i, 'key', e.currentTarget.value)} 
+              oninput={(e) => updateParam(i, 'key', e.currentTarget.value)} 
               placeholder="Key" 
               class="key-input" 
             />
             <input 
               type="text" 
               value={param.value} 
-              on:input={(e) => updateParam(i, 'value', e.currentTarget.value)} 
+              oninput={(e) => updateParam(i, 'value', e.currentTarget.value)} 
               placeholder="Value" 
               class="value-input" 
             />
-            <button class="remove-btn" on:click={() => removeParam(i)}>×</button>
+            <button class="remove-btn" onclick={() => removeParam(i)}>×</button>
           </div>
         {/each}
       </div>
-      <button class="add-btn" on:click={addParam}>+ Add Parameter</button>
+      <button class="add-btn" onclick={addParam}>+ Add Parameter</button>
     </div>
 
     <div id="body-tab" class="tab-pane {$activeRequestTab === 'body' ? 'active' : ''}">
@@ -816,7 +827,7 @@
         <div class="body-editor-toolbar">
           <select 
             value={bodyType} 
-            on:change={(e) => updateActiveTab('bodyType', e.currentTarget.value)} 
+            onchange={(e) => updateActiveTab('bodyType', e.currentTarget.value)} 
             class="body-type-select"
           >
             <optgroup label="STRUCTURED">
@@ -840,7 +851,7 @@
           {#if bodyType === 'json' || bodyType === 'xml' || bodyType === 'html'}
             <button 
               class="format-btn" 
-              on:click={formatBody} 
+              onclick={formatBody} 
               title="Format {bodyType.toUpperCase()} (Ctrl+Shift+F)"
             >
               Format {bodyType.toUpperCase()}
@@ -857,7 +868,7 @@
               <div class="key-value-row">
                 <select 
                   value={pair.type} 
-                  on:change={(e) => updateFormDataPair(i, 'type', e.currentTarget.value)} 
+                  onchange={(e) => updateFormDataPair(i, 'type', e.currentTarget.value)} 
                   class="type-select"
                 >
                   <option value="text">Text</option>
@@ -866,7 +877,7 @@
                 <input 
                   type="text" 
                   value={pair.key} 
-                  on:input={(e) => updateFormDataPair(i, 'key', e.currentTarget.value)} 
+                  oninput={(e) => updateFormDataPair(i, 'key', e.currentTarget.value)} 
                   placeholder="Key" 
                   class="key-input" 
                 />
@@ -874,21 +885,21 @@
                   <input 
                     type="text" 
                     value={pair.value} 
-                    on:input={(e) => updateFormDataPair(i, 'value', e.currentTarget.value)} 
+                    oninput={(e) => updateFormDataPair(i, 'value', e.currentTarget.value)} 
                     placeholder="Value" 
                     class="value-input" 
                   />
                 {:else}
                   <div class="file-field">
                     <span class="file-field-name" title={pair.value}>{pair.fileName || 'No file selected'}</span>
-                    <button class="file-field-btn" on:click={() => selectFormDataFile(i)}>Browse</button>
+                    <button class="file-field-btn" onclick={() => selectFormDataFile(i)}>Browse</button>
                   </div>
                 {/if}
-                <button class="remove-btn" on:click={() => removeFormDataPair(i)}>×</button>
+                <button class="remove-btn" onclick={() => removeFormDataPair(i)}>×</button>
               </div>
             {/each}
           </div>
-          <button class="add-btn" on:click={addFormDataPair}>+ Add Field</button>
+          <button class="add-btn" onclick={addFormDataPair}>+ Add Field</button>
 
         {:else if bodyType === 'form-urlencoded'}
           <div class="key-value-pairs" id="form-urlencoded-container">
@@ -897,22 +908,22 @@
                 <input 
                   type="text" 
                   value={pair.key} 
-                  on:input={(e) => updateFormUrlencodedPair(i, 'key', e.currentTarget.value)} 
+                  oninput={(e) => updateFormUrlencodedPair(i, 'key', e.currentTarget.value)} 
                   placeholder="Key" 
                   class="key-input" 
                 />
                 <input 
                   type="text" 
                   value={pair.value} 
-                  on:input={(e) => updateFormUrlencodedPair(i, 'value', e.currentTarget.value)} 
+                  oninput={(e) => updateFormUrlencodedPair(i, 'value', e.currentTarget.value)} 
                   placeholder="Value" 
                   class="value-input" 
                 />
-                <button class="remove-btn" on:click={() => removeFormUrlencodedPair(i)}>×</button>
+                <button class="remove-btn" onclick={() => removeFormUrlencodedPair(i)}>×</button>
               </div>
             {/each}
           </div>
-          <button class="add-btn" on:click={addFormUrlencodedPair}>+ Add Field</button>
+          <button class="add-btn" onclick={addFormUrlencodedPair}>+ Add Field</button>
 
         {:else if bodyType === 'graphql'}
           <div class="graphql-container">
@@ -921,7 +932,7 @@
               <textarea 
                 id="graphql-query"
                 value={graphqlQuery}
-                on:input={(e) => updateActiveTab('graphqlQuery', e.currentTarget.value)}
+                oninput={(e) => updateActiveTab('graphqlQuery', e.currentTarget.value)}
                 placeholder="&#123; query &#123; field &#125; &#125;"
                 class="body-input"
                 rows="10"
@@ -932,7 +943,7 @@
               <textarea 
                 id="graphql-variables"
                 value={graphqlVariables}
-                on:input={(e) => updateActiveTab('graphqlVariables', e.currentTarget.value)}
+                oninput={(e) => updateActiveTab('graphqlVariables', e.currentTarget.value)}
                 placeholder='&#123; "key": "value" &#125;'
                 class="body-input"
                 rows="5"
@@ -948,12 +959,12 @@
                 {#if binaryFileSize}
                   <span class="file-size">{binaryFileSize}</span>
                 {/if}
-                <button class="remove-file-btn" on:click={clearBinaryFile}>Remove</button>
+                <button class="remove-file-btn" onclick={clearBinaryFile}>Remove</button>
               </div>
             {:else}
               <div class="file-upload-placeholder">
                 <p>Select a file to upload as the request body</p>
-                <button class="select-file-btn" on:click={selectBinaryFile}>Choose File</button>
+                <button class="select-file-btn" onclick={selectBinaryFile}>Choose File</button>
               </div>
             {/if}
           </div>
@@ -967,7 +978,7 @@
         {:else}
           <textarea 
             value={bodyContent}
-            on:input={(e) => updateActiveTab('bodyContent', e.currentTarget.value)}
+            oninput={(e) => updateActiveTab('bodyContent', e.currentTarget.value)}
             placeholder="Enter {bodyType} data..."
             class="body-input"
             rows="15"
@@ -983,7 +994,7 @@
           <select 
             id="auth-type" 
             value={authType} 
-            on:change={(e) => updateActiveTab('authType', e.currentTarget.value)} 
+            onchange={(e) => updateActiveTab('authType', e.currentTarget.value)} 
             class="auth-type-select"
           >
             <option value="none">No Auth</option>
@@ -997,14 +1008,14 @@
             <input 
               type="text" 
               value={authUsername} 
-              on:input={(e) => updateActiveTab('authUsername', e.currentTarget.value)} 
+              oninput={(e) => updateActiveTab('authUsername', e.currentTarget.value)} 
               placeholder="Username" 
               class="auth-input" 
             />
             <input 
               type="password" 
               value={authPassword} 
-              on:input={(e) => updateActiveTab('authPassword', e.currentTarget.value)} 
+              oninput={(e) => updateActiveTab('authPassword', e.currentTarget.value)} 
               placeholder="Password" 
               class="auth-input" 
             />
@@ -1012,7 +1023,7 @@
             <input 
               type="text" 
               value={authToken} 
-              on:input={(e) => updateActiveTab('authToken', e.currentTarget.value)} 
+              oninput={(e) => updateActiveTab('authToken', e.currentTarget.value)} 
               placeholder="Token" 
               class="auth-input" 
             />
@@ -1020,14 +1031,14 @@
             <input 
               type="text" 
               value={authApiKey} 
-              on:input={(e) => updateActiveTab('authApiKey', e.currentTarget.value)} 
+              oninput={(e) => updateActiveTab('authApiKey', e.currentTarget.value)} 
               placeholder="Key" 
               class="auth-input" 
             />
             <input 
               type="text" 
               value={authApiValue} 
-              on:input={(e) => updateActiveTab('authApiValue', e.currentTarget.value)} 
+              oninput={(e) => updateActiveTab('authApiValue', e.currentTarget.value)} 
               placeholder="Value" 
               class="auth-input" 
             />
@@ -1041,26 +1052,26 @@
     <div id="headers-tab" class="tab-pane {$activeRequestTab === 'headers' ? 'active' : ''}">
       <div class="headers-toolbar">
         <div class="template-dropdown-container">
-          <button class="template-dropdown-btn" on:click={() => showTemplateDropdown = !showTemplateDropdown}>
+          <button class="template-dropdown-btn" onclick={() => showTemplateDropdown = !showTemplateDropdown}>
             Templates ▾
           </button>
           {#if showTemplateDropdown}
             <div class="template-dropdown">
               <div class="template-section-label">Built-in</div>
               {#each builtInTemplates as tmpl}
-                <button class="template-item" on:click={() => applyTemplate(tmpl)}>{tmpl.name}</button>
+                <button class="template-item" onclick={() => applyTemplate(tmpl)}>{tmpl.name}</button>
               {/each}
               {#if customTemplates.length > 0}
                 <div class="template-section-label">Custom</div>
                 {#each customTemplates as tmpl, i}
                   <div class="template-item-row">
-                    <button class="template-item" on:click={() => applyTemplate(tmpl)}>{tmpl.name}</button>
-                    <button class="template-delete" on:click|stopPropagation={() => deleteCustomTemplate(i)} title="Delete">×</button>
+                    <button class="template-item" onclick={() => applyTemplate(tmpl)}>{tmpl.name}</button>
+                    <button class="template-delete" onclick={stopPropagation(() => deleteCustomTemplate(i))} title="Delete">×</button>
                   </div>
                 {/each}
               {/if}
               <div class="template-divider"></div>
-              <button class="template-item save-template" on:click={saveCurrentAsTemplate}>
+              <button class="template-item save-template" onclick={saveCurrentAsTemplate}>
                 💾 Save Current as Template
               </button>
             </div>
@@ -1073,8 +1084,8 @@
             <input 
               type="text" 
               value={header.key} 
-              on:input={(e) => updateHeader(i, 'key', e.currentTarget.value)} 
-              on:change={(e) => updateHeader(i, 'key', e.currentTarget.value)}
+              oninput={(e) => updateHeader(i, 'key', e.currentTarget.value)} 
+              onchange={(e) => updateHeader(i, 'key', e.currentTarget.value)}
               placeholder="Header name" 
               class="key-input" 
               list="common-headers" 
@@ -1082,35 +1093,35 @@
             <input 
               type="text" 
               value={header.value} 
-              on:input={(e) => updateHeader(i, 'value', e.currentTarget.value)} 
-              on:change={(e) => updateHeader(i, 'value', e.currentTarget.value)}
+              oninput={(e) => updateHeader(i, 'value', e.currentTarget.value)} 
+              onchange={(e) => updateHeader(i, 'value', e.currentTarget.value)}
               placeholder="Value" 
               class="value-input" 
             />
-            <button class="remove-btn" on:click={() => removeHeader(i)}>×</button>
+            <button class="remove-btn" onclick={() => removeHeader(i)}>×</button>
           </div>
         {/each}
       </div>
-      <button class="add-btn" on:click={addHeader}>+ Add Header</button>
+      <button class="add-btn" onclick={addHeader}>+ Add Header</button>
       <datalist id="common-headers">
-        <option value="Accept" />
-        <option value="Accept-Encoding" />
-        <option value="Accept-Language" />
-        <option value="Authorization" />
-        <option value="Cache-Control" />
-        <option value="Content-Type" />
-        <option value="Cookie" />
-        <option value="Host" />
-        <option value="If-Modified-Since" />
-        <option value="If-None-Match" />
-        <option value="Origin" />
-        <option value="Pragma" />
-        <option value="Referer" />
-        <option value="User-Agent" />
-        <option value="X-API-Key" />
-        <option value="X-Requested-With" />
-        <option value="X-Correlation-ID" />
-        <option value="X-Forwarded-For" />
+        <option value="Accept"></option>
+        <option value="Accept-Encoding"></option>
+        <option value="Accept-Language"></option>
+        <option value="Authorization"></option>
+        <option value="Cache-Control"></option>
+        <option value="Content-Type"></option>
+        <option value="Cookie"></option>
+        <option value="Host"></option>
+        <option value="If-Modified-Since"></option>
+        <option value="If-None-Match"></option>
+        <option value="Origin"></option>
+        <option value="Pragma"></option>
+        <option value="Referer"></option>
+        <option value="User-Agent"></option>
+        <option value="X-API-Key"></option>
+        <option value="X-Requested-With"></option>
+        <option value="X-Correlation-ID"></option>
+        <option value="X-Forwarded-For"></option>
       </datalist>
     </div>
 
@@ -1119,12 +1130,12 @@
         <div class="docs-toolbar">
           <button
             class="docs-mode-btn {docsMode === 'edit' ? 'active' : ''}"
-            on:click={() => docsMode = 'edit'}
+            onclick={() => docsMode = 'edit'}
             title="Edit (Ctrl+Shift+D to toggle)"
           >Edit</button>
           <button
             class="docs-mode-btn {docsMode === 'preview' ? 'active' : ''}"
-            on:click={() => docsMode = 'preview'}
+            onclick={() => docsMode = 'preview'}
             title="Preview (Ctrl+Shift+D to toggle)"
           >Preview</button>
           <span class="docs-hint">Markdown supported</span>
@@ -1134,7 +1145,7 @@
             class="docs-editor"
             placeholder="Write documentation for this request...&#10;&#10;Supports **bold**, *italic*, `code`, lists, links, tables, and code blocks."
             value={$activeTab.description}
-            on:input={(e) => updateActiveTab('description', e.currentTarget.value)}
+            oninput={(e) => updateActiveTab('description', e.currentTarget.value)}
             spellcheck="true"
           ></textarea>
         {:else}
@@ -1153,15 +1164,15 @@
 </div>
 
 {#if showCodeGenModal}
-  <div class="codegen-overlay" use:portal role="dialog" tabindex="-1" on:click={() => showCodeGenModal = false} on:keypress={() => {}}>
-    <div class="codegen-modal" role="presentation" on:click|stopPropagation on:keypress|stopPropagation>
+  <div class="codegen-overlay" use:portal role="dialog" tabindex="-1" onclick={() => showCodeGenModal = false} onkeypress={() => {}}>
+    <div class="codegen-modal" role="presentation" onclick={stopPropagation(bubble('click'))} onkeypress={stopPropagation(bubble('keypress'))}>
       <div class="codegen-header">
         <h3>Generate Code</h3>
-        <button class="codegen-close" on:click={() => showCodeGenModal = false}>×</button>
+        <button class="codegen-close" onclick={() => showCodeGenModal = false}>×</button>
       </div>
       <div class="codegen-tabs">
         {#each Object.entries(generators) as [key, gen]}
-          <button class="codegen-tab {codeGenLanguage === key ? 'active' : ''}" on:click={() => codeGenLanguage = key}>
+          <button class="codegen-tab {codeGenLanguage === key ? 'active' : ''}" onclick={() => codeGenLanguage = key}>
             {gen.label}
           </button>
         {/each}
@@ -1170,7 +1181,7 @@
         <pre class="codegen-code">{@html highlightedCode}</pre>
       </div>
       <div class="codegen-footer">
-        <button class="codegen-copy" on:click={copyGeneratedCode}>Copy</button>
+        <button class="codegen-copy" onclick={copyGeneratedCode}>Copy</button>
       </div>
     </div>
   </div>

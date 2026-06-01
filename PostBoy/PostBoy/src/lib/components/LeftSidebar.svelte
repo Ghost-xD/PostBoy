@@ -4,22 +4,40 @@
   import CollectionsSidebar from './CollectionsSidebar.svelte';
   import HistorySidebar from './HistorySidebar.svelte';
 
-  export let collections: any[] = [];
-  export let history: any[] = [];
-  export let onCreateCollection: () => void = () => {};
-  export let onImportCollections: () => void = () => {};
-  export let onImportOpenApi: () => void = () => {};
-  export let onExportCollections: () => void = () => {};
-  export let onClearAllCollections: () => void = () => {};
-  export let onLoadCollections: () => Promise<void> = async () => {};
-  export let onLoadRequest: (request: any) => void = () => {};
-  export let onClearHistory: () => void = () => {};
-  export let onLoadFromHistory: (item: any) => void = () => {};
-  export let onLoadHistory: () => Promise<void> = async () => {};
-  export let onDragLeft: (e: MouseEvent) => void = () => {};
+  interface Props {
+    collections?: any[];
+    history?: any[];
+    onCreateCollection?: () => void;
+    onImportCollections?: () => void;
+    onImportOpenApi?: () => void;
+    onExportCollections?: () => void;
+    onClearAllCollections?: () => void;
+    onLoadCollections?: () => Promise<void>;
+    onLoadRequest?: (request: any) => void;
+    onClearHistory?: () => Promise<void>;
+    onLoadFromHistory?: (item: any) => void;
+    onLoadHistory?: () => Promise<void>;
+    onDragLeft?: (e: MouseEvent) => void;
+  }
 
-  let collectionsSidebarRef: CollectionsSidebar;
-  let historySidebarRef: HistorySidebar;
+  let {
+    collections = [],
+    history = [],
+    onCreateCollection = () => {},
+    onImportCollections = () => {},
+    onImportOpenApi = () => {},
+    onExportCollections = () => {},
+    onClearAllCollections = () => {},
+    onLoadCollections = async () => {},
+    onLoadRequest = () => {},
+    onClearHistory = async () => {},
+    onLoadFromHistory = () => {},
+    onLoadHistory = async () => {},
+    onDragLeft = () => {}
+  }: Props = $props();
+
+  let collectionsSidebarRef: CollectionsSidebar | undefined = $state();
+  let historySidebarRef: HistorySidebar | undefined = $state();
 
   function handleFocusSidebarSearch() {
     if ($leftSidebarCollapsed) return;
@@ -44,30 +62,30 @@
     <div class="sidebar-header">
       <div class="header-title">
         <h3>Collections</h3>
-        <button class="collapse-btn" on:click={() => leftSidebarCollapsed.update(v => !v)}>
+        <button class="collapse-btn" onclick={() => leftSidebarCollapsed.update(v => !v)}>
           <span class="collapse-icon">◀</span>
         </button>
       </div>
       <div class="header-actions">
-        <button on:click={onCreateCollection} class="collection-new-btn" title="New Collection">+</button>
-        <button on:click={onImportCollections} class="collection-action-btn" title="Import Collection">📥</button>
-        <button on:click={onImportOpenApi} class="collection-action-btn" title="Import OpenAPI Spec (Ctrl+Shift+O)">📋</button>
-        <button on:click={onExportCollections} class="collection-action-btn" title="Export All">📤</button>
-        <button on:click={onClearAllCollections} class="collection-action-btn" title="Clear All" style="color: #ff6b6b;">🗑️</button>
+        <button onclick={onCreateCollection} class="collection-new-btn" title="New Collection">+</button>
+        <button onclick={onImportCollections} class="collection-action-btn" title="Import Collection">📥</button>
+        <button onclick={onImportOpenApi} class="collection-action-btn" title="Import OpenAPI Spec (Ctrl+Shift+O)">📋</button>
+        <button onclick={onExportCollections} class="collection-action-btn" title="Export All">📤</button>
+        <button onclick={onClearAllCollections} class="collection-action-btn" title="Clear All" style="color: #ff6b6b;">🗑️</button>
       </div>
     </div>
 
     <div class="sidebar-tabs">
       <button 
         class="sidebar-tab-btn {$activeSidebarTab === 'collections' ? 'active' : ''}"
-        on:click={() => activeSidebarTab.set('collections')}
+        onclick={() => activeSidebarTab.set('collections')}
         title="Collections (Ctrl+Shift+C)"
       >
         Collections
       </button>
       <button 
         class="sidebar-tab-btn {$activeSidebarTab === 'history' ? 'active' : ''}"
-        on:click={() => activeSidebarTab.set('history')}
+        onclick={() => activeSidebarTab.set('history')}
         title="History (Ctrl+Shift+H)"
       >
         History
@@ -80,17 +98,18 @@
       <HistorySidebar bind:this={historySidebarRef} {history} onClearHistory={onClearHistory} onHistoryClick={onLoadFromHistory} onReload={onLoadHistory} />
     {/if}
 
-    <div class="drag-handle drag-handle-right" on:mousedown={onDragLeft}></div>
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div class="drag-handle drag-handle-right" onmousedown={onDragLeft} role="separator" aria-orientation="vertical" aria-label="Resize sidebar" tabindex="-1"></div>
   </div>
 
   <div class="sidebar-collapsed-view" class:is-collapsed={$leftSidebarCollapsed}>
-    <button class="expand-btn" on:click={() => leftSidebarCollapsed.set(false)} title="Expand Collections (Ctrl+Shift+C)">
+    <button class="expand-btn" onclick={() => leftSidebarCollapsed.set(false)} title="Expand Collections (Ctrl+Shift+C)">
       <span class="expand-icon">▶</span>
     </button>
-    <button on:click={onCreateCollection} class="collection-new-btn-collapsed" title="New Collection">+</button>
-    <button on:click={onImportCollections} class="collection-action-btn-collapsed" title="Import">📥</button>
-    <button on:click={onImportOpenApi} class="collection-action-btn-collapsed" title="OpenAPI">📋</button>
-    <button on:click={onExportCollections} class="collection-action-btn-collapsed" title="Export">📤</button>
+    <button onclick={onCreateCollection} class="collection-new-btn-collapsed" title="New Collection">+</button>
+    <button onclick={onImportCollections} class="collection-action-btn-collapsed" title="Import">📥</button>
+    <button onclick={onImportOpenApi} class="collection-action-btn-collapsed" title="OpenAPI">📋</button>
+    <button onclick={onExportCollections} class="collection-action-btn-collapsed" title="Export">📤</button>
   </div>
 </div>
 

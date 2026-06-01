@@ -1,7 +1,7 @@
 <script lang="ts">
   import { settings, updateSetting, resetSettings } from '$lib/stores/settingsStore';
 
-  let saved = false;
+  let saved = $state(false);
   let savedTimeout: ReturnType<typeof setTimeout>;
 
   function showSaved() {
@@ -34,7 +34,7 @@
           min="1"
           max="300"
           value={$settings.requestTimeout}
-          on:change={(e) => handleUpdate('requestTimeout', parseInt(e.currentTarget.value) || 30)}
+          onchange={(e) => handleUpdate('requestTimeout', parseInt(e.currentTarget.value) || 30)}
         />
         <span class="setting-unit">seconds</span>
       </div>
@@ -47,7 +47,7 @@
           id="follow-redirects"
           type="checkbox"
           checked={$settings.followRedirects}
-          on:change={(e) => handleUpdate('followRedirects', e.currentTarget.checked)}
+          onchange={(e) => handleUpdate('followRedirects', e.currentTarget.checked)}
         />
         {#if $settings.followRedirects}
           <input
@@ -55,7 +55,7 @@
             min="1"
             max="50"
             value={$settings.maxRedirects}
-            on:change={(e) => handleUpdate('maxRedirects', parseInt(e.currentTarget.value) || 10)}
+            onchange={(e) => handleUpdate('maxRedirects', parseInt(e.currentTarget.value) || 10)}
             class="small-input"
             title="Max redirects"
           />
@@ -71,7 +71,7 @@
           id="ssl"
           type="checkbox"
           checked={$settings.sslVerification}
-          on:change={(e) => handleUpdate('sslVerification', e.currentTarget.checked)}
+          onchange={(e) => handleUpdate('sslVerification', e.currentTarget.checked)}
         />
         <span class="setting-hint">{$settings.sslVerification ? 'Enabled' : 'Disabled (accepts self-signed)'}</span>
       </div>
@@ -88,7 +88,7 @@
           id="proxy-enabled"
           type="checkbox"
           checked={$settings.proxyEnabled}
-          on:change={(e) => handleUpdate('proxyEnabled', e.currentTarget.checked)}
+          onchange={(e) => handleUpdate('proxyEnabled', e.currentTarget.checked)}
         />
       </div>
     </div>
@@ -101,7 +101,7 @@
             id="proxy-url"
             type="text"
             value={$settings.proxyUrl}
-            on:change={(e) => handleUpdate('proxyUrl', e.currentTarget.value)}
+            onchange={(e) => handleUpdate('proxyUrl', e.currentTarget.value)}
             placeholder="http://proxy.example.com:8080"
             class="wide-input"
           />
@@ -111,7 +111,7 @@
   </div>
 
   <div class="settings-footer">
-    <button class="reset-btn" on:click={handleReset}>Reset to Defaults</button>
+    <button class="reset-btn" onclick={handleReset}>Reset to Defaults</button>
     {#if saved}
       <span class="saved-indicator">Saved</span>
     {/if}

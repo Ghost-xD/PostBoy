@@ -292,6 +292,62 @@ async fn chat_loop(
                 return Ok(formatted);
             }
         }
+
+        // Same defense for "list all requests across every collection". The
+        // 1.5B model treats `list_requests` as strictly per-collection and
+        // refuses outright when asked for a global list, even though the
+        // tool now accepts a missing `collection_id`. Detecting the intent
+        // and dispatching ourselves guarantees a real answer.
+        if parse_list_all_requests_intent(last_user) {
+            let args = serde_json::json!({});
+            let result = tools::dispatch(app.clone(), "list_requests", args.clone()).await;
+
+            let entry = ActionLogEntry {
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                tool: "list_requests".to_string(),
+                arguments: args.clone(),
+                result: result.clone(),
+                error: result
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+            };
+            state.action_log.lock().await.push(entry.clone());
+            let _ = app.emit("ai-tool-call", entry);
+
+            let formatted = format_all_requests_grouped(&result);
+            let _ = app.emit("ai-chat-delta", formatted.clone());
+            return Ok(formatted);
+        }
+
+        // Same defense for "summarize / show / recap the last response/call".
+        // Without it the model loves to fabricate a plausible-looking 200 OK
+        // with hallucinated headers (and occasionally degenerate into an
+        // infinite "X-WebGL-Enabled: false" loop). Deterministically pulling
+        // the most recent history row and formatting it ourselves guarantees
+        // real data, a real action log entry, and a bounded response.
+        if parse_summarize_last_intent(last_user) {
+            let args = serde_json::json!({});
+            let result =
+                tools::dispatch(app.clone(), "get_last_response", args.clone()).await;
+
+            let entry = ActionLogEntry {
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                tool: "get_last_response".to_string(),
+                arguments: args.clone(),
+                result: result.clone(),
+                error: result
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+            };
+            state.action_log.lock().await.push(entry.clone());
+            let _ = app.emit("ai-tool-call", entry);
+
+            let formatted = format_last_history_summary(&result);
+            let _ = app.emit("ai-chat-delta", formatted.clone());
+            return Ok(formatted);
+        }
     }
 
     for _turn in 0..MAX_TOOL_TURNS {
@@ -554,6 +610,251 @@ fn parse_run_request_intent(text: &str) -> Option<String> {
         return None;
     }
     Some(cleaned.to_string())
+}
+
+/// Detect "list/show all saved requests across every collection".
+/// We only fire when the user clearly wants the *global* list, not a single
+/// collection. Phrasings like "list my requests" alone are ambiguous (could
+/// mean "list requests in the IRP collection I mentioned earlier") so we
+/// require an explicit all/every/across signal.
+fn parse_list_all_requests_intent(text: &str) -> bool {
+    let trimmed = text.trim().to_lowercase();
+    if trimmed.is_empty() || trimmed.len() > 200 {
+        return false;
+    }
+
+    let target_words: &[&str] = &[
+        "all requests",
+        "every request",
+        "all my requests",
+        "every saved request",
+        "all saved requests",
+        "all the requests",
+        "all apis",
+        "every api",
+        "all endpoints",
+        "every endpoint",
+    ];
+    let scope_words: &[&str] = &[
+        "all collections",
+        "every collection",
+        "across collections",
+        "across all collections",
+        "from all collections",
+        "in all collections",
+        "in every collection",
+    ];
+
+    let has_target = target_words.iter().any(|w| trimmed.contains(w));
+    let has_scope = scope_words.iter().any(|w| trimmed.contains(w));
+
+    // Either a target phrase that already means "every request" (we can fire
+    // on its own), OR an explicit cross-collection scope plus any "request"
+    // mention.
+    if has_target {
+        return true;
+    }
+    if has_scope && (trimmed.contains("request") || trimmed.contains("api") || trimmed.contains("endpoint")) {
+        return true;
+    }
+    false
+}
+
+/// Format the `list_requests` result (no scope) as a grouped markdown list.
+fn format_all_requests_grouped(v: &serde_json::Value) -> String {
+    if let Some(err) = v.get("error").and_then(|x| x.as_str()) {
+        return format!("Couldn't list requests: {err}");
+    }
+    let Some(items) = v.get("requests").and_then(|r| r.as_array()) else {
+        return "No saved requests yet.".to_string();
+    };
+    if items.is_empty() {
+        return "No saved requests yet.".to_string();
+    }
+
+    use std::collections::BTreeMap;
+    let mut grouped: BTreeMap<String, Vec<&serde_json::Value>> = BTreeMap::new();
+    for item in items {
+        let collection = item
+            .get("collection_name")
+            .and_then(|x| x.as_str())
+            .filter(|s| !s.is_empty())
+            .unwrap_or("(uncategorized)")
+            .to_string();
+        grouped.entry(collection).or_default().push(item);
+    }
+
+    let total = items.len();
+    let collection_count = grouped.len();
+    let mut out = String::new();
+    out.push_str(&format!(
+        "**{total} saved request{} across {} collection{}**\n\n",
+        if total == 1 { "" } else { "s" },
+        collection_count,
+        if collection_count == 1 { "" } else { "s" },
+    ));
+
+    for (collection, reqs) in &grouped {
+        out.push_str(&format!("**{}** ({})\n", collection, reqs.len()));
+        for req in reqs {
+            let method = req.get("method").and_then(|x| x.as_str()).unwrap_or("?");
+            let name = req
+                .get("name")
+                .and_then(|x| x.as_str())
+                .unwrap_or("(unnamed)");
+            let id = req.get("id").and_then(|x| x.as_i64()).unwrap_or(0);
+            out.push_str(&format!("- `{method}` {name} (id:{id})\n"));
+        }
+        out.push('\n');
+    }
+
+    out
+}
+
+/// Detect "summarize / recap / show / explain the last response/call".
+/// We only match when the user is unambiguously asking for the result of
+/// the previous HTTP call — false positives here would steal control away
+/// from the LLM for unrelated questions.
+fn parse_summarize_last_intent(text: &str) -> bool {
+    let trimmed = text.trim().to_lowercase();
+    if trimmed.is_empty() || trimmed.len() > 200 {
+        return false;
+    }
+
+    let action_words: &[&str] = &[
+        "summarize",
+        "summarise",
+        "summary of",
+        "summary for",
+        "recap",
+        "tldr",
+        "tl;dr",
+        "tl dr",
+        "show me",
+        "show the",
+    ];
+    let target_words: &[&str] = &[
+        "last response",
+        "previous response",
+        "last request",
+        "previous request",
+        "last call",
+        "previous call",
+        "last api",
+        "previous api",
+        "most recent response",
+        "most recent call",
+        "most recent request",
+    ];
+
+    let has_action = action_words.iter().any(|w| trimmed.contains(w));
+    let has_target = target_words.iter().any(|w| trimmed.contains(w));
+    if has_action && has_target {
+        return true;
+    }
+
+    // Standalone phrases that already imply "the last call".
+    let phrase_actions: &[&str] = &[
+        "what was the response",
+        "what did the last call",
+        "what did my last call",
+        "what did the previous call",
+        "what did my previous call",
+        "explain the last response",
+        "explain the previous response",
+    ];
+    phrase_actions.iter().any(|w| trimmed.contains(w))
+}
+
+/// Format the most-recent entry from `get_last_response` as the same kind of
+/// status/headers/body markdown the run_request short-circuit emits, so the
+/// user gets a familiar layout instead of LLM-paraphrased prose.
+fn format_last_history_summary(v: &serde_json::Value) -> String {
+    if let Some(err) = v.get("error").and_then(|x| x.as_str()) {
+        return format!("Couldn't read history: {err}");
+    }
+
+    let history = v.get("history").and_then(|h| h.as_array());
+    let Some(items) = history else {
+        return "No request history yet. Run a request first.".to_string();
+    };
+    let Some(last) = items.first() else {
+        return "No request history yet. Run a request first.".to_string();
+    };
+
+    let method = last.get("method").and_then(|x| x.as_str()).unwrap_or("?");
+    let url = last.get("url").and_then(|x| x.as_str()).unwrap_or("");
+    let status = last.get("status").and_then(|x| x.as_i64()).unwrap_or(0);
+    let elapsed = last
+        .get("responseTime")
+        .and_then(|x| x.as_i64())
+        .unwrap_or(0);
+
+    let status_emoji = if (200..300).contains(&status) {
+        "✓"
+    } else if (300..400).contains(&status) {
+        "↪"
+    } else if status >= 400 {
+        "✗"
+    } else {
+        "·"
+    };
+
+    let mut out = String::new();
+    out.push_str(&format!(
+        "**{status_emoji} {status}** {method} · {elapsed}ms\n\n`{url}`\n\n"
+    ));
+
+    if let Some(headers) = last.get("headers").and_then(|h| h.as_object()) {
+        if !headers.is_empty() {
+            out.push_str("**Headers**\n```http\n");
+            let mut keys: Vec<&String> = headers.keys().collect();
+            keys.sort();
+            for k in keys {
+                let val = headers
+                    .get(k)
+                    .map(|x| match x {
+                        serde_json::Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    })
+                    .unwrap_or_default();
+                out.push_str(&format!("{k}: {val}\n"));
+            }
+            out.push_str("```\n\n");
+        }
+    }
+
+    if let Some(body_v) = last.get("body") {
+        let body = match body_v {
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Null => String::new(),
+            other => other.to_string(),
+        };
+        if !body.is_empty() {
+            let trimmed = body.trim_start();
+            let (lang, pretty) = if trimmed.starts_with('{') || trimmed.starts_with('[') {
+                match serde_json::from_str::<serde_json::Value>(&body) {
+                    Ok(parsed) => (
+                        "json",
+                        serde_json::to_string_pretty(&parsed).unwrap_or_else(|_| body.clone()),
+                    ),
+                    Err(_) => ("", body.clone()),
+                }
+            } else {
+                ("", body.clone())
+            };
+            out.push_str("**Body**\n```");
+            out.push_str(lang);
+            out.push('\n');
+            out.push_str(&pretty);
+            if !pretty.ends_with('\n') {
+                out.push('\n');
+            }
+            out.push_str("```");
+        }
+    }
+
+    out
 }
 
 /// Render a tool result directly as the user-facing answer (markdown), when

@@ -250,7 +250,7 @@ describe('DNS & Connectivity Diagnostics', () => {
       };
       (invoke as ReturnType<typeof vi.fn>).mockResolvedValue(mockResult);
 
-      const result = await invoke('dns_resolve', { hostname: 'example.com' });
+      const result = await invoke<any>('dns_resolve', { hostname: 'example.com' });
       expect(invoke).toHaveBeenCalledWith('dns_resolve', { hostname: 'example.com' });
       expect(result).toEqual(mockResult);
       expect(result.addresses.length).toBeGreaterThan(0);
@@ -277,7 +277,7 @@ describe('DNS & Connectivity Diagnostics', () => {
       };
       (invoke as ReturnType<typeof vi.fn>).mockResolvedValue(mockResult);
 
-      const result = await invoke('port_check', { host: 'example.com', port: 443, timeoutSecs: 5 });
+      const result = await invoke<any>('port_check', { host: 'example.com', port: 443, timeoutSecs: 5 });
       expect(invoke).toHaveBeenCalledWith('port_check', { host: 'example.com', port: 443, timeoutSecs: 5 });
       expect(result.open).toBe(true);
     });
@@ -292,7 +292,7 @@ describe('DNS & Connectivity Diagnostics', () => {
       };
       (invoke as ReturnType<typeof vi.fn>).mockResolvedValue(mockResult);
 
-      const result = await invoke('port_check', { host: 'example.com', port: 12345, timeoutSecs: 5 });
+      const result = await invoke<any>('port_check', { host: 'example.com', port: 12345, timeoutSecs: 5 });
       expect(result.open).toBe(false);
       expect(result.error).toBeTruthy();
     });
@@ -311,7 +311,7 @@ describe('DNS & Connectivity Diagnostics', () => {
       };
       (invoke as ReturnType<typeof vi.fn>).mockResolvedValue(mockResult);
 
-      const result = await invoke('ping_host', { host: 'example.com' });
+      const result = await invoke<any>('ping_host', { host: 'example.com' });
       expect(invoke).toHaveBeenCalledWith('ping_host', { host: 'example.com' });
       expect(result.reachable).toBe(true);
       expect(result.latency_ms).toBeGreaterThan(0);
@@ -327,7 +327,7 @@ describe('DNS & Connectivity Diagnostics', () => {
       };
       (invoke as ReturnType<typeof vi.fn>).mockResolvedValue(mockResult);
 
-      const result = await invoke('ping_host', { host: '10.255.255.1' });
+      const result = await invoke<any>('ping_host', { host: '10.255.255.1' });
       expect(result.reachable).toBe(false);
       expect(result.latency_ms).toBeNull();
     });
@@ -348,7 +348,7 @@ describe('DNS & Connectivity Diagnostics', () => {
       };
       (invoke as ReturnType<typeof vi.fn>).mockResolvedValue(mockResult);
 
-      const result = await invoke('trace_route', { host: 'example.com' });
+      const result = await invoke<any>('trace_route', { host: 'example.com' });
       expect(invoke).toHaveBeenCalledWith('trace_route', { host: 'example.com' });
       expect(result.hops).toHaveLength(3);
       expect(result.hops[1].timed_out).toBe(true);

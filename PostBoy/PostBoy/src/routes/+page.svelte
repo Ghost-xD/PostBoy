@@ -1,13 +1,16 @@
 <script lang="ts">
+  import { run, createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
   import { db, fileOps, app } from '$lib/api/tauri';
-  import { tabs, activeTabId, activeTab, updateActiveTabBatch, updateTab, restoreTabs, saveTabsImmediate, enableAutoSave, findOpenTab, setActiveTab, addTab as storeAddTab, removeTab, nextTab, prevTab } from '$lib/stores/tabStore';
+  import { tabs, activeTabId, activeTab, updateActiveTabBatch, updateTab, restoreTabs, saveTabs, saveTabsImmediate, enableAutoSave, findOpenTab, setActiveTab, addTab as storeAddTab, removeTab, nextTab, prevTab } from '$lib/stores/tabStore';
   import type { Tab } from '$lib/stores/tabStore';
-  import { 
+  import {
     responseLayout, responsePanelHeight, leftSidebarWidth, rightSidebarWidth,
     leftSidebarCollapsed, rightSidebarCollapsed, activeSidebarTab,
-    activeRequestTab, activeResponseTab, showShortcuts, showToolsPanel, showDiffTool, toolsFullscreen, toggleResponseLayout, getUIState, restoreUIState
+    activeRequestTab, activeResponseTab, showShortcuts, showToolsPanel, showDiffTool, toolsFullscreen, toggleResponseLayout, getUIState, restoreUIState, enableUIPersistence
   } from '$lib/stores/uiStore';
   import { wsConnect, wsDisconnect, clearWsMessages } from '$lib/stores/wsStore';
   import { sseConnect, sseDisconnect, clearSseMessages } from '$lib/stores/sseStore';
@@ -32,22 +35,44 @@
   import DiagnosticsPanel from '$lib/components/DiagnosticsPanel.svelte';
   import CookieJarPanel from '$lib/components/CookieJarPanel.svelte';
   import ChatbotPanel from '$lib/components/ChatbotPanel.svelte';
+  import ToolsNavBar from '$lib/components/ToolsNavBar.svelte';
+  import type { ToolsNavTab } from '$lib/components/ToolsNavBar.svelte';
   import DiffTool from '$lib/components/DiffTool.svelte';
   import SearchPicker from '$lib/components/SearchPicker.svelte';
   import { loadSettings } from '$lib/stores/settingsStore';
   import { chatbotSupported, chatbotStatus, initChatbotFeature, loadDefaultModel } from '$lib/stores/chatbotStore';
 
-  let version = '';
-  let collections: any[] = [];
-  let history: any[] = [];
-  let requestBuilderRef: RequestBuilder;
-  let responsePanelRef: ResponsePanel;
-  let showSearchPicker = false;
-  let diffFullscreen = false;
+  let version = $state('');
+  let collections: any[] = $state([]);
+  let history: any[] = $state([]);
+  let requestBuilderRef: RequestBuilder | undefined = $state();
+  let responsePanelRef: ResponsePanel | undefined = $state();
+  let showSearchPicker = $state(false);
+  let diffFullscreen = $state(false);
 
   // Reset Tools modal fullscreen each time it opens. (Keeping fullscreen
   // sticky across opens is unintuitive when switching between modal kinds.)
-  $: if (!$showToolsPanel) toolsFullscreen.set(false);
+  run(() => {
+    if (!$showToolsPanel) toolsFullscreen.set(false);
+  });
+
+  // Tools-modal tab list. Order here is the display order in the nav.
+  // The chatbot entry is filtered out at render time when the build
+  // doesn't include the feature.
+  let toolsNavTabs = ($derived([
+    $chatbotSupported ? { key: 'chatbot', label: 'Son of Anton', title: 'Ctrl+Shift+M' } : null,
+    { key: 'jwt', label: 'JWT Decoder', title: 'Ctrl+Shift+J' },
+    { key: 'encoder', label: 'Encode / Decode', title: 'Ctrl+Shift+E' },
+    { key: 'sql', label: 'SQL Runner', title: 'Ctrl+Shift+Q' },
+    { key: 'diagnostics', label: 'Diagnostics', title: 'Ctrl+Shift+N' },
+    { key: 'cookies', label: 'Cookie Jar', title: 'Ctrl+Shift+X' },
+    { key: 'settings', label: 'Settings', title: 'Ctrl+,' },
+  ].filter(Boolean) as ToolsNavTab[]));
+
+  // The wave bump in the nav doubles as the active-tab indicator. We fill
+  // it with the accent blue so on the pitch-black surface it reads as a
+  // glowing bulge anchored to whatever tab is active.
+  let toolsWaveColor = $derived('#4d8df6');
 
   function handleSearchPickerSelect(e: CustomEvent<string>) {
     showSearchPicker = false;
@@ -66,9 +91,13 @@
   }
 
   // Sync showShortcuts store with local variable for two-way binding
-  let showShortcutsVisible = false;
-  $: showShortcutsVisible = $showShortcuts;
-  $: showShortcuts.set(showShortcutsVisible);
+  let showShortcutsVisible = $state(false);
+  run(() => {
+    showShortcutsVisible = $showShortcuts;
+  });
+  run(() => {
+    showShortcuts.set(showShortcutsVisible);
+  });
 
   // Drag state
   let isDraggingLeft = false;
@@ -76,9 +105,9 @@
   let isDraggingBottom = false;
   let rafId: number | null = null;
 
-  let updateAvailable: { version: string; body?: string } | null = null;
-  let isUpdating = false;
-  let updateStatus = '';
+  let updateAvailable: { version: string; body?: string } | null = $state(null);
+  let isUpdating = $state(false);
+  let updateStatus = $state('');
 
   onMount(async () => {
     version = (await app.getVersion()) as string;
@@ -92,6 +121,11 @@
     }
     
     enableAutoSave();
+    // Persist layout state (sidebar widths, response panel position/size,
+    // collapsed flags) whenever the user resizes a panel or toggles a
+    // layout. Uses the existing debounced saveTabs so rapid drag events
+    // coalesce into a single write 500ms after the user lets go.
+    enableUIPersistence(() => saveTabs(getUIState()));
     setupKeyboardShortcuts();
 
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -1110,7 +1144,7 @@
   }
 </script>
 
-<svelte:window on:mousemove={handleDrag} on:mouseup={stopDrag} />
+<svelte:window onmousemove={handleDrag} onmouseup={stopDrag} />
 
 <svelte:head>
   <title>PostBoy v{version}</title>
@@ -1120,7 +1154,7 @@
 
 {#if updateAvailable}
   <div class="update-toast">
-    <button class="update-toast-close" on:click={dismissUpdate} title="Dismiss">
+    <button class="update-toast-close" onclick={dismissUpdate} title="Dismiss">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
     <div class="update-toast-icon">
@@ -1134,7 +1168,7 @@
       {/if}
     </div>
     <div class="update-toast-actions">
-      <button class="update-toast-btn primary" on:click={installUpdate} disabled={isUpdating}>
+      <button class="update-toast-btn primary" onclick={installUpdate} disabled={isUpdating}>
         {#if isUpdating}
           <svg class="update-spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/></svg>
           {updateStatus || 'Installing...'}
@@ -1142,7 +1176,7 @@
           Install & Restart
         {/if}
       </button>
-      <button class="update-toast-btn secondary" on:click={dismissUpdate}>
+      <button class="update-toast-btn secondary" onclick={dismissUpdate}>
         Later
       </button>
     </div>
@@ -1191,49 +1225,31 @@
     class="tools-overlay"
     role="dialog"
     tabindex="-1"
-    on:click={() => showToolsPanel.set(false)}
-    on:keydown={(e) => { if (e.key === 'Escape') showToolsPanel.set(false); }}
+    onclick={() => showToolsPanel.set(false)}
+    onkeydown={(e) => { if (e.key === 'Escape') showToolsPanel.set(false); }}
   >
-    <div class="tools-modal" class:tools-fullscreen={$toolsFullscreen} role="presentation" on:click|stopPropagation on:keydown|stopPropagation>
-      <div class="tools-header">
-        <div class="tools-tabs">
-          {#if $chatbotSupported}
-            <button class="tools-tab" class:active={$showToolsPanel === 'chatbot'} on:click={() => showToolsPanel.set('chatbot')} title="Ctrl+Shift+M">
-              Son of Anton
+    <div class="tools-modal" class:tools-fullscreen={$toolsFullscreen} role="presentation" onclick={stopPropagation(bubble('click'))} onkeydown={stopPropagation(bubble('keydown'))}>
+      <ToolsNavBar
+        tabs={toolsNavTabs}
+        value={typeof $showToolsPanel === 'string' ? $showToolsPanel : ''}
+        waveColor={toolsWaveColor}
+        on:select={(e) => showToolsPanel.set(e.detail.key as Exclude<typeof $showToolsPanel, false>)}
+      >
+        {#snippet actions()}
+                <div  class="tools-nav-icon-actions">
+            <button class="tools-close" onclick={() => toolsFullscreen.update(v => !v)} title={$toolsFullscreen ? 'Exit fullscreen (Ctrl+Shift+Enter)' : 'Fullscreen (Ctrl+Shift+Enter)'}>
+              {#if $toolsFullscreen}
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>
+              {:else}
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+              {/if}
             </button>
-          {/if}
-          <button class="tools-tab" class:active={$showToolsPanel === 'jwt'} on:click={() => showToolsPanel.set('jwt')} title="Ctrl+Shift+J">
-            JWT Decoder
-          </button>
-          <button class="tools-tab" class:active={$showToolsPanel === 'encoder'} on:click={() => showToolsPanel.set('encoder')} title="Ctrl+Shift+E">
-            Encode / Decode
-          </button>
-          <button class="tools-tab" class:active={$showToolsPanel === 'sql'} on:click={() => showToolsPanel.set('sql')} title="Ctrl+Shift+Q">
-            SQL Runner
-          </button>
-          <button class="tools-tab" class:active={$showToolsPanel === 'diagnostics'} on:click={() => showToolsPanel.set('diagnostics')} title="Ctrl+Shift+N">
-            Diagnostics
-          </button>
-          <button class="tools-tab" class:active={$showToolsPanel === 'cookies'} on:click={() => showToolsPanel.set('cookies')} title="Ctrl+Shift+X">
-            Cookie Jar
-          </button>
-          <button class="tools-tab" class:active={$showToolsPanel === 'settings'} on:click={() => showToolsPanel.set('settings')} title="Ctrl+,">
-            Settings
-          </button>
-        </div>
-        <div class="tools-header-actions">
-          <button class="tools-close" on:click={() => toolsFullscreen.update(v => !v)} title={$toolsFullscreen ? 'Exit fullscreen (Ctrl+Shift+Enter)' : 'Fullscreen (Ctrl+Shift+Enter)'}>
-            {#if $toolsFullscreen}
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 0a.5.5 0 0 1 .5.5v4A1.5 1.5 0 0 1 4.5 6h-4a.5.5 0 0 1 0-1h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 1 .5-.5Zm5 0a.5.5 0 0 1 .5.5v4a.5.5 0 0 0 .5.5h4a.5.5 0 0 1 0 1h-4A1.5 1.5 0 0 1 10 4.5v-4a.5.5 0 0 1 .5-.5ZM0 10.5a.5.5 0 0 1 .5-.5h4A1.5 1.5 0 0 1 6 11.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 1-.5-.5Zm10 1a1.5 1.5 0 0 1 1.5-1.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 0-.5.5v4a.5.5 0 0 1-1 0v-4Z"/></svg>
-            {:else}
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 1a.5.5 0 0 0-.5.5v4a.5.5 0 0 1-1 0v-4A1.5 1.5 0 0 1 1.5 0h4a.5.5 0 0 1 0 1h-4ZM10 .5a.5.5 0 0 1 .5-.5h4A1.5 1.5 0 0 1 16 1.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 1-.5-.5ZM.5 10a.5.5 0 0 1 .5.5v4a.5.5 0 0 0 .5.5h4a.5.5 0 0 1 0 1h-4A1.5 1.5 0 0 1 0 14.5v-4a.5.5 0 0 1 .5-.5Zm15 0a.5.5 0 0 1 .5.5v4a1.5 1.5 0 0 1-1.5 1.5h-4a.5.5 0 0 1 0-1h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 1 .5-.5Z"/></svg>
-            {/if}
-          </button>
-          <button class="tools-close" on:click={() => showToolsPanel.set(false)} title="Close (Esc)">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>
-          </button>
-        </div>
-      </div>
+            <button class="tools-close" onclick={() => showToolsPanel.set(false)} title="Close (Esc)">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>
+            </button>
+          </div>
+              {/snippet}
+      </ToolsNavBar>
       <div class="tools-body">
         {#if $showToolsPanel === 'chatbot'}
           <ChatbotPanel />
@@ -1260,21 +1276,21 @@
     class="diff-overlay"
     role="dialog"
     tabindex="-1"
-    on:click={() => showDiffTool.set(false)}
-    on:keydown={(e) => { if (e.key === 'Escape') showDiffTool.set(false); }}
+    onclick={() => showDiffTool.set(false)}
+    onkeydown={(e) => { if (e.key === 'Escape') showDiffTool.set(false); }}
   >
-    <div class="diff-modal" class:diff-fullscreen={diffFullscreen} role="presentation" on:click|stopPropagation on:keydown|stopPropagation>
+    <div class="diff-modal" class:diff-fullscreen={diffFullscreen} role="presentation" onclick={stopPropagation(bubble('click'))} onkeydown={stopPropagation(bubble('keydown'))}>
       <div class="diff-modal-header">
         <span class="diff-modal-title">Diff / Compare</span>
         <div class="diff-modal-actions">
-          <button class="diff-modal-btn" on:click={() => diffFullscreen = !diffFullscreen} title={diffFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
+          <button class="diff-modal-btn" onclick={() => diffFullscreen = !diffFullscreen} title={diffFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
             {#if diffFullscreen}
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 0a.5.5 0 0 1 .5.5v4A1.5 1.5 0 0 1 4.5 6h-4a.5.5 0 0 1 0-1h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 1 .5-.5Zm5 0a.5.5 0 0 1 .5.5v4a.5.5 0 0 0 .5.5h4a.5.5 0 0 1 0 1h-4A1.5 1.5 0 0 1 10 4.5v-4a.5.5 0 0 1 .5-.5ZM0 10.5a.5.5 0 0 1 .5-.5h4A1.5 1.5 0 0 1 6 11.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 1-.5-.5Zm10 1a1.5 1.5 0 0 1 1.5-1.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 0-.5.5v4a.5.5 0 0 1-1 0v-4Z"/></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>
             {:else}
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 1a.5.5 0 0 0-.5.5v4a.5.5 0 0 1-1 0v-4A1.5 1.5 0 0 1 1.5 0h4a.5.5 0 0 1 0 1h-4ZM10 .5a.5.5 0 0 1 .5-.5h4A1.5 1.5 0 0 1 16 1.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 1-.5-.5ZM.5 10a.5.5 0 0 1 .5.5v4a.5.5 0 0 0 .5.5h4a.5.5 0 0 1 0 1h-4A1.5 1.5 0 0 1 0 14.5v-4a.5.5 0 0 1 .5-.5Zm15 0a.5.5 0 0 1 .5.5v4a1.5 1.5 0 0 1-1.5 1.5h-4a.5.5 0 0 1 0-1h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 1 .5-.5Z"/></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
             {/if}
           </button>
-          <button class="diff-modal-btn" on:click={() => showDiffTool.set(false)} title="Close (Esc)">
+          <button class="diff-modal-btn" onclick={() => showDiffTool.set(false)} title="Close (Esc)">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>
           </button>
         </div>
@@ -1333,8 +1349,8 @@
     width: 40px;
     height: 40px;
     border-radius: 10px;
-    background: rgba(135, 118, 213, 0.12);
-    color: var(--accent-color, #8776D5);
+    background: color-mix(in srgb, var(--accent-color) 12%, transparent);
+    color: var(--accent-color);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1437,14 +1453,18 @@
   }
 
   .tools-modal {
-    width: 720px;
-    max-width: 90vw;
-    height: 640px;
-    max-height: 85vh;
-    background: var(--bg-secondary);
+    /* The whole app already runs the pitch-black + blue theme via the root
+       CSS variables in static/app.css, so we don't redeclare them here.
+       The blue wave in the nav is the visual seam between the nav strip and
+       the body. */
+    width: 80vw;
+    max-width: 80vw;
+    height: 80vh;
+    max-height: 80vh;
+    background: var(--bg-primary);
     border: 1px solid var(--border-color);
     border-radius: 12px;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--accent-glow);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -1466,47 +1486,7 @@
     to { opacity: 1; transform: scale(1) translateY(0); }
   }
 
-  .tools-header {
-    display: flex;
-    align-items: center;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border-color);
-    gap: 12px;
-    flex-shrink: 0;
-  }
-
-  .tools-tabs {
-    display: flex;
-    gap: 2px;
-    background: var(--bg-primary);
-    border-radius: 6px;
-    padding: 2px;
-  }
-
-  .tools-tab {
-    padding: 6px 14px;
-    background: transparent;
-    border: none;
-    border-radius: 4px;
-    color: var(--text-secondary);
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .tools-tab.active {
-    background: var(--accent-color);
-    color: white;
-  }
-
-  .tools-tab:hover:not(.active) {
-    color: var(--text-primary);
-    background: var(--bg-tertiary);
-  }
-
-  .tools-header-actions {
-    margin-left: auto;
+  .tools-nav-icon-actions {
     display: flex;
     align-items: center;
     gap: 2px;
@@ -1516,19 +1496,20 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     background: none;
     border: none;
-    border-radius: 4px;
+    border-radius: 6px;
     color: var(--text-secondary);
     cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
     transition: all 0.15s;
   }
 
   .tools-close:hover {
     background: var(--bg-tertiary);
-    color: var(--text-primary);
+    color: var(--accent-color);
   }
 
   .tools-body {
