@@ -41,6 +41,25 @@ fn is_binary_content_type(content_type: &str) -> bool {
         || ct.contains("protobuf")
 }
 
+/// Render an error and every error returned by `.source()` joined with `: ` so
+/// the actual underlying cause (DNS lookup failure, TLS handshake error, TCP
+/// refusal, proxy failure, …) reaches the caller. reqwest wraps everything in
+/// a generic "error sending request for url (…)" by default and `to_string()`
+/// alone drops the source chain.
+fn format_error_chain<E: std::error::Error + 'static>(err: E) -> String {
+    let mut out = err.to_string();
+    let mut src: Option<&dyn std::error::Error> = err.source();
+    while let Some(s) = src {
+        let msg = s.to_string();
+        if !msg.is_empty() && !out.ends_with(&msg) {
+            out.push_str(": ");
+            out.push_str(&msg);
+        }
+        src = s.source();
+    }
+    out
+}
+
 pub async fn execute_request(
     request: HttpRequest,
     timeout_secs: Option<u64>,
@@ -95,7 +114,7 @@ pub async fn execute_request(
     }
     
     // Execute request
-    let response = req_builder.send().await.map_err(|e| e.to_string())?;
+    let response = req_builder.send().await.map_err(format_error_chain)?;
     
     let status = response.status().as_u16();
     let status_text = response.status().canonical_reason().unwrap_or("Unknown").to_string();

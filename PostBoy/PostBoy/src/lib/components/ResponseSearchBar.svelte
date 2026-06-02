@@ -1,11 +1,15 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte';
 
-  export let matchCount = 0;
-  export let currentMatch = 0;
-  export let query = '';
+  interface Props {
+    matchCount?: number;
+    currentMatch?: number;
+    query?: string;
+  }
 
-  let inputEl: HTMLInputElement;
+  let { matchCount = 0, currentMatch = 0, query = $bindable('') }: Props = $props();
+
+  let inputEl: HTMLInputElement | undefined = $state();
   const dispatch = createEventDispatcher<{
     search: string;
     next: void;
@@ -43,7 +47,8 @@
   }
 </script>
 
-<div class="search-bar" on:keydown={handleKeydown}>
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<div class="search-bar" onkeydown={handleKeydown} role="search">
   <div class="search-input-wrap">
     <svg class="search-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
       <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242.156a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/>
@@ -51,7 +56,7 @@
     <input
       bind:this={inputEl}
       bind:value={query}
-      on:input={handleInput}
+      oninput={handleInput}
       type="text"
       class="search-input"
       placeholder="Search in response..."
@@ -64,13 +69,13 @@
     {/if}
   </div>
   <div class="search-actions">
-    <button class="search-nav-btn" on:click={() => dispatch('prev')} disabled={matchCount === 0} title="Previous match (Shift+Enter)">
+    <button class="search-nav-btn" onclick={() => dispatch('prev')} disabled={matchCount === 0} title="Previous match (Shift+Enter)">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M7.646 4.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1-.708.708L8 5.707l-5.646 5.647a.5.5 0 0 1-.708-.708l6-6z"/></svg>
     </button>
-    <button class="search-nav-btn" on:click={() => dispatch('next')} disabled={matchCount === 0} title="Next match (Enter)">
+    <button class="search-nav-btn" onclick={() => dispatch('next')} disabled={matchCount === 0} title="Next match (Enter)">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/></svg>
     </button>
-    <button class="search-close-btn" on:click={() => dispatch('close')} title="Close (Esc)">
+    <button class="search-close-btn" onclick={() => dispatch('close')} title="Close (Esc)">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>
     </button>
   </div>
@@ -83,7 +88,7 @@
     gap: 6px;
     padding: 6px 10px;
     background: var(--bg-secondary, #2b2d31);
-    border-bottom: 1px solid var(--border-color, #3e4045);
+    border-bottom: 1px solid var(--border-color, var(--border-color));
     flex-shrink: 0;
   }
 
@@ -91,8 +96,8 @@
     display: flex;
     align-items: center;
     flex: 1;
-    background: #1e1f22;
-    border: 1px solid #3e4045;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     padding: 0 8px;
     transition: border-color 0.15s;

@@ -1,26 +1,35 @@
 <script lang="ts">
   import { db } from '$lib/api/tauri';
 
-  export let history: any[] = [];
-  export let onClearHistory: () => Promise<void>;
-  export let onHistoryClick: (item: any) => void;
-  export let onReload: () => Promise<void>;
+  interface Props {
+    history?: any[];
+    onClearHistory: () => Promise<void>;
+    onHistoryClick: (item: any) => void;
+    onReload: () => Promise<void>;
+  }
 
-  let searchQuery = '';
-  let methodFilter = 'ALL';
-  let searchInputEl: HTMLInputElement;
+  let {
+    history = [],
+    onClearHistory,
+    onHistoryClick,
+    onReload
+  }: Props = $props();
+
+  let searchQuery = $state('');
+  let methodFilter = $state('ALL');
+  let searchInputEl: HTMLInputElement | undefined = $state();
 
   export function focusSearch() {
     searchInputEl?.focus();
     searchInputEl?.select();
   }
 
-  $: filteredHistory = history.filter((item) => {
+  let filteredHistory = $derived(history.filter((item) => {
     const matchesSearch =
       !searchQuery || item.url.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesMethod = methodFilter === 'ALL' || item.method === methodFilter;
     return matchesSearch && matchesMethod;
-  });
+  }));
 
   async function deleteHistoryItem(e: MouseEvent, item: any) {
     e.stopPropagation();
@@ -68,7 +77,7 @@
       : history.length}
     requests
   </span>
-  <button on:click={onClearHistory} class="clear-btn" title="Clear all history">Clear All</button>
+  <button onclick={onClearHistory} class="clear-btn" title="Clear all history">Clear All</button>
 </div>
 <div class="history-filter">
   <input
@@ -77,7 +86,7 @@
     placeholder="Search URL..."
     bind:value={searchQuery}
     bind:this={searchInputEl}
-    on:keydown={(e) => { if (e.key === 'Escape') { searchQuery = ''; searchInputEl?.blur(); } }}
+    onkeydown={(e) => { if (e.key === 'Escape') { searchQuery = ''; searchInputEl?.blur(); } }}
   />
   <select class="method-filter" bind:value={methodFilter}>
     <option value="ALL">All</option>
@@ -96,7 +105,7 @@
     </div>
   {:else}
     {#each filteredHistory as item}
-      <div class="history-item" role="button" tabindex="0" on:click={() => onHistoryClick(item)} on:keypress={(e) => e.key === 'Enter' && onHistoryClick(item)}>
+      <div class="history-item" role="button" tabindex="0" onclick={() => onHistoryClick(item)} onkeypress={(e) => e.key === 'Enter' && onHistoryClick(item)}>
         <div class="history-item-top">
           <span class="method {item.method.toLowerCase()}">{item.method}</span>
           <span class="status {item.status_code >= 200 && item.status_code < 300 ? 'success' : 'error'}">
@@ -104,7 +113,7 @@
           </span>
           <button
             class="history-delete-btn"
-            on:click={(e) => deleteHistoryItem(e, item)}
+            onclick={(e) => deleteHistoryItem(e, item)}
             title="Delete this item"
           >×</button>
         </div>

@@ -1,7 +1,14 @@
 <script lang="ts">
-  export let show = false;
-  let searchQuery = '';
-  let searchInput: HTMLInputElement;
+  import { run, createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
+  interface Props {
+    show?: boolean;
+  }
+
+  let { show = $bindable(false) }: Props = $props();
+  let searchQuery = $state('');
+  let searchInput: HTMLInputElement | undefined = $state();
 
   interface ShortcutItem { keys: string; label: string; sub?: boolean; }
   interface ShortcutSection { title: string; items: ShortcutItem[]; }
@@ -68,6 +75,8 @@
       { keys: 'Ctrl + L', label: 'Clear events' },
     ]},
     { title: 'Tools', items: [
+      { keys: 'Ctrl + Shift + M', label: 'Son of Anton' },
+      { keys: 'Ctrl + Shift + Enter', label: 'Toggle Tools panel fullscreen', sub: true },
       { keys: 'Ctrl + Shift + J', label: 'JWT Decoder' },
       { keys: 'Ctrl + Shift + E', label: 'Base64 / URL Encoder' },
       { keys: 'Ctrl + D', label: 'Toggle Encode / Decode', sub: true },
@@ -94,19 +103,21 @@
     ]},
   ];
 
-  $: if (show) {
-    searchQuery = '';
-    setTimeout(() => searchInput?.focus(), 50);
-  }
+  run(() => {
+    if (show) {
+      searchQuery = '';
+      setTimeout(() => searchInput?.focus(), 50);
+    }
+  });
 
-  $: lowerQuery = searchQuery.toLowerCase();
+  let lowerQuery = $derived(searchQuery.toLowerCase());
 
-  $: filteredSections = sections
+  let filteredSections = $derived(sections
     .map(s => ({ ...s, items: s.items.filter(item => {
       if (!lowerQuery) return true;
       return item.label.toLowerCase().includes(lowerQuery) || item.keys.toLowerCase().includes(lowerQuery);
     })}))
-    .filter(s => s.items.length > 0);
+    .filter(s => s.items.length > 0));
 
   function portal(node: HTMLElement) {
     document.body.appendChild(node);
@@ -122,13 +133,13 @@
 
 
 {#if show}
-  <div use:portal role="dialog" tabindex="-1" on:click={() => show = false} on:keypress={() => {}}
+  <div use:portal role="dialog" tabindex="-1" onclick={() => show = false} onkeypress={() => {}}
     style="position:fixed;inset:0;width:100vw;height:100vh;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:10000;">
-    <div role="presentation" on:click|stopPropagation on:keypress|stopPropagation
-      style="background:#2b2d31;border-radius:8px;padding:24px;width:560px;max-width:90vw;max-height:80vh;overflow-y:auto;">
+    <div role="presentation" onclick={stopPropagation(bubble('click'))} onkeypress={stopPropagation(bubble('keypress'))}
+      style="background:var(--bg-tertiary);border-radius:12px;padding:28px;width:80vw;height:80vh;max-width:80vw;max-height:80vh;overflow-y:auto;border:1px solid var(--border-color);box-shadow:0 16px 48px rgba(0,0,0,0.6),0 0 0 1px var(--accent-glow);">
       <div class="shortcuts-header">
         <h3>Keyboard Shortcuts</h3>
-        <button class="close-btn" on:click={() => show = false}>×</button>
+        <button class="close-btn" onclick={() => show = false}>×</button>
       </div>
 
       <div class="search-box">
@@ -214,8 +225,8 @@
   .search-input {
     width: 100%;
     padding: 8px 12px 8px 32px;
-    background: #1e1f22 !important;
-    border: 1px solid #3e4145 !important;
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-color) !important;
     border-radius: 6px;
     color: #f2f3f5 !important;
     font-size: 13px;
@@ -276,8 +287,8 @@
   }
 
   kbd {
-    background: #1e1f22;
-    border: 1px solid #3e4145;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     padding: 2px 8px;
     font-family: monospace;

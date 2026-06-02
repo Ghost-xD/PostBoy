@@ -1,11 +1,17 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { onMount, onDestroy } from 'svelte';
 
-  export let data: any;
+  interface Props {
+    data: any;
+  }
 
-  let container: HTMLDivElement;
+  let { data }: Props = $props();
+
+  let container: HTMLDivElement | undefined = $state();
   let root: any;
-  let mounted = false;
+  let mounted = $state(false);
   let viewport: any = null;
 
   function handleKeydown(e: KeyboardEvent) {
@@ -92,9 +98,11 @@
     mounted = false;
   });
 
-  $: if (mounted && data) {
-    renderReact();
-  }
+  run(() => {
+    if (mounted && data) {
+      renderReact();
+    }
+  });
 </script>
 
 <div class="graph-viewer-container" bind:this={container}></div>

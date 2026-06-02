@@ -253,7 +253,7 @@
   }
 
   :global(.method-item[data-state="checked"]) {
-    background: rgba(135, 118, 213, 0.1);
+    background: color-mix(in srgb, var(--accent-color) 12%, transparent);
   }
 
   :global(.method-item .item-label) {

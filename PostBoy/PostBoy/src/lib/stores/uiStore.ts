@@ -17,7 +17,11 @@ export const activeResponseTab = writable<'preview' | 'headers' | 'console' | 'd
 
 // Modals and overlays
 export const showShortcuts = writable<boolean>(false);
-export const showToolsPanel = writable<false | 'jwt' | 'encoder' | 'sql' | 'diagnostics' | 'settings' | 'cookies'>(false);
+export const showToolsPanel = writable<false | 'jwt' | 'encoder' | 'sql' | 'diagnostics' | 'settings' | 'cookies' | 'chatbot'>(false);
+// Tools panel fullscreen toggle. Exposed as a store so any component
+// (e.g. ChatbotPanel) can react to it for layout adjustments, and the
+// global keyboard handler can flip it without poking component state.
+export const toolsFullscreen = writable<boolean>(false);
 
 // Diff Tool has its own dedicated modal (not part of the tools panel)
 export const showDiffTool = writable<boolean>(false);
@@ -58,4 +62,30 @@ export function restoreUIState(data: {
   if (data.rightSidebarWidth !== undefined) rightSidebarWidth.set(data.rightSidebarWidth);
   if (data.responseLayout !== undefined) responseLayout.set(data.responseLayout);
   if (data.responsePanelHeight !== undefined) responsePanelHeight.set(data.responsePanelHeight);
+}
+
+// Hook every layout-affecting store up to a save callback so user resizes
+// and layout toggles survive a restart even if the app is killed before
+// `beforeunload` fires. The caller (typically +page.svelte) passes a
+// debounced save fn — drag events fire on every mousemove, so the save
+// should coalesce. Idempotent: a second call is a no-op.
+let uiPersistenceWired = false;
+export function enableUIPersistence(save: () => void) {
+  if (uiPersistenceWired) return;
+  uiPersistenceWired = true;
+
+  // Svelte stores fire their subscriber synchronously on subscribe with
+  // the current value. Skip that initial burst so we don't write to disk
+  // immediately on app start.
+  let ready = false;
+  const fire = () => { if (ready) save(); };
+
+  leftSidebarCollapsed.subscribe(fire);
+  rightSidebarCollapsed.subscribe(fire);
+  leftSidebarWidth.subscribe(fire);
+  rightSidebarWidth.subscribe(fire);
+  responseLayout.subscribe(fire);
+  responsePanelHeight.subscribe(fire);
+
+  ready = true;
 }

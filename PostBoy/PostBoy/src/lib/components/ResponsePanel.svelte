@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { run, createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { onMount, onDestroy } from 'svelte';
   import { activeTab } from '$lib/stores/tabStore';
   import { responseLayout, rightSidebarCollapsed, rightSidebarWidth, responsePanelHeight, activeResponseTab, sendingTabIds } from '$lib/stores/uiStore';
@@ -16,45 +19,49 @@
   import type { ResponseTypeInfo } from '$lib/utils/responseUtils';
   import { fileOps } from '$lib/api/tauri';
 
-  export let onDragBottom: (e: MouseEvent) => void = () => {};
-  export let onDragRight: (e: MouseEvent) => void = () => {};
-  export let collections: any[] = [];
+  interface Props {
+    onDragBottom?: (e: MouseEvent) => void;
+    onDragRight?: (e: MouseEvent) => void;
+    collections?: any[];
+  }
 
-  $: isActiveTabSending = $sendingTabIds.has($activeTab.id);
-  $: responseStatus = $activeTab.responseStatus;
-  $: responseStatusText = $activeTab.responseStatusText;
-  $: responseTime = $activeTab.responseTime;
-  $: responseSize = $activeTab.responseSize;
-  $: responseHeaders = $activeTab.responseHeaders;
-  $: responseBody = $activeTab.responseBody;
-  $: responseContentType = $activeTab.responseContentType || '';
-  $: responseIsBinary = $activeTab.responseIsBinary || false;
-  $: responseTimestamp = $activeTab.responseTimestamp;
-  $: collectionId = $activeTab.collectionId;
+  let { onDragBottom = () => {}, onDragRight = () => {}, collections = [] }: Props = $props();
 
-  $: responseTypeInfo = detectResponseType(responseContentType, responseIsBinary) as ResponseTypeInfo;
-  $: isBinaryPreview = responseIsBinary && responseTypeInfo.previewable;
+  let isActiveTabSending = $derived($sendingTabIds.has($activeTab.id));
+  let responseStatus = $derived($activeTab.responseStatus);
+  let responseStatusText = $derived($activeTab.responseStatusText);
+  let responseTime = $derived($activeTab.responseTime);
+  let responseSize = $derived($activeTab.responseSize);
+  let responseHeaders = $derived($activeTab.responseHeaders);
+  let responseBody = $derived($activeTab.responseBody);
+  let responseContentType = $derived($activeTab.responseContentType || '');
+  let responseIsBinary = $derived($activeTab.responseIsBinary || false);
+  let responseTimestamp = $derived($activeTab.responseTimestamp);
+  let collectionId = $derived($activeTab.collectionId);
 
-  let showVariableModal = false;
-  let extractedPaths: Array<{path: string, value: string}> = [];
-  let selectedPath = '';
-  let variableName = '';
-  let targetCollectionId: number | null = null;
-  let searchFilter = '';
-  let previewMode: 'tree' | 'raw' | 'graph' = 'raw';
-  let graphFullscreen = false;
-  let graphFullscreenVisible = false;
-  let responseCopied = false;
+  let responseTypeInfo = $derived(detectResponseType(responseContentType, responseIsBinary) as ResponseTypeInfo);
+  let isBinaryPreview = $derived(responseIsBinary && responseTypeInfo.previewable);
+
+  let showVariableModal = $state(false);
+  let extractedPaths: Array<{path: string, value: string}> = $state([]);
+  let selectedPath = $state('');
+  let variableName = $state('');
+  let targetCollectionId: number | null = $state(null);
+  let searchFilter = $state('');
+  let previewMode: 'tree' | 'raw' | 'graph' = $state('raw');
+  let graphFullscreen = $state(false);
+  let graphFullscreenVisible = $state(false);
+  let responseCopied = $state(false);
   let responseCopyTimeout: ReturnType<typeof setTimeout> | null = null;
-  let snapshotExported = false;
+  let snapshotExported = $state(false);
   let snapshotExportTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  let showSearch = false;
-  let searchQuery = '';
-  let searchMatchCount = 0;
-  let searchCurrentMatch = 0;
-  let responseViewerRef: ResponseViewer;
-  let searchBarRef: ResponseSearchBar;
+  let showSearch = $state(false);
+  let searchQuery = $state('');
+  let searchMatchCount = $state(0);
+  let searchCurrentMatch = $state(0);
+  let responseViewerRef: ResponseViewer | undefined = $state();
+  let searchBarRef: ResponseSearchBar | undefined = $state();
 
   export function openSearch() {
     if (!responseBody || responseIsBinary) return;
@@ -74,7 +81,7 @@
     searchQuery = e.detail;
     if (previewMode === 'raw' && responseViewerRef) {
       requestAnimationFrame(() => {
-        searchMatchCount = responseViewerRef.getMatchCount();
+        searchMatchCount = responseViewerRef?.getMatchCount() ?? 0;
         searchCurrentMatch = searchMatchCount > 0 ? 1 : 0;
       });
     } else if (previewMode === 'tree') {
@@ -129,9 +136,11 @@
     marks[treeMatchIndex].scrollIntoView({ block: 'center', behavior: 'smooth' });
   }
 
-  $: if (searchQuery && previewMode === 'tree') {
-    countTreeMatches(searchQuery);
-  }
+  run(() => {
+    if (searchQuery && previewMode === 'tree') {
+      countTreeMatches(searchQuery);
+    }
+  });
 
   async function copyResponseBody() {
     if (!responseBody) return;
@@ -161,10 +170,10 @@
     snapshotExportTimeout = setTimeout(() => { snapshotExported = false; }, 1500);
   }
 
-  $: parsedJson = (() => {
+  let parsedJson = $derived((() => {
     if (!responseBody) return null;
     try { return JSON.parse(responseBody); } catch { return null; }
-  })();
+  })());
 
   function getStatusClass(status: number) {
     if (status >= 200 && status < 300) return 'success';
@@ -207,11 +216,11 @@
     showVariableModal = false;
   }
 
-  $: filteredPaths = extractedPaths.filter(p => 
+  let filteredPaths = $derived(extractedPaths.filter(p => 
     !searchFilter || 
     p.path.toLowerCase().includes(searchFilter.toLowerCase()) ||
     p.value.toLowerCase().includes(searchFilter.toLowerCase())
-  );
+  ));
 
   function openGraphFullscreen() {
     if (!parsedJson) return;
@@ -272,11 +281,12 @@
     : `height: ${$responsePanelHeight}px`}
 >
   {#if $responseLayout === 'bottom'}
-    <div class="drag-handle drag-handle-top" on:mousedown={onDragBottom}></div>
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div class="drag-handle drag-handle-top" onmousedown={onDragBottom} role="separator" aria-orientation="horizontal" aria-label="Resize response panel" tabindex="-1"></div>
   {/if}
 
   <div class="resp-collapsed-view" class:is-collapsed={$responseLayout === 'right' && $rightSidebarCollapsed}>
-    <button class="expand-btn" on:click={() => rightSidebarCollapsed.set(false)} title="Expand Response">
+    <button class="expand-btn" onclick={() => rightSidebarCollapsed.set(false)} title="Expand Response">
       <span class="expand-icon">◀</span>
     </button>
   </div>
@@ -286,7 +296,7 @@
       <div class="sidebar-header">
         <div class="header-title">
           <h3>Response</h3>
-          <button class="collapse-btn" on:click={() => rightSidebarCollapsed.update(v => !v)}>
+          <button class="collapse-btn" onclick={() => rightSidebarCollapsed.update(v => !v)}>
             <span class="collapse-icon">▶</span>
           </button>
         </div>
@@ -325,7 +335,7 @@
     <div class="resp-tabs">
       <button
         class="resp-tab {$activeResponseTab === 'preview' ? 'active' : ''}"
-        on:click={() => activeResponseTab.set('preview')}
+        onclick={() => activeResponseTab.set('preview')}
         title="Preview (Alt+1)"
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.854 4.854a.5.5 0 1 0-.708-.708l-3.5 3.5a.5.5 0 0 0 0 .708l3.5 3.5a.5.5 0 0 0 .708-.708L2.707 8l3.147-3.146zm4.292 0a.5.5 0 0 1 .708-.708l3.5 3.5a.5.5 0 0 1 0 .708l-3.5 3.5a.5.5 0 0 1-.708-.708L13.293 8l-3.147-3.146z"/></svg>
@@ -333,7 +343,7 @@
       </button>
       <button
         class="resp-tab {$activeResponseTab === 'headers' ? 'active' : ''}"
-        on:click={() => activeResponseTab.set('headers')}
+        onclick={() => activeResponseTab.set('headers')}
         title="Headers (Alt+2)"
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2zm15 2h-4v3h4V4zm0 4h-4v3h4V8zm0 4h-4v3h3a1 1 0 0 0 1-1v-2zm-5 3v-3H6v3h4zm-5 0v-3H1v2a1 1 0 0 0 1 1h3zm-4-4h4V8H1v3zm0-4h4V4H1v3zm5-3v3h4V4H6zm4 4H6v3h4V8z"/></svg>
@@ -344,7 +354,7 @@
       </button>
       <button
         class="resp-tab {$activeResponseTab === 'console' ? 'active' : ''}"
-        on:click={() => activeResponseTab.set('console')}
+        onclick={() => activeResponseTab.set('console')}
         title="Console (Alt+3)"
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6 9a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3A.5.5 0 0 1 6 9zM3.854 4.146a.5.5 0 1 0-.708.708L4.793 6.5 3.146 8.146a.5.5 0 1 0 .708.708l2-2a.5.5 0 0 0 0-.708l-2-2z"/><path d="M2 1a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2H2zm12 1a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h12z"/></svg>
@@ -355,7 +365,7 @@
       </button>
       <button
         class="resp-tab {$activeResponseTab === 'diff' ? 'active' : ''}"
-        on:click={() => activeResponseTab.set('diff')}
+        onclick={() => activeResponseTab.set('diff')}
         title="Diff (Alt+4)"
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
@@ -374,9 +384,9 @@
             {:else}
               <div class="resp-preview-toolbar">
                 <div class="view-toggle">
-                  <button class="view-toggle-btn {previewMode === 'tree' ? 'active' : ''}" on:click={() => previewMode = 'tree'} disabled={!parsedJson} title="Tree view (Alt+T)">Tree</button>
-                  <button class="view-toggle-btn {previewMode === 'raw' ? 'active' : ''}" on:click={() => previewMode = 'raw'} title="Raw view (Alt+R)">Raw</button>
-                  <button class="view-toggle-btn {graphFullscreen ? 'active' : ''}" on:click={openGraphFullscreen} disabled={!parsedJson} title="Graph view (Alt+G)">Graph</button>
+                  <button class="view-toggle-btn {previewMode === 'tree' ? 'active' : ''}" onclick={() => previewMode = 'tree'} disabled={!parsedJson} title="Tree view (Alt+T)">Tree</button>
+                  <button class="view-toggle-btn {previewMode === 'raw' ? 'active' : ''}" onclick={() => previewMode = 'raw'} title="Raw view (Alt+R)">Raw</button>
+                  <button class="view-toggle-btn {graphFullscreen ? 'active' : ''}" onclick={openGraphFullscreen} disabled={!parsedJson} title="Graph view (Alt+G)">Graph</button>
                 </div>
                 <div class="toolbar-actions">
                   {#if responseContentType}
@@ -384,14 +394,14 @@
                   {/if}
                   <button
                     class="toolbar-icon-btn {showSearch ? 'active' : ''}"
-                    on:click={openSearch}
+                    onclick={openSearch}
                     title="Search in response (Ctrl+F)"
                   >
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242.156a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/></svg>
                   </button>
                   <button 
                     class="toolbar-icon-btn {responseCopied ? 'success' : ''}"
-                    on:click={copyResponseBody}
+                    onclick={copyResponseBody}
                     title="Copy response (Ctrl+Shift+C)"
                   >
                     {#if responseCopied}
@@ -402,7 +412,7 @@
                   </button>
                   <button 
                     class="toolbar-icon-btn" 
-                    on:click={openSaveToVariable}
+                    onclick={openSaveToVariable}
                     title="Save to variable"
                   >
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -411,7 +421,7 @@
                   </button>
                   <button 
                     class="toolbar-icon-btn {snapshotExported ? 'success' : ''}"
-                    on:click={exportSnapshot}
+                    onclick={exportSnapshot}
                     title="Export HTML (Ctrl+Shift+S)"
                   >
                     {#if snapshotExported}
@@ -487,7 +497,7 @@
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6 9a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3A.5.5 0 0 1 6 9zM3.854 4.146a.5.5 0 1 0-.708.708L4.793 6.5 3.146 8.146a.5.5 0 1 0 .708.708l2-2a.5.5 0 0 0 0-.708l-2-2z"/><path d="M2 1a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2H2zm12 1a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h12z"/></svg>
               Console
             </span>
-            <button class="resp-console-clear" on:click={clearLogs} title="Clear Console">
+            <button class="resp-console-clear" onclick={clearLogs} title="Clear Console">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H5.5l1-1h3l1 1h2.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
               Clear
             </button>
@@ -512,17 +522,18 @@
     </div>
 
     {#if $responseLayout === 'right'}
-      <div class="drag-handle drag-handle-left" on:mousedown={onDragRight}></div>
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <div class="drag-handle drag-handle-left" onmousedown={onDragRight} role="separator" aria-orientation="vertical" aria-label="Resize response panel" tabindex="-1"></div>
     {/if}
   </div>
 </div>
 
 {#if showVariableModal}
-  <div class="variable-modal-overlay" role="dialog" aria-modal="true" tabindex="-1" on:click={() => showVariableModal = false} on:keypress={() => {}}>
-    <div class="variable-modal" role="presentation" on:click|stopPropagation on:keypress|stopPropagation>
+  <div class="variable-modal-overlay" role="dialog" aria-modal="true" tabindex="-1" onclick={() => showVariableModal = false} onkeypress={() => {}}>
+    <div class="variable-modal" role="presentation" onclick={stopPropagation(bubble('click'))} onkeypress={stopPropagation(bubble('keypress'))}>
       <div class="variable-modal-header">
         <h3>Save to Variable</h3>
-        <button class="close-btn" on:click={() => showVariableModal = false}>×</button>
+        <button class="close-btn" onclick={() => showVariableModal = false}>×</button>
       </div>
       
       <div class="variable-modal-body">
@@ -541,7 +552,7 @@
               type="button"
               class="variable-path-row" 
               class:selected={selectedPath === item.path}
-              on:click={() => selectPath(item.path, item.value)}
+              onclick={() => selectPath(item.path, item.value)}
             >
               <span class="path-name">{item.path}</span>
               <span class="path-value">{item.value.length > 50 ? item.value.slice(0, 50) + '...' : item.value}</span>
@@ -579,7 +590,7 @@
             </div>
             
             <div class="form-group">
-              <label>Value</label>
+              <span class="field-label">Value</span>
               <div class="value-preview">{extractedPaths.find(p => p.path === selectedPath)?.value || ''}</div>
             </div>
           </div>
@@ -587,10 +598,10 @@
       </div>
       
       <div class="variable-modal-footer">
-        <button class="cancel-btn" on:click={() => showVariableModal = false}>Cancel</button>
+        <button class="cancel-btn" onclick={() => showVariableModal = false}>Cancel</button>
         <button 
           class="save-btn" 
-          on:click={saveVariable}
+          onclick={saveVariable}
           disabled={!selectedPath || !variableName || !targetCollectionId}
         >
           Save Variable
@@ -610,7 +621,7 @@
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6 1H1v5h1V2.707l4.146 4.147.708-.708L2.707 2H6V1zm10 10h-1v3.293l-4.146-4.147-.708.708L14.293 15H11v1h5v-5z"/></svg>
         JSON Graph
       </div>
-      <button class="graph-fullscreen-close" on:click={closeGraphFullscreen} title="Close (Esc)">
+      <button class="graph-fullscreen-close" onclick={closeGraphFullscreen} title="Close (Esc)">
         <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>
       </button>
     </div>
@@ -656,7 +667,7 @@
     align-items: center;
     padding: 6px 10px;
     background: var(--bg-secondary, #2b2d31);
-    border-bottom: 1px solid var(--border-color, #3e4045);
+    border-bottom: 1px solid var(--border-color, var(--border-color));
   }
 
   .toolbar-actions {
@@ -667,7 +678,7 @@
 
   .view-toggle {
     display: flex;
-    border: 1px solid #3e4045;
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     overflow: hidden;
   }
@@ -698,7 +709,7 @@
     flex: 1;
     overflow: auto;
     padding: 8px 4px;
-    background: #1e1f22;
+    background: #000000;
   }
 
   .graph-fullscreen-overlay {
@@ -729,7 +740,7 @@
     justify-content: space-between;
     padding: 10px 16px;
     background: var(--bg-secondary, #2b2d31);
-    border-bottom: 1px solid var(--border-color, #3e4045);
+    border-bottom: 1px solid var(--border-color, var(--border-color));
     flex-shrink: 0;
   }
 
@@ -785,7 +796,7 @@
     height: 28px;
     background: transparent;
     color: #949ba4;
-    border: 1px solid #3e4045;
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     cursor: pointer;
     transition: all 0.15s;
@@ -820,7 +831,7 @@
   }
   
   .variable-modal {
-    background: #2b2d31;
+    background: var(--bg-tertiary);
     border-radius: 8px;
     width: 500px;
     max-width: 90vw;
@@ -835,7 +846,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 16px 20px;
-    border-bottom: 1px solid #3e4045;
+    border-bottom: 1px solid var(--border-color);
   }
   
   .variable-modal-header h3 {
@@ -872,8 +883,8 @@
   .search-input {
     width: 100%;
     padding: 8px 12px;
-    background: #1e1f22;
-    border: 1px solid #3e4045;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     color: #dbdee1;
     font-size: 13px;
@@ -888,7 +899,7 @@
     flex: 1;
     overflow-y: auto;
     max-height: 200px;
-    border: 1px solid #3e4045;
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     margin-bottom: 16px;
   }
@@ -899,7 +910,7 @@
     padding: 8px 12px;
     cursor: pointer;
     border: none;
-    border-bottom: 1px solid #3e4045;
+    border-bottom: 1px solid var(--border-color);
     transition: background 0.15s;
     background: transparent;
     width: 100%;
@@ -955,7 +966,8 @@
     gap: 6px;
   }
   
-  .form-group label {
+  .form-group label,
+  .form-group .field-label {
     font-size: 12px;
     color: #949ba4;
     font-weight: 500;
@@ -964,8 +976,8 @@
   .variable-name-preview {
     display: flex;
     align-items: center;
-    background: #1e1f22;
-    border: 1px solid #3e4045;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     padding: 0 10px;
   }
@@ -992,8 +1004,8 @@
   
   .collection-select {
     padding: 8px 12px;
-    background: #1e1f22;
-    border: 1px solid #3e4045;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     color: #dbdee1;
     font-size: 13px;
@@ -1006,8 +1018,8 @@
   
   .value-preview {
     padding: 8px 12px;
-    background: #1e1f22;
-    border: 1px solid #3e4045;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     color: #dbdee1;
     font-family: monospace;
@@ -1022,13 +1034,13 @@
     justify-content: flex-end;
     gap: 10px;
     padding: 16px 20px;
-    border-top: 1px solid #3e4045;
+    border-top: 1px solid var(--border-color);
   }
   
   .cancel-btn {
     padding: 8px 16px;
     background: transparent;
-    border: 1px solid #3e4045;
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     color: #dbdee1;
     font-size: 13px;

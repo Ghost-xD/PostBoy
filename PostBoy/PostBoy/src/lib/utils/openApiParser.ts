@@ -13,6 +13,7 @@ export interface ParsedRequest {
   bodyContent: string;
   authType: string;
   authData: Record<string, unknown>;
+  description?: string;
 }
 
 export interface ParsedCollection {

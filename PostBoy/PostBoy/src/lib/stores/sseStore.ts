@@ -37,7 +37,7 @@ export function initSseListeners() {
   listen<{ id: string }>('sse-connected', (event) => {
     const { id } = event.payload;
     updateTabSse(id, { sseStatus: 'connected' });
-    addLog('info', `SSE connected: ${id}`);
+    addLog(`SSE connected: ${id}`, 'info');
   });
 
   listen<{ id: string; data: string; eventType: string; lastEventId: string; timestamp: number }>('sse-message', (event) => {
@@ -55,19 +55,19 @@ export function initSseListeners() {
   listen<{ id: string; reason: string }>('sse-disconnected', (event) => {
     const { id, reason } = event.payload;
     updateTabSse(id, { sseStatus: 'disconnected' });
-    addLog('info', `SSE disconnected: ${reason}`);
+    addLog(`SSE disconnected: ${reason}`, 'info');
   });
 
   listen<{ id: string; error: string }>('sse-error', (event) => {
     const { id, error } = event.payload;
     updateTabSse(id, { sseStatus: 'error' });
-    addLog('error', `SSE error [${id}]: ${error}`);
+    addLog(`SSE error [${id}]: ${error}`, 'error');
   });
 
   listen<{ id: string; attempt: number; delayMs: number }>('sse-reconnecting', (event) => {
     const { id, attempt, delayMs } = event.payload;
     updateTabSse(id, { sseStatus: 'reconnecting' });
-    addLog('warn', `SSE reconnecting [${id}]: attempt ${attempt}, delay ${delayMs}ms`);
+    addLog(`SSE reconnecting [${id}]: attempt ${attempt}, delay ${delayMs}ms`, 'warn');
   });
 }
 
@@ -77,7 +77,7 @@ export async function sseConnect(tabId: string, url: string, headers?: Record<st
     await sse.connect(tabId, url, headers, autoReconnect);
   } catch (err: any) {
     updateTabSse(tabId, { sseStatus: 'error' });
-    addLog('error', `SSE connect failed: ${err}`);
+    addLog(`SSE connect failed: ${err}`, 'error');
   }
 }
 
@@ -85,7 +85,7 @@ export async function sseDisconnect(tabId: string) {
   try {
     await sse.disconnect(tabId);
   } catch (err: any) {
-    addLog('warn', `SSE disconnect: ${err}`);
+    addLog(`SSE disconnect: ${err}`, 'warn');
   }
 }
 

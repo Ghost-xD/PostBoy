@@ -179,7 +179,7 @@ describe('Tauri API Wrapper', () => {
       };
       vi.mocked(invoke).mockResolvedValue(undefined);
 
-      await db.importCollections(importData, false);
+      await db.importCollections(importData as any, false);
       
       expect(invoke).toHaveBeenCalledWith('db_import_collections', {
         importData,

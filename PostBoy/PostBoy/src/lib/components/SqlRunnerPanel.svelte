@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { stopPropagation } from 'svelte/legacy';
+
   import { onMount } from 'svelte';
   import { sql, db } from '$lib/api/tauri';
 
@@ -45,22 +47,22 @@
 
   const DEFAULT_PORTS: Record<DbType, number> = { postgres: 5432, mysql: 3306, sqlite: 0 };
 
-  let config: ConnectionConfig = {
+  let config: ConnectionConfig = $state({
     type: 'postgres', host: 'localhost', port: 5432,
     database: '', username: '', password: '', name: ''
-  };
-  let status: ConnectionStatus = 'disconnected';
+  });
+  let status: ConnectionStatus = $state('disconnected');
   let connectionId = '';
-  let connectionError = '';
-  let queryText = '';
-  let result: SqlQueryResult | null = null;
-  let queryError = '';
-  let executing = false;
-  let profiles: SavedProfile[] = [];
-  let queryHistory: QueryHistoryEntry[] = [];
-  let showHistory = false;
-  let copied = '';
-  let activeView: 'connection' | 'query' = 'connection';
+  let connectionError = $state('');
+  let queryText = $state('');
+  let result: SqlQueryResult | null = $state(null);
+  let queryError = $state('');
+  let executing = $state(false);
+  let profiles: SavedProfile[] = $state([]);
+  let queryHistory: QueryHistoryEntry[] = $state([]);
+  let showHistory = $state(false);
+  let copied = $state('');
+  let activeView: 'connection' | 'query' = $state('connection');
 
   function onTypeChange() {
     config.port = DEFAULT_PORTS[config.type];
@@ -259,10 +261,10 @@
 <div class="sql-panel">
   <div class="sql-toolbar">
     <div class="sql-tabs">
-      <button class="sql-tab" class:active={activeView === 'connection'} on:click={() => activeView = 'connection'}>
+      <button class="sql-tab" class:active={activeView === 'connection'} onclick={() => activeView = 'connection'}>
         Connection
       </button>
-      <button class="sql-tab" class:active={activeView === 'query'} on:click={() => activeView = 'query'} disabled={status !== 'connected'}>
+      <button class="sql-tab" class:active={activeView === 'query'} onclick={() => activeView = 'query'} disabled={status !== 'connected'}>
         Query
       </button>
     </div>
@@ -276,7 +278,7 @@
         {/if}
       </span>
       {#if status === 'connected'}
-        <button class="disconnect-btn" on:click={disconnect}>Disconnect</button>
+        <button class="disconnect-btn" onclick={disconnect}>Disconnect</button>
       {/if}
     </div>
   </div>
@@ -288,12 +290,12 @@
           <span class="section-label">Saved Connections</span>
           <div class="profiles-list">
             {#each profiles as profile}
-              <button class="profile-item" on:click={() => loadProfile(profile)}>
+              <button class="profile-item" onclick={() => loadProfile(profile)}>
                 <span class="profile-type" class:pg={profile.config.type === 'postgres'} class:my={profile.config.type === 'mysql'} class:sl={profile.config.type === 'sqlite'}>
                   {profile.config.type === 'postgres' ? 'PG' : profile.config.type === 'mysql' ? 'MY' : 'SL'}
                 </span>
                 <span class="profile-name">{profile.config.name || profile.config.database}</span>
-                <span class="profile-delete" role="button" tabindex="0" on:click|stopPropagation={() => deleteProfile(profile.id)} on:keydown|stopPropagation={(e) => e.key === 'Enter' && deleteProfile(profile.id)} title="Remove">×</span>
+                <span class="profile-delete" role="button" tabindex="0" onclick={stopPropagation(() => deleteProfile(profile.id))} onkeydown={stopPropagation((e: Event) => (e as KeyboardEvent).key === 'Enter' && deleteProfile(profile.id))} title="Remove">×</span>
               </button>
             {/each}
           </div>
@@ -301,15 +303,15 @@
       {/if}
 
       <div class="form-row">
-        <label class="form-label">Database Type</label>
+        <span class="form-label">Database Type</span>
         <div class="db-type-selector">
-          <button class="type-btn" class:active={config.type === 'postgres'} on:click={() => { config.type = 'postgres'; onTypeChange(); }}>
+          <button class="type-btn" class:active={config.type === 'postgres'} onclick={() => { config.type = 'postgres'; onTypeChange(); }}>
             <span class="type-badge pg">PG</span> PostgreSQL
           </button>
-          <button class="type-btn" class:active={config.type === 'mysql'} on:click={() => { config.type = 'mysql'; onTypeChange(); }}>
+          <button class="type-btn" class:active={config.type === 'mysql'} onclick={() => { config.type = 'mysql'; onTypeChange(); }}>
             <span class="type-badge my">MY</span> MySQL
           </button>
-          <button class="type-btn" class:active={config.type === 'sqlite'} on:click={() => { config.type = 'sqlite'; onTypeChange(); }}>
+          <button class="type-btn" class:active={config.type === 'sqlite'} onclick={() => { config.type = 'sqlite'; onTypeChange(); }}>
             <span class="type-badge sl">SL</span> SQLite
           </button>
         </div>
@@ -356,7 +358,7 @@
       {#if connectionError}
         <div class="form-error">{connectionError}</div>
       {/if}
-      <button class="connect-btn" on:click={connect} disabled={status === 'connecting'}>
+      <button class="connect-btn" onclick={connect} disabled={status === 'connecting'}>
         {#if status === 'connecting'}
           <span class="spinner"></span> Connecting...
         {:else}
@@ -371,10 +373,10 @@
         <div class="query-header">
           <span class="section-label">SQL Query</span>
           <div class="query-actions">
-            <button class="query-action-btn" on:click={() => showHistory = !showHistory} title="Query History">
+            <button class="query-action-btn" onclick={() => showHistory = !showHistory} title="Query History">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 3.5a.5.5 0 0 0-1 0V8a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 7.71V3.5Z"/><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16Zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z"/></svg>
             </button>
-            <button class="run-btn" on:click={executeQuery} disabled={executing || !queryText.trim()}>
+            <button class="run-btn" onclick={executeQuery} disabled={executing || !queryText.trim()}>
               {#if executing}
                 <span class="spinner small"></span> Running...
               {:else}
@@ -388,7 +390,7 @@
         {#if showHistory && queryHistory.length > 0}
           <div class="history-dropdown">
             {#each queryHistory as entry}
-              <button class="history-item" class:has-error={!!entry.error} on:click={() => loadHistoryQuery(entry)}>
+              <button class="history-item" class:has-error={!!entry.error} onclick={() => loadHistoryQuery(entry)}>
                 <span class="history-sql">{entry.sql.length > 80 ? entry.sql.slice(0, 80) + '...' : entry.sql}</span>
                 <span class="history-meta">
                   {#if entry.error}
@@ -408,7 +410,7 @@
           placeholder="SELECT * FROM users LIMIT 10;"
           spellcheck="false"
           rows="6"
-          on:keydown={handleQueryKeydown}
+          onkeydown={handleQueryKeydown}
         ></textarea>
       </div>
 
@@ -435,10 +437,10 @@
             </div>
             {#if result.isSelect && result.rows.length > 0}
               <div class="result-actions">
-                <button class="result-action" on:click={exportCsv} title="Copy as CSV">
+                <button class="result-action" onclick={exportCsv} title="Copy as CSV">
                   {copied === 'csv' ? 'Copied!' : 'CSV'}
                 </button>
-                <button class="result-action" on:click={exportJson} title="Copy as JSON">
+                <button class="result-action" onclick={exportJson} title="Copy as JSON">
                   {copied === 'json' ? 'Copied!' : 'JSON'}
                 </button>
               </div>
@@ -466,7 +468,7 @@
                       {#each result.columns as col}
                         <td
                           class:null-val={row[col.name] === null}
-                          on:click={() => copyCell(row[col.name])}
+                          onclick={() => copyCell(row[col.name])}
                           title="Click to copy"
                         >
                           {formatValue(row[col.name])}

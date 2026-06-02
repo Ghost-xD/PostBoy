@@ -1,12 +1,14 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { decodeJwt, getJwtExpiry, type JwtDecodeResult, type JwtExpiryInfo } from '$lib/utils/encodingUtils';
 
-  let input = '';
-  let result: JwtDecodeResult | null = null;
-  let expiry: JwtExpiryInfo | null = null;
-  let copied = '';
+  let input = $state('');
+  let result: JwtDecodeResult | null = $state(null);
+  let expiry: JwtExpiryInfo | null = $state(null);
+  let copied = $state('');
 
-  $: {
+  run(() => {
     if (input.trim()) {
       result = decodeJwt(input);
       expiry = result.valid ? getJwtExpiry(result.payload) : null;
@@ -14,7 +16,7 @@
       result = null;
       expiry = null;
     }
-  }
+  });
 
   function formatJson(obj: any): string {
     return JSON.stringify(obj, null, 2);
@@ -58,7 +60,7 @@
           <div class="section-header">
             <span class="section-tag header-tag">HEADER</span>
             <span class="section-alg">{result.header?.alg || '?'}</span>
-            <button class="copy-btn" on:click={() => copyToClipboard(formatJson(result?.header), 'header')}>
+            <button class="copy-btn" onclick={() => copyToClipboard(formatJson(result?.header), 'header')}>
               {copied === 'header' ? 'Copied' : 'Copy'}
             </button>
           </div>
@@ -69,14 +71,14 @@
           <div class="section-header">
             <span class="section-tag payload-tag">PAYLOAD</span>
             <span class="section-claims">{Object.keys(result.payload || {}).length} claims</span>
-            <button class="copy-btn" on:click={() => copyToClipboard(formatJson(result?.payload), 'payload')}>
+            <button class="copy-btn" onclick={() => copyToClipboard(formatJson(result?.payload), 'payload')}>
               {copied === 'payload' ? 'Copied' : 'Copy'}
             </button>
           </div>
           <pre class="section-code">{formatJson(result.payload)}</pre>
           <div class="claims-grid">
             {#each Object.entries(result.payload || {}) as [key, value]}
-              <button class="claim" on:click={() => copyToClipboard(String(value), key)} title="Click to copy value">
+              <button class="claim" onclick={() => copyToClipboard(String(value), key)} title="Click to copy value">
                 <span class="claim-key">{key}</span>
                 <span class="claim-value">{typeof value === 'object' ? JSON.stringify(value) : String(value)}</span>
               </button>
@@ -87,7 +89,7 @@
         <div class="jwt-section">
           <div class="section-header">
             <span class="section-tag sig-tag">SIGNATURE</span>
-            <button class="copy-btn" on:click={() => copyToClipboard(result?.signature || '', 'sig')}>
+            <button class="copy-btn" onclick={() => copyToClipboard(result?.signature || '', 'sig')}>
               {copied === 'sig' ? 'Copied' : 'Copy'}
             </button>
           </div>

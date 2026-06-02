@@ -1,16 +1,22 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { onMount, onDestroy } from 'svelte';
   import { EditorView, basicSetup } from 'codemirror';
   import { json } from '@codemirror/lang-json';
   import { oneDark } from '@codemirror/theme-one-dark';
   import { EditorState } from '@codemirror/state';
   
-  export let value = '';
-  export let wordWrap = true; // Enable word wrap by default
-  export let placeholder = '';
+  interface Props {
+    value?: string;
+    wordWrap?: boolean; // Enable word wrap by default
+    placeholder?: string;
+  }
+
+  let { value = $bindable(''), wordWrap = true, placeholder = '' }: Props = $props();
   
-  let editorDiv: HTMLDivElement;
-  let view: EditorView;
+  let editorDiv: HTMLDivElement | undefined = $state();
+  let view: EditorView | undefined = $state();
   
   onMount(() => {
     // Format the initial value if it's JSON
@@ -61,33 +67,46 @@
           fontSize: '13px',
           border: '1px solid var(--border-color)',
           borderRadius: '4px',
-          backgroundColor: '#282c34',
+          backgroundColor: '#000000',
         },
         '.cm-scroller': {
           fontFamily: 'Consolas, Monaco, Courier New, monospace',
           lineHeight: '1.6',
           minHeight: '300px',
           overflow: 'auto',
-        },
-        '.cm-gutters': {
-          backgroundColor: '#21252b',
-          color: '#5c6370',
-          border: 'none',
-        },
-        '.cm-activeLineGutter': {
-          backgroundColor: '#2c313c',
-        },
-        '.cm-activeLine': {
-          backgroundColor: '#2c313c',
+          backgroundColor: '#000000',
         },
         '.cm-content': {
-          caretColor: '#528bff',
+          backgroundColor: '#000000',
+          caretColor: '#4d8df6',
+        },
+        '.cm-gutters': {
+          backgroundColor: '#000000 !important',
+          color: '#5c6370',
+          border: 'none',
+          borderRight: 'none',
+        },
+        '.cm-gutter': {
+          backgroundColor: '#000000',
+        },
+        '.cm-lineNumbers .cm-gutterElement': {
+          backgroundColor: '#000000',
+        },
+        '.cm-activeLineGutter': {
+          backgroundColor: '#000000',
+          color: '#7b8398',
+        },
+        '.cm-activeLine': {
+          backgroundColor: 'transparent',
+        },
+        '.cm-foldGutter': {
+          backgroundColor: '#000000',
         },
         '&.cm-focused .cm-cursor': {
-          borderLeftColor: '#528bff',
+          borderLeftColor: '#4d8df6',
         },
         '&.cm-focused .cm-selectionBackground, ::selection': {
-          backgroundColor: '#3e4451',
+          backgroundColor: 'rgba(77, 141, 246, 0.25)',
         },
       }),
     ];
@@ -115,33 +134,35 @@
   });
   
   // Update editor when value changes externally (from CURL parser or collection load)
-  let lastExternalValue = '';
-  $: if (view && value !== view.state.doc.toString() && value !== lastExternalValue) {
-    lastExternalValue = value;
-    
-    // Format the value before updating
-    let formattedValue = value;
-    try {
-      if (value && value.trim()) {
-        const parsed = JSON.parse(value);
-        formattedValue = JSON.stringify(parsed, null, 2);
+  let lastExternalValue = $state('');
+  run(() => {
+    if (view && value !== view.state.doc.toString() && value !== lastExternalValue) {
+      lastExternalValue = value;
+      
+      // Format the value before updating
+      let formattedValue = value;
+      try {
+        if (value && value.trim()) {
+          const parsed = JSON.parse(value);
+          formattedValue = JSON.stringify(parsed, null, 2);
+        }
+      } catch {
+        // Not valid JSON, use as-is
+        formattedValue = value;
       }
-    } catch {
-      // Not valid JSON, use as-is
-      formattedValue = value;
+      
+      view.dispatch({
+        changes: {
+          from: 0,
+          to: view.state.doc.length,
+          insert: formattedValue,
+        },
+      });
     }
-    
-    view.dispatch({
-      changes: {
-        from: 0,
-        to: view.state.doc.length,
-        insert: formattedValue,
-      },
-    });
-  }
+  });
 </script>
 
-<div bind:this={editorDiv} class="json-editor-container" />
+<div bind:this={editorDiv} class="json-editor-container"></div>
 
 <style>
   .json-editor-container {

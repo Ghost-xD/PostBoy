@@ -57,7 +57,7 @@ describe('API Collection Tests', () => {
         responseTime: 150
       });
 
-      const result = await invoke('execute_request', {
+      const result = await invoke<any>('execute_request', {
         method: 'GET',
         url: 'https://api.github.com/users/github',
         headers: {},
@@ -76,7 +76,7 @@ describe('API Collection Tests', () => {
         responseTime: 200
       });
 
-      const result = await invoke('execute_request', {
+      const result = await invoke<any>('execute_request', {
         method: 'POST',
         url: 'https://jsonplaceholder.typicode.com/posts',
         headers: { 'Content-Type': 'application/json' },
@@ -126,7 +126,7 @@ describe('API Collection Tests', () => {
         responseTime: 100
       });
 
-      const result = await invoke('execute_request', {
+      const result = await invoke<any>('execute_request', {
         method: 'GET',
         url: 'https://api.test.com/data',
         headers: {},
@@ -146,7 +146,7 @@ describe('API Collection Tests', () => {
         responseTime: 50
       });
 
-      const result = await invoke('execute_request', {
+      const result = await invoke<any>('execute_request', {
         method: 'GET',
         url: 'https://api.test.com/text',
         headers: {},
@@ -170,7 +170,7 @@ describe('API Collection Tests', () => {
         responseTime: 100
       });
 
-      const result = await invoke('execute_request', {
+      const result = await invoke<any>('execute_request', {
         method: 'GET',
         url: 'https://api.test.com',
         headers: {},
@@ -188,7 +188,7 @@ describe('API Collection Tests', () => {
         responseTime: 250
       });
 
-      const result = await invoke('execute_request', {
+      const result = await invoke<any>('execute_request', {
         method: 'GET',
         url: 'https://api.test.com',
         headers: {},
@@ -212,7 +212,7 @@ describe('API Collection Tests', () => {
           responseTime: 100
         });
 
-        const result = await invoke('execute_request', {
+        const result = await invoke<any>('execute_request', {
           method,
           url: 'https://httpbin.org/anything',
           headers: {},
@@ -239,7 +239,7 @@ describe('API Collection Tests', () => {
         responseTime: 100
       });
 
-      await invoke('execute_request', {
+      await invoke<any>('execute_request', {
         method: 'GET',
         url: 'https://api.test.com',
         headers: customHeaders,
@@ -262,7 +262,7 @@ describe('API Collection Tests', () => {
         responseTime: 100
       });
 
-      await invoke('execute_request', {
+      await invoke<any>('execute_request', {
         method: 'POST',
         url: 'https://api.test.com',
         headers: { 'Content-Type': 'application/json' },
@@ -299,7 +299,7 @@ describe('API Collection Tests', () => {
         responseTime: 100
       });
 
-      const result = await invoke('execute_request', {
+      const result = await invoke<any>('execute_request', {
         method: 'GET',
         url: 'https://httpbin.org/status/' + statusCode,
         headers: {},

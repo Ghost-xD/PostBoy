@@ -161,6 +161,7 @@ Generate request snippets in:
 | `Ctrl+Shift+O` | Import OpenAPI / Swagger spec |
 | `Ctrl+Shift+Q` | SQL Query Runner |
 | `Ctrl+Shift+B` | Diff Tool |
+| `Ctrl+Shift+M` | Son of Anton (local AI assistant) — toggle panel |
 
 **Diff Tool**
 
@@ -178,6 +179,7 @@ Generate request snippets in:
 | `Ctrl+Shift+[` | Collapse / expand collections panel |
 | `Ctrl+Shift+]` | Collapse / expand response panel |
 | `Ctrl+Shift+L` | Toggle response panel position |
+| `Ctrl+Shift+Enter` | Toggle Tools panel fullscreen |
 | `Esc` | Close panel / modal |
 
 ## Requirements
@@ -185,6 +187,10 @@ Generate request snippets in:
 - [Node.js](https://nodejs.org/) 18+
 - [Yarn](https://yarnpkg.com/)
 - [Rust](https://www.rust-lang.org/tools/install) stable (1.70+)
+- **For Son of Anton (the local AI assistant) only** (default-on, see [Son of Anton](#son-of-anton-local-ai-assistant-optional)):
+  - CMake 3.18+
+  - A C/C++ toolchain — MSVC on Windows, Xcode CLT on macOS, build-essential on Linux
+  - *Optional:* Vulkan SDK on Windows/Linux or Xcode on macOS for GPU acceleration (auto-detected at build time; CPU-only otherwise)
 
 ## Quick Start
 
@@ -201,9 +207,79 @@ yarn tauri dev
 | `yarn tauri dev` | Desktop app with hot reload |
 | `yarn dev` | Frontend only (Vite dev server) |
 | `yarn tauri build` | Production build (MSI, NSIS, DMG, AppImage, deb) |
+| `yarn tauri build -- --no-default-features` | Production build **without** Son of Anton (no CMake / C++ toolchain required) |
 | `yarn test` | Run tests |
 | `yarn test -- --coverage` | Run tests with coverage report |
 | `yarn check` | Svelte type checking |
+
+## Son of Anton (local AI assistant, optional)
+
+PostBoy ships with **Son of Anton**, a fully-local AI assistant that can list collections, run and inspect saved requests, summarize responses, and edit collection variables — all by calling the same code paths the UI uses. Inference runs entirely on your machine via embedded [llama.cpp](https://github.com/ggml-org/llama.cpp) (no external binaries, no cloud, no telemetry).
+
+### GPU acceleration
+
+GPU offload is enabled automatically when a supported toolchain is found at build time:
+
+| Platform | Backend | Trigger |
+|----------|---------|---------|
+| Windows / Linux | Vulkan | `VULKAN_SDK` env var present, or SDK installed at the default path |
+| macOS | Metal | Builds on macOS pick this up unconditionally |
+| Anywhere else | CPU | Fallback; works everywhere |
+
+On Windows the wrapper script `scripts/tauri-env.cjs` auto-discovers the Vulkan SDK, sets the MSVC environment, applies a short `CARGO_TARGET_DIR` to dodge `MAX_PATH`, and retries flaky parallel MSBuild runs. See [`PostBoy/PostBoy/BUILDING.md`](PostBoy/PostBoy/BUILDING.md) for the full Windows checklist.
+
+### Enable / disable at build time
+
+Son of Anton is gated behind the `chatbot` Cargo feature, which is **on by default**.
+
+```bash
+# Full build (assistant included — requires CMake + C/C++ compiler).
+yarn tauri build
+
+# Build without the assistant — no CMake or native toolchain needed.
+yarn tauri build -- --no-default-features
+```
+
+When built without the feature, the UI hides every entry point automatically (a single always-on Tauri command `ai_supported` reports the build flag to the frontend).
+
+### Using it
+
+1. Launch the app — the default model auto-loads in the background on startup (non-blocking; the rest of the UI is fully usable while it warms up).
+2. Open with `Ctrl+Shift+M` (or **Tools → Son of Anton**). Press `Ctrl+Shift+Enter` for fullscreen.
+3. First run only: switch to the **Models** tab → pick a model → **Download**.
+   - Downloads try **Hugging Face** first, then **Kaggle** as a fallback.
+   - Files land in `<app data>/ai/models/`. About 400 MB – 2.5 GB per model.
+4. Talk to it. Examples:
+   - *"List my collections"*
+   - *"Hit Get IRP Token"* — explicit run commands bypass the LLM and dispatch the tool directly (real network call, real action-log entry, no fabricated response).
+   - *"Get me the access token from Get IRP Token"* — single-value extraction, no extra formatting.
+   - *"Why did my last request fail?"*
+
+### What's in the panel
+
+- **Chat tab** — markdown rendering, streaming responses, per-bubble Copy button. Tool-result responses (status / headers / JSON body) render as structured blocks with per-field and full-body copy buttons.
+- **History tab** — every conversation is persisted to SQLite (`chat_sessions` + `chat_messages`); click to reopen, delete individual chats, or wipe all.
+- **Models tab** — download, load, and switch GGUF models.
+- **Action Log tab** — every tool invocation (arguments + result + errors) recorded for review.
+- **Composer autocomplete** — as you type, suggestions pull from past phrases, saved request names, and collection names.
+- **New Chat** button to clear the conversation and free the in-prompt context window.
+
+### Reliability notes
+
+- The model never decides whether to use tools via a UI checkbox — it's fully autonomous. Every tool call appears in the **Action Log** for review.
+- Explicit "hit / run / call / fire / invoke NAME" commands skip the LLM entirely and dispatch `run_request` server-side, so a real HTTP call always happens (or a clean error is shown).
+- Prior tool results in the conversation are tagged before being fed back to the model, so it can't pattern-match them and hallucinate fresh "200 OK" responses.
+- `run_request` / `inspect_request` results short-circuit the LLM loop and render as deterministic structured markdown — no streaming prose, no summarization on top of the raw response.
+
+### Supported models (out of the box)
+
+| Model | Size | Best for |
+|-------|------|----------|
+| Qwen 2.5 0.5B Instruct (Q4_K_M) | ~400 MB | Fastest. Good for short tool-only tasks on weak CPUs. |
+| Qwen 2.5 1.5B Instruct (Q4_K_M) | ~1.0 GB | Recommended default — strong tool-calling, runs fast on most laptops. |
+| Phi 3.5 Mini Instruct (Q4_K_M) | ~2.4 GB | Best reasoning of the three; slower. |
+
+Adding a new model is a JSON entry away — edit [`PostBoy/PostBoy/src-tauri/resources/models.json`](PostBoy/PostBoy/src-tauri/resources/models.json) with the GGUF download URLs.
 
 ## Deploy (Self-Hosted Update Server)
 

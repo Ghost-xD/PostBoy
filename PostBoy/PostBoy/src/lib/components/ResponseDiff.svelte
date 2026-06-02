@@ -1,10 +1,16 @@
 <script lang="ts">
-  export let currentResponse: string = '';
-  export let currentUrl: string = '';
+  import { run } from 'svelte/legacy';
 
-  let pinnedResponse: string | null = null;
-  let pinnedLabel: string = '';
-  let previousResponses: Map<string, string> = new Map();
+  interface Props {
+    currentResponse?: string;
+    currentUrl?: string;
+  }
+
+  let { currentResponse = '', currentUrl = '' }: Props = $props();
+
+  let pinnedResponse: string | null = $state(null);
+  let pinnedLabel: string = $state('');
+  let previousResponses: Map<string, string> = $state(new Map());
 
   interface DiffLine {
     type: 'added' | 'removed' | 'unchanged';
@@ -61,35 +67,37 @@
     pinnedLabel = '';
   }
 
-  $: if (currentResponse && currentUrl) {
-    const prev = previousResponses.get(currentUrl);
-    if (prev !== currentResponse) {
-      if (prev) {
-        // store previous automatically
+  run(() => {
+    if (currentResponse && currentUrl) {
+      const prev = previousResponses.get(currentUrl);
+      if (prev !== currentResponse) {
+        if (prev) {
+          // store previous automatically
+        }
+        previousResponses.set(currentUrl, currentResponse);
+        previousResponses = previousResponses;
       }
-      previousResponses.set(currentUrl, currentResponse);
-      previousResponses = previousResponses;
     }
-  }
+  });
 
-  $: responseA = pinnedResponse || '';
-  $: responseB = currentResponse || '';
-  $: prettyA = prettyPrint(responseA);
-  $: prettyB = prettyPrint(responseB);
-  $: diffLines = responseA ? computeDiff(prettyA, prettyB) : [];
-  $: hasChanges = diffLines.some(l => l.type !== 'unchanged');
-  $: addedCount = diffLines.filter(l => l.type === 'added').length;
-  $: removedCount = diffLines.filter(l => l.type === 'removed').length;
+  let responseA = $derived(pinnedResponse || '');
+  let responseB = $derived(currentResponse || '');
+  let prettyA = $derived(prettyPrint(responseA));
+  let prettyB = $derived(prettyPrint(responseB));
+  let diffLines = $derived(responseA ? computeDiff(prettyA, prettyB) : []);
+  let hasChanges = $derived(diffLines.some(l => l.type !== 'unchanged'));
+  let addedCount = $derived(diffLines.filter(l => l.type === 'added').length);
+  let removedCount = $derived(diffLines.filter(l => l.type === 'removed').length);
 </script>
 
 <div class="diff-container">
   <div class="diff-toolbar">
     <div class="diff-actions">
-      <button class="diff-btn" on:click={pinCurrentResponse} title="Pin current response as baseline (A)">
+      <button class="diff-btn" onclick={pinCurrentResponse} title="Pin current response as baseline (A)">
         📌 Pin Response A
       </button>
       {#if pinnedResponse}
-        <button class="diff-btn diff-clear" on:click={clearPinned}>Clear Pinned</button>
+        <button class="diff-btn diff-clear" onclick={clearPinned}>Clear Pinned</button>
         <span class="diff-label">{pinnedLabel}</span>
       {/if}
     </div>

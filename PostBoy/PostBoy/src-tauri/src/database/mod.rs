@@ -115,6 +115,53 @@ pub fn get_migrations() -> Vec<Migration> {
             sql: "ALTER TABLE requests ADD COLUMN description TEXT DEFAULT '';",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 6,
+            description: "create_cookies_table",
+            sql: "
+                CREATE TABLE IF NOT EXISTS cookies (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    collection_id INTEGER NOT NULL,
+                    domain TEXT NOT NULL,
+                    path TEXT NOT NULL DEFAULT '/',
+                    name TEXT NOT NULL,
+                    value TEXT NOT NULL DEFAULT '',
+                    expires TEXT,
+                    secure INTEGER NOT NULL DEFAULT 0,
+                    http_only INTEGER NOT NULL DEFAULT 0,
+                    same_site TEXT DEFAULT 'Lax',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
+                    UNIQUE(collection_id, domain, path, name)
+                );
+            ",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 7,
+            description: "create_chat_history",
+            sql: "
+                CREATE TABLE IF NOT EXISTS chat_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL DEFAULT 'New chat',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS chat_messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id INTEGER NOT NULL,
+                    role TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    ts INTEGER NOT NULL,
+                    FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, id);
+            ",
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
@@ -249,6 +296,25 @@ pub fn initialize_database(db_path: PathBuf) -> Result<(), String> {
                 FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
                 UNIQUE(collection_id, domain, path, name)
             );
+        "),
+        (7, "create_chat_history", "
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL DEFAULT 'New chat',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                ts INTEGER NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, id);
         "),
     ];
 

@@ -92,25 +92,25 @@ describe('Database Schema Tests', () => {
 
   describe('Table Existence', () => {
     it('should have collections table', () => {
-      const table = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='collections'").get();
+      const table: any = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='collections'").get();
       expect(table).toBeDefined();
       expect(table.name).toBe('collections');
     });
 
     it('should have requests table', () => {
-      const table = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='requests'").get();
+      const table: any = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='requests'").get();
       expect(table).toBeDefined();
       expect(table.name).toBe('requests');
     });
 
     it('should have history table', () => {
-      const table = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='history'").get();
+      const table: any = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='history'").get();
       expect(table).toBeDefined();
       expect(table.name).toBe('history');
     });
 
     it('should have settings table', () => {
-      const table = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'").get();
+      const table: any = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'").get();
       expect(table).toBeDefined();
       expect(table.name).toBe('settings');
     });
@@ -118,7 +118,7 @@ describe('Database Schema Tests', () => {
 
   describe('Collections Table Schema', () => {
     it('should have correct columns', () => {
-      const columns = db.prepare("PRAGMA table_info(collections)").all();
+      const columns: any[] = db.prepare("PRAGMA table_info(collections)").all() as any[];
       const columnNames = columns.map((col: any) => col.name);
 
       expect(columnNames).toContain('id');
@@ -129,14 +129,14 @@ describe('Database Schema Tests', () => {
     });
 
     it('should have id as primary key', () => {
-      const columns = db.prepare("PRAGMA table_info(collections)").all();
+      const columns: any[] = db.prepare("PRAGMA table_info(collections)").all() as any[];
       const idColumn = columns.find((col: any) => col.name === 'id');
 
       expect(idColumn.pk).toBe(1);
     });
 
     it('should have name as NOT NULL', () => {
-      const columns = db.prepare("PRAGMA table_info(collections)").all();
+      const columns: any[] = db.prepare("PRAGMA table_info(collections)").all() as any[];
       const nameColumn = columns.find((col: any) => col.name === 'name');
 
       expect(nameColumn.notnull).toBe(1);
@@ -145,7 +145,7 @@ describe('Database Schema Tests', () => {
 
   describe('Requests Table Schema', () => {
     it('should have correct columns', () => {
-      const columns = db.prepare("PRAGMA table_info(requests)").all();
+      const columns: any[] = db.prepare("PRAGMA table_info(requests)").all() as any[];
       const columnNames = columns.map((col: any) => col.name);
 
       expect(columnNames).toContain('id');
@@ -161,7 +161,7 @@ describe('Database Schema Tests', () => {
     });
 
     it('should have foreign key to collections', () => {
-      const foreignKeys = db.prepare("PRAGMA foreign_key_list(requests)").all();
+      const foreignKeys: any[] = db.prepare("PRAGMA foreign_key_list(requests)").all() as any[];
       const collectionFk = foreignKeys.find((fk: any) => fk.table === 'collections');
 
       expect(collectionFk).toBeDefined();
@@ -170,7 +170,7 @@ describe('Database Schema Tests', () => {
     });
 
     it('should have required fields as NOT NULL', () => {
-      const columns = db.prepare("PRAGMA table_info(requests)").all();
+      const columns: any[] = db.prepare("PRAGMA table_info(requests)").all() as any[];
       const requiredFields = ['name', 'method', 'url'];
 
       requiredFields.forEach(field => {
@@ -182,7 +182,7 @@ describe('Database Schema Tests', () => {
 
   describe('History Table Schema', () => {
     it('should have correct columns', () => {
-      const columns = db.prepare("PRAGMA table_info(history)").all();
+      const columns: any[] = db.prepare("PRAGMA table_info(history)").all() as any[];
       const columnNames = columns.map((col: any) => col.name);
 
       expect(columnNames).toContain('id');
@@ -202,7 +202,7 @@ describe('Database Schema Tests', () => {
     });
 
     it('should have method and url as NOT NULL', () => {
-      const columns = db.prepare("PRAGMA table_info(history)").all();
+      const columns: any[] = db.prepare("PRAGMA table_info(history)").all() as any[];
       const methodColumn = columns.find((col: any) => col.name === 'method');
       const urlColumn = columns.find((col: any) => col.name === 'url');
 
@@ -213,7 +213,7 @@ describe('Database Schema Tests', () => {
 
   describe('Settings Table Schema', () => {
     it('should have correct columns', () => {
-      const columns = db.prepare("PRAGMA table_info(settings)").all();
+      const columns: any[] = db.prepare("PRAGMA table_info(settings)").all() as any[];
       const columnNames = columns.map((col: any) => col.name);
 
       expect(columnNames).toContain('key');
@@ -222,14 +222,14 @@ describe('Database Schema Tests', () => {
     });
 
     it('should have key as primary key', () => {
-      const columns = db.prepare("PRAGMA table_info(settings)").all();
+      const columns: any[] = db.prepare("PRAGMA table_info(settings)").all() as any[];
       const keyColumn = columns.find((col: any) => col.name === 'key');
 
       expect(keyColumn.pk).toBe(1);
     });
 
     it('should have value as NOT NULL', () => {
-      const columns = db.prepare("PRAGMA table_info(settings)").all();
+      const columns: any[] = db.prepare("PRAGMA table_info(settings)").all() as any[];
       const valueColumn = columns.find((col: any) => col.name === 'value');
 
       expect(valueColumn.notnull).toBe(0); // value is nullable
@@ -249,7 +249,7 @@ describe('Database Schema Tests', () => {
       const stmt = db.prepare('INSERT INTO collections (name, description) VALUES (?, ?)');
       const insertResult = stmt.run('Read Test', 'Description');
       
-      const collection = db.prepare('SELECT * FROM collections WHERE id = ?').get(insertResult.lastInsertRowid);
+      const collection: any = db.prepare('SELECT * FROM collections WHERE id = ?').get(insertResult.lastInsertRowid);
 
       expect(collection).toBeDefined();
       expect(collection.name).toBe('Read Test');
@@ -265,7 +265,7 @@ describe('Database Schema Tests', () => {
 
       expect(updateResult.changes).toBe(1);
 
-      const collection = db.prepare('SELECT * FROM collections WHERE id = ?').get(insertResult.lastInsertRowid);
+      const collection: any = db.prepare('SELECT * FROM collections WHERE id = ?').get(insertResult.lastInsertRowid);
       expect(collection.name).toBe('Updated Name');
       expect(collection.description).toBe('Updated Description');
     });
@@ -279,7 +279,7 @@ describe('Database Schema Tests', () => {
 
       expect(deleteResult.changes).toBe(1);
 
-      const collection = db.prepare('SELECT * FROM collections WHERE id = ?').get(insertResult.lastInsertRowid);
+      const collection: any = db.prepare('SELECT * FROM collections WHERE id = ?').get(insertResult.lastInsertRowid);
       expect(collection).toBeUndefined();
     });
   });
@@ -322,7 +322,7 @@ describe('Database Schema Tests', () => {
       `);
       const insertResult = insertStmt.run(collectionId, 'Read Test', 'POST', 'https://api.test.com/post');
       
-      const request = db.prepare('SELECT * FROM requests WHERE id = ?').get(insertResult.lastInsertRowid);
+      const request: any = db.prepare('SELECT * FROM requests WHERE id = ?').get(insertResult.lastInsertRowid);
 
       expect(request).toBeDefined();
       expect(request.name).toBe('Read Test');
@@ -342,7 +342,7 @@ describe('Database Schema Tests', () => {
 
       expect(updateResult.changes).toBe(1);
 
-      const request = db.prepare('SELECT * FROM requests WHERE id = ?').get(insertResult.lastInsertRowid);
+      const request: any = db.prepare('SELECT * FROM requests WHERE id = ?').get(insertResult.lastInsertRowid);
       expect(request.method).toBe('PUT');
       expect(request.url).toBe('https://api.test.com/updated');
     });
@@ -359,7 +359,7 @@ describe('Database Schema Tests', () => {
 
       expect(deleteResult.changes).toBe(1);
 
-      const request = db.prepare('SELECT * FROM requests WHERE id = ?').get(insertResult.lastInsertRowid);
+      const request: any = db.prepare('SELECT * FROM requests WHERE id = ?').get(insertResult.lastInsertRowid);
       expect(request).toBeUndefined();
     });
 
@@ -377,7 +377,7 @@ describe('Database Schema Tests', () => {
       db.prepare('DELETE FROM collections WHERE id = ?').run(testCollId);
 
       // Check if requests were cascade deleted
-      const requests = db.prepare('SELECT * FROM requests WHERE collection_id = ?').all(testCollId);
+      const requests: any[] = db.prepare('SELECT * FROM requests WHERE collection_id = ?').all(testCollId) as any[];
       expect(requests).toHaveLength(0);
     });
   });
@@ -401,7 +401,7 @@ describe('Database Schema Tests', () => {
       `);
       insertStmt.run('POST', 'https://api.test.com/post', 201, 200);
       
-      const history = db.prepare('SELECT * FROM history ORDER BY id DESC LIMIT 1').get();
+      const history: any = db.prepare('SELECT * FROM history ORDER BY id DESC LIMIT 1').get();
 
       expect(history).toBeDefined();
       expect(history.method).toBe('POST');
@@ -410,7 +410,7 @@ describe('Database Schema Tests', () => {
 
     it('should clear history', () => {
       db.prepare('DELETE FROM history').run();
-      const count = db.prepare('SELECT COUNT(*) as count FROM history').get();
+      const count: any = db.prepare('SELECT COUNT(*) as count FROM history').get();
 
       expect(count.count).toBe(0);
     });
@@ -427,7 +427,7 @@ describe('Database Schema Tests', () => {
     it('should read setting', () => {
       db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('test_key', 'test_value');
       
-      const setting = db.prepare('SELECT * FROM settings WHERE key = ?').get('test_key');
+      const setting: any = db.prepare('SELECT * FROM settings WHERE key = ?').get('test_key');
 
       expect(setting).toBeDefined();
       expect(setting.key).toBe('test_key');
@@ -438,7 +438,7 @@ describe('Database Schema Tests', () => {
       db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('update_test', 'original');
       db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('update_test', 'updated');
       
-      const setting = db.prepare('SELECT * FROM settings WHERE key = ?').get('update_test');
+      const setting: any = db.prepare('SELECT * FROM settings WHERE key = ?').get('update_test');
 
       expect(setting.value).toBe('updated');
     });
@@ -447,7 +447,7 @@ describe('Database Schema Tests', () => {
       db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('delete_test', 'value');
       db.prepare('DELETE FROM settings WHERE key = ?').run('delete_test');
       
-      const setting = db.prepare('SELECT * FROM settings WHERE key = ?').get('delete_test');
+      const setting: any = db.prepare('SELECT * FROM settings WHERE key = ?').get('delete_test');
 
       expect(setting).toBeUndefined();
     });
@@ -474,7 +474,7 @@ describe('Database Schema Tests', () => {
       const stmt = db.prepare('INSERT INTO collections (name) VALUES (?)');
       const result = stmt.run('Timestamp Test');
       
-      const collection = db.prepare('SELECT * FROM collections WHERE id = ?').get(result.lastInsertRowid);
+      const collection: any = db.prepare('SELECT * FROM collections WHERE id = ?').get(result.lastInsertRowid);
 
       expect(collection.created_at).toBeDefined();
       expect(collection.updated_at).toBeDefined();

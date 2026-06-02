@@ -1,13 +1,35 @@
 <script lang="ts">
-  export let data: any;
-  export let rootKey = '';
-  export let depth = 0;
-  export let defaultExpanded = true;
-  export let lineCounter = { current: 1 };
-  export let searchQuery = '';
+  import JsonTreeViewer from './JsonTreeViewer.svelte';
+  import { run, stopPropagation } from 'svelte/legacy';
 
-  let collapsed = !defaultExpanded && depth > 0;
-  let copiedKey = '';
+  interface Props {
+    data: any;
+    rootKey?: string;
+    depth?: number;
+    defaultExpanded?: boolean;
+    lineCounter?: any;
+    searchQuery?: string;
+  }
+
+  let {
+    data,
+    rootKey = '',
+    depth = 0,
+    defaultExpanded = true,
+    // Plain (non-reactive) accumulator shared by reference across the
+    // recursive tree. Mutating .current during render is intentional —
+    // it must NOT be $bindable / $state, otherwise Svelte 5 throws
+    // `state_unsafe_mutation` when getLine() bumps the counter from a
+    // template expression.
+    lineCounter = { current: 1 },
+    searchQuery = ''
+  }: Props = $props();
+
+  // Intentional: capture the initial expansion based on props at mount time.
+  // These props are stable per node, so we don't need reactivity here.
+  // svelte-ignore state_referenced_locally
+  let collapsed = $state(!defaultExpanded && depth > 0);
+  let copiedKey = $state('');
   let copyTimeout: ReturnType<typeof setTimeout> | null = null;
 
   function toggle() { collapsed = !collapsed; }
@@ -59,13 +81,17 @@
     copyTimeout = setTimeout(() => { copiedKey = ''; }, 1200);
   }
 
-  $: entries = data !== null && typeof data === 'object'
+  let entries = $derived(data !== null && typeof data === 'object'
     ? (Array.isArray(data) ? data.map((v: any, i: number) => [String(i), v]) : Object.entries(data))
-    : [];
-  $: isContainer = data !== null && typeof data === 'object';
-  $: bracket = Array.isArray(data) ? ['[', ']'] : ['{', '}'];
-  $: if (depth < 2) collapsed = false;
-  $: if (searchQuery && isContainer && nodeContainsQuery(data, rootKey)) collapsed = false;
+    : []);
+  let isContainer = $derived(data !== null && typeof data === 'object');
+  let bracket = $derived(Array.isArray(data) ? ['[', ']'] : ['{', '}']);
+  run(() => {
+    if (depth < 2) collapsed = false;
+  });
+  run(() => {
+    if (searchQuery && isContainer && nodeContainsQuery(data, rootKey)) collapsed = false;
+  });
 
   function getLine() {
     return lineCounter.current++;
@@ -74,7 +100,7 @@
 
 {#if isContainer}
   <div class="node">
-    <div class="line hoverable" on:click={toggle} on:keypress={toggle} role="button" tabindex="0">
+    <div class="line hoverable" onclick={toggle} onkeypress={toggle} role="button" tabindex="0">
       <span class="line-num">{getLine()}</span>
       <span class="indent" style="width: {depth * 18}px"></span>
       <span class="arrow" class:collapsed>{collapsed ? '▶' : '▼'}</span>
@@ -86,7 +112,7 @@
         <span class="ellipsis"> {entries.length} {Array.isArray(data) ? 'items' : 'keys'} </span>
         <span class="bracket">{bracket[1]}</span>
       {/if}
-      <button class="copy-btn" class:copied={copiedKey === `${depth}.${rootKey}.root`} on:click|stopPropagation={() => copyValue(data, `${depth}.${rootKey}.root`)} title="Copy object">
+      <button class="copy-btn" class:copied={copiedKey === `${depth}.${rootKey}.root`} onclick={stopPropagation(() => copyValue(data, `${depth}.${rootKey}.root`))} title="Copy object">
         {copiedKey === `${depth}.${rootKey}.root` ? '✓' : '⧉'}
       </button>
     </div>
@@ -97,7 +123,7 @@
         {@const uid = `${depth}.${rootKey}.${key}`}
         {@const isLast = i === entries.length - 1}
         {#if type === 'object' || type === 'array'}
-          <svelte:self data={value} rootKey={key} depth={depth + 1} defaultExpanded={depth < 1} {lineCounter} {searchQuery} />
+          <JsonTreeViewer data={value} rootKey={key} depth={depth + 1} defaultExpanded={depth < 1} {lineCounter} {searchQuery} />
           {#if !isLast}
             <!-- comma after nested closing bracket is handled in the close line -->
           {/if}
@@ -107,7 +133,7 @@
             <span class="indent" style="width: {(depth + 1) * 18}px"></span>
             <span class="key">{@html highlightText(`"${key}"`)}</span><span class="colon">: </span>
             <span class="val {type}" title={typeof value === 'string' ? value : ''}>{@html highlightText(truncateStr(formatValue(value)))}</span>{#if !isLast}<span class="comma">,</span>{/if}
-            <button class="copy-btn" class:copied={copiedKey === uid} on:click|stopPropagation={() => copyValue(value, uid)} title="Copy value">
+            <button class="copy-btn" class:copied={copiedKey === uid} onclick={stopPropagation(() => copyValue(value, uid))} title="Copy value">
               {copiedKey === uid ? '✓' : '⧉'}
             </button>
           </div>
@@ -128,7 +154,7 @@
       <span class="key">{@html highlightText(`"${rootKey}"`)}</span><span class="colon">: </span>
     {/if}
     <span class="val {getType(data)}">{@html highlightText(truncateStr(formatValue(data)))}</span>
-    <button class="copy-btn" class:copied={copiedKey === rootKey} on:click|stopPropagation={() => copyValue(data, rootKey)} title="Copy value">
+    <button class="copy-btn" class:copied={copiedKey === rootKey} onclick={stopPropagation(() => copyValue(data, rootKey))} title="Copy value">
       {copiedKey === rootKey ? '✓' : '⧉'}
     </button>
   </div>
@@ -159,7 +185,7 @@
     color: #4a4e58;
     font-size: 12px;
     user-select: none;
-    border-right: 1px solid #2e3038;
+    border-right: 1px solid var(--border-color);
     margin-right: 8px;
   }
 
@@ -187,7 +213,7 @@
     color: #585b70;
     font-style: italic;
     font-size: 11px;
-    background: #2a2c37;
+    background: var(--bg-tertiary);
     padding: 0 6px;
     border-radius: 3px;
     margin: 0 4px;
@@ -213,8 +239,7 @@
     flex-shrink: 0;
   }
 
-  .line:hover > .copy-btn,
-  .line:hover > .node > .line > .copy-btn {
+  .line:hover > .copy-btn {
     opacity: 0.7;
   }
   .copy-btn:hover { opacity: 1 !important; color: #b4befe; border-color: #45475a; }

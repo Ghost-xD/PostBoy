@@ -21,7 +21,7 @@ import {
 describe('App State Stores', () => {
   beforeEach(() => {
     // Reset stores before each test
-    tabs.set([{ id: '1', name: 'New Request', method: 'GET', url: '' }]);
+    tabs.set([{ id: '1', name: 'New Request', method: 'GET', url: '' } as any]);
     activeTabId.set('1');
     collections.set([]);
     history.set([]);

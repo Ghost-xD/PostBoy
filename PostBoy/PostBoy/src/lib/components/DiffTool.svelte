@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { onMount, onDestroy, tick } from 'svelte';
   import {
     computeSideBySideDiff, tryFormatJson, detectLanguage, buildLineColorMap,
@@ -20,72 +22,52 @@
     charDiffs?: DiffSegment[]; charDiffsRight?: DiffSegment[];
   }
 
-  let leftText = '';
-  let rightText = '';
-  let formatJson = false;
-  let wordWrap = false;
-  let ignoreWhitespace = false;
-  let showOnlyChanges = false;
+  let leftText = $state('');
+  let rightText = $state('');
+  let formatJson = $state(false);
+  let wordWrap = $state(false);
+  let ignoreWhitespace = $state(false);
+  let showOnlyChanges = $state(false);
   let contextLines = 3;
-  let diffResult: DiffResult | null = null;
-  let changePositions: number[] = [];
-  let currentChangeIdx = -1;
-  let leftLabel = 'Original';
-  let rightLabel = 'Modified';
-  let copiedSide: 'left' | 'right' | null = null;
+  let diffResult: DiffResult | null = $state(null);
+  let changePositions: number[] = $state([]);
+  let currentChangeIdx = $state(-1);
+  let leftLabel = $state('Original');
+  let rightLabel = $state('Modified');
+  let copiedSide: 'left' | 'right' | null = $state(null);
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  let leftTaEl: HTMLTextAreaElement;
-  let rightTaEl: HTMLTextAreaElement;
-  let leftBgEl: HTMLDivElement;
-  let rightBgEl: HTMLDivElement;
-  let leftGiEl: HTMLDivElement;
-  let rightGiEl: HTMLDivElement;
-  let cgInnerEl: HTMLDivElement;
-  let leftFvEl: HTMLDivElement;
-  let rightFvEl: HTMLDivElement;
+  let leftTaEl: HTMLTextAreaElement | undefined = $state();
+  let rightTaEl: HTMLTextAreaElement | undefined = $state();
+  let leftBgEl: HTMLDivElement | undefined = $state();
+  let rightBgEl: HTMLDivElement | undefined = $state();
+  let leftGiEl: HTMLDivElement | undefined = $state();
+  let rightGiEl: HTMLDivElement | undefined = $state();
+  let cgInnerEl: HTMLDivElement | undefined = $state();
+  let leftFvEl: HTMLDivElement | undefined = $state();
+  let rightFvEl: HTMLDivElement | undefined = $state();
   let scrolling = false;
 
-  let isDragging = false;
-  let mergeHeight = 100;
+  let isDragging = $state(false);
+  let mergeHeight = $state(100);
   let dragStartY = 0;
   let dragStartH = 0;
 
-  let leftLineTypes: string[] = [];
-  let rightLineTypes: string[] = [];
-  let diffBlocks: DiffBlock[] = [];
-  let displayLines: DisplayLine[] = [];
-  let mergeText = '';
+  let leftLineTypes: string[] = $state([]);
+  let rightLineTypes: string[] = $state([]);
+  let diffBlocks: DiffBlock[] = $state([]);
+  let displayLines: DisplayLine[] = $state([]);
+  let mergeText = $state('');
 
-  let mmH = 0;
-  let scrollY = 0;
-  let editorH = 0;
+  let mmH = $state(0);
+  let scrollY = $state(0);
+  let editorH = $state(0);
 
   const LH = 20;
   const PHDR_H = 28;
 
-  $: leftLangHint = leftText ? detectLanguage(leftText) : '';
-  $: rightLangHint = rightText ? detectLanguage(rightText) : '';
-  $: leftLineCount = leftText ? leftText.split('\n').length : 0;
-  $: rightLineCount = rightText ? rightText.split('\n').length : 0;
-  $: leftGutterH = leftLineCount * LH;
-  $: rightGutterH = rightLineCount * LH;
-  $: maxGutterH = Math.max(leftGutterH, rightGutterH, LH);
-  $: isFiltered = showOnlyChanges && diffResult !== null;
 
-  $: mmScale = mmH > 0 && maxGutterH > 0 ? mmH / maxGutterH : 0;
-  $: mmVpTop = scrollY * mmScale;
-  $: mmVpH = Math.max(editorH * mmScale, 8);
-  $: mmMarkers = diffBlocks.map(b => ({
-    type: b.type,
-    top: b.topY * mmScale,
-    height: Math.max(b.height * mmScale, 3)
-  }));
 
-  $: {
-    void leftText; void rightText; void formatJson; void ignoreWhitespace;
-    scheduleDiff();
-  }
 
   function scheduleDiff() {
     if (debounceTimer) clearTimeout(debounceTimer);
@@ -106,7 +88,7 @@
       return;
     }
 
-    const opts: DiffOptions = ignoreWhitespace ? { ignoreWhitespace: true } : undefined;
+    const opts: DiffOptions | undefined = ignoreWhitespace ? { ignoreWhitespace: true } : undefined;
     diffResult = computeSideBySideDiff(leftText, rightText, opts);
 
     changePositions = [];
@@ -128,7 +110,6 @@
     rebuildMergeText();
   }
 
-  $: if (diffResult) { void showOnlyChanges; rebuildDisplayLines(); rebuildMergeText(); }
 
   function rebuildDisplayLines() {
     if (!diffResult) { displayLines = []; return; }
@@ -340,18 +321,41 @@
       return e;
     }).join('');
   }
+  let leftLangHint = $derived(leftText ? detectLanguage(leftText) : '');
+  let rightLangHint = $derived(rightText ? detectLanguage(rightText) : '');
+  let leftLineCount = $derived(leftText ? leftText.split('\n').length : 0);
+  let rightLineCount = $derived(rightText ? rightText.split('\n').length : 0);
+  let leftGutterH = $derived(leftLineCount * LH);
+  let rightGutterH = $derived(rightLineCount * LH);
+  let maxGutterH = $derived(Math.max(leftGutterH, rightGutterH, LH));
+  let isFiltered = $derived(showOnlyChanges && diffResult !== null);
+  let mmScale = $derived(mmH > 0 && maxGutterH > 0 ? mmH / maxGutterH : 0);
+  let mmVpTop = $derived(scrollY * mmScale);
+  let mmVpH = $derived(Math.max(editorH * mmScale, 8));
+  let mmMarkers = $derived(diffBlocks.map(b => ({
+    type: b.type,
+    top: b.topY * mmScale,
+    height: Math.max(b.height * mmScale, 3)
+  })));
+  run(() => {
+    void leftText; void rightText; void formatJson; void ignoreWhitespace;
+    scheduleDiff();
+  });
+  run(() => {
+    if (diffResult) { void showOnlyChanges; rebuildDisplayLines(); rebuildMergeText(); }
+  });
 </script>
 
-<svelte:window on:mousemove={onDragMove} on:mouseup={onDragEnd} />
+<svelte:window onmousemove={onDragMove} onmouseup={onDragEnd} />
 
 <div class="dt">
   <!-- ═══ TOOLBAR ═══ -->
   <div class="dt-bar">
     <div class="dt-bar-l">
-      <button class="dt-b" on:click={swap}>⇄ Swap</button>
-      <button class="dt-b" on:click={clearAll}>Clear</button>
+      <button class="dt-b" onclick={swap}>⇄ Swap</button>
+      <button class="dt-b" onclick={clearAll}>Clear</button>
       <span class="dt-sep"></span>
-      <label class="dt-chk"><input type="checkbox" checked={formatJson} on:change={toggleFormatJson} /><span>JSON</span></label>
+      <label class="dt-chk"><input type="checkbox" checked={formatJson} onchange={toggleFormatJson} /><span>JSON</span></label>
       <label class="dt-chk"><input type="checkbox" bind:checked={wordWrap} /><span>Wrap</span></label>
       <label class="dt-chk"><input type="checkbox" bind:checked={ignoreWhitespace} /><span>Ignore WS</span></label>
       <label class="dt-chk"><input type="checkbox" bind:checked={showOnlyChanges} /><span>Diffs Only</span></label>
@@ -359,9 +363,9 @@
     <div class="dt-bar-r">
       {#if diffResult && changePositions.length > 0}
         <div class="dt-nav">
-          <button class="dt-nb" on:click={goPrev} title="Previous (Alt+P)">▲</button>
+          <button class="dt-nb" onclick={goPrev} title="Previous (Alt+P)">▲</button>
           <span class="dt-nl">{currentChangeIdx + 1}/{changePositions.length}</span>
-          <button class="dt-nb" on:click={goNext} title="Next (Alt+N)">▼</button>
+          <button class="dt-nb" onclick={goNext} title="Next (Alt+N)">▼</button>
         </div>
       {/if}
       {#if diffResult}
@@ -378,7 +382,7 @@
   <!-- ═══ BODY (minimap + content) ═══ -->
   <div class="dt-body">
     <!-- MINIMAP / quick navigator -->
-    <div class="dt-minimap" bind:clientHeight={mmH} on:click={mmClick} role="navigation" aria-label="Diff overview">
+    <div class="dt-minimap" bind:clientHeight={mmH} onclick={mmClick} onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && mmClick(e as unknown as MouseEvent)} role="button" tabindex="0" aria-label="Diff overview — click to navigate">
       {#if diffResult}
         <div class="dt-mm-vp" style="top:{mmVpTop}px;height:{mmVpH}px"></div>
         {#each mmMarkers as m}
@@ -396,13 +400,13 @@
           {#if leftLangHint}<span class="dt-badge">{leftLangHint}</span>{/if}
           {#if diffResult}<span class="dt-plc">{diffResult.stats.totalLeft} lines</span>{/if}
           <div class="dt-pactions">
-            <button class="dt-pa" on:click={() => loadFile('left')}>Load</button>
-            <button class="dt-pa" on:click={() => copyText('left')} disabled={!leftText}>{copiedSide === 'left' ? '✓' : 'Copy'}</button>
+            <button class="dt-pa" onclick={() => loadFile('left')}>Load</button>
+            <button class="dt-pa" onclick={() => copyText('left')} disabled={!leftText}>{copiedSide === 'left' ? '✓' : 'Copy'}</button>
           </div>
         </div>
         <div class="dt-editor" bind:clientHeight={editorH}>
           {#if isFiltered}
-            <div class="dt-fv" bind:this={leftFvEl} on:scroll={syncFvLeft} class:ww={wordWrap}>
+            <div class="dt-fv" bind:this={leftFvEl} onscroll={syncFvLeft} class:ww={wordWrap}>
               {#each displayLines as line (line.uid)}
                 {#if line.isSep}
                   <div class="dt-fv-sep"><span>⋯ {line.hiddenCount} unchanged lines ⋯</span></div>
@@ -426,7 +430,7 @@
               <div class="dt-bg" bind:this={leftBgEl} style="height:{leftGutterH}px">
                 {#each { length: leftLineCount } as _, i}<div class="dt-bgl {leftLineTypes[i] || ''}"></div>{/each}
               </div>
-              <textarea bind:this={leftTaEl} bind:value={leftText} on:scroll={syncLeft} class="dt-ta" class:ww={wordWrap} placeholder="Click here and paste or type original text..." spellcheck="false"></textarea>
+              <textarea bind:this={leftTaEl} bind:value={leftText} onscroll={syncLeft} class="dt-ta" class:ww={wordWrap} placeholder="Click here and paste or type original text..." spellcheck="false"></textarea>
             </div>
           {/if}
         </div>
@@ -440,8 +444,8 @@
             <div class="dt-cg-inner" bind:this={cgInnerEl} style="height:{maxGutterH}px">
               {#each diffBlocks as block, i}
                 <div class="dt-cg-block {block.type}" style="top:{block.topY}px;height:{Math.max(block.height, LH)}px">
-                  <button class="dt-cg-arr ltr" on:click={() => transferBlock(i, 'ltr')} title="Copy left → right"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.47 4.29a.75.75 0 0 1 1.06 0l3.75 3.75a.75.75 0 0 1 0 1.06l-3.75 3.75a.75.75 0 1 1-1.06-1.06L9.69 8.56H2.75a.75.75 0 0 1 0-1.5h6.94L6.47 5.35a.75.75 0 0 1 0-1.06Z"/><path d="M13.25 3a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-1.5 0v-8.5a.75.75 0 0 1 .75-.75Z"/></svg></button>
-                  <button class="dt-cg-arr rtl" on:click={() => transferBlock(i, 'rtl')} title="Copy right → left"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M9.53 4.29a.75.75 0 0 0-1.06 0L4.72 8.04a.75.75 0 0 0 0 1.06l3.75 3.75a.75.75 0 1 0 1.06-1.06L6.31 8.56h6.94a.75.75 0 0 0 0-1.5H6.31l3.22-3.21a.75.75 0 0 0 0-1.06Z"/><path d="M2.75 3a.75.75 0 0 0-.75.75v8.5a.75.75 0 0 0 1.5 0v-8.5A.75.75 0 0 0 2.75 3Z"/></svg></button>
+                  <button class="dt-cg-arr ltr" onclick={() => transferBlock(i, 'ltr')} title="Copy left → right"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.47 4.29a.75.75 0 0 1 1.06 0l3.75 3.75a.75.75 0 0 1 0 1.06l-3.75 3.75a.75.75 0 1 1-1.06-1.06L9.69 8.56H2.75a.75.75 0 0 1 0-1.5h6.94L6.47 5.35a.75.75 0 0 1 0-1.06Z"/><path d="M13.25 3a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-1.5 0v-8.5a.75.75 0 0 1 .75-.75Z"/></svg></button>
+                  <button class="dt-cg-arr rtl" onclick={() => transferBlock(i, 'rtl')} title="Copy right → left"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M9.53 4.29a.75.75 0 0 0-1.06 0L4.72 8.04a.75.75 0 0 0 0 1.06l3.75 3.75a.75.75 0 1 0 1.06-1.06L6.31 8.56h6.94a.75.75 0 0 0 0-1.5H6.31l3.22-3.21a.75.75 0 0 0 0-1.06Z"/><path d="M2.75 3a.75.75 0 0 0-.75.75v8.5a.75.75 0 0 0 1.5 0v-8.5A.75.75 0 0 0 2.75 3Z"/></svg></button>
                 </div>
               {/each}
             </div>
@@ -458,13 +462,13 @@
           {#if rightLangHint}<span class="dt-badge">{rightLangHint}</span>{/if}
           {#if diffResult}<span class="dt-plc">{diffResult.stats.totalRight} lines</span>{/if}
           <div class="dt-pactions">
-            <button class="dt-pa" on:click={() => loadFile('right')}>Load</button>
-            <button class="dt-pa" on:click={() => copyText('right')} disabled={!rightText}>{copiedSide === 'right' ? '✓' : 'Copy'}</button>
+            <button class="dt-pa" onclick={() => loadFile('right')}>Load</button>
+            <button class="dt-pa" onclick={() => copyText('right')} disabled={!rightText}>{copiedSide === 'right' ? '✓' : 'Copy'}</button>
           </div>
         </div>
         <div class="dt-editor">
           {#if isFiltered}
-            <div class="dt-fv" bind:this={rightFvEl} on:scroll={syncFvRight} class:ww={wordWrap}>
+            <div class="dt-fv" bind:this={rightFvEl} onscroll={syncFvRight} class:ww={wordWrap}>
               {#each displayLines as line (line.uid)}
                 {#if line.isSep}
                   <div class="dt-fv-sep"><span>⋯ {line.hiddenCount} unchanged lines ⋯</span></div>
@@ -488,7 +492,7 @@
               <div class="dt-bg" bind:this={rightBgEl} style="height:{rightGutterH}px">
                 {#each { length: rightLineCount } as _, i}<div class="dt-bgl {rightLineTypes[i] || ''}"></div>{/each}
               </div>
-              <textarea bind:this={rightTaEl} bind:value={rightText} on:scroll={syncRight} class="dt-ta" class:ww={wordWrap} placeholder="Click here and paste or type modified text..." spellcheck="false"></textarea>
+              <textarea bind:this={rightTaEl} bind:value={rightText} onscroll={syncRight} class="dt-ta" class:ww={wordWrap} placeholder="Click here and paste or type modified text..." spellcheck="false"></textarea>
             </div>
           {/if}
         </div>
@@ -497,14 +501,15 @@
   </div>
 
   <!-- ═══ DRAG HANDLE ═══ -->
-  <div class="dt-drag" on:mousedown={startDrag} class:active={isDragging}><div class="dt-drag-dots"></div></div>
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <div class="dt-drag" onmousedown={startDrag} class:active={isDragging} role="separator" aria-orientation="horizontal" aria-label="Resize diff/merge panels" tabindex="-1"><div class="dt-drag-dots"></div></div>
 
   <!-- ═══ MERGE OUTPUT ═══ -->
   <div class="dt-merge" style="height:{mergeHeight}px">
     <div class="dt-mhdr">
       <span class="dt-mlbl">Merge Output</span>
       <span class="dt-minfo">Use ‹ › arrows in gutter to transfer individual blocks</span>
-      <button class="dt-pa" on:click={copyMerge} disabled={!mergeText}>Copy</button>
+      <button class="dt-pa" onclick={copyMerge} disabled={!mergeText}>Copy</button>
     </div>
     <textarea class="dt-mta" value={mergeText} readonly placeholder="Merge output appears here when both panels have text..."></textarea>
   </div>

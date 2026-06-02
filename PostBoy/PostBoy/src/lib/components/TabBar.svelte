@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { stopPropagation } from 'svelte/legacy';
+
   import { tabs, activeTabId, addTab, removeTab, setActiveTab } from '$lib/stores/tabStore';
 </script>
 
@@ -7,12 +9,12 @@
     {#each $tabs as tab}
       <button 
         class="request-tab {$activeTabId === tab.id ? 'active' : ''}"
-        on:click={() => setActiveTab(tab.id)}
+        onclick={() => setActiveTab(tab.id)}
         title="{tab.url || tab.name || 'New Request'} · Navigate: Ctrl+Tab / Ctrl+Shift+Tab"
       >
         <span class="tab-method-dot {(tab.method || 'GET').toLowerCase()}"></span>
         <span class="tab-title">{tab.name || 'New Request'}</span>
-        <span class="tab-close-btn" role="button" tabindex="0" title="Close Tab (Ctrl+W)" on:click|stopPropagation={() => removeTab(tab.id)} on:keypress|stopPropagation={(e) => e.key === 'Enter' && removeTab(tab.id)}>
+        <span class="tab-close-btn" role="button" tabindex="0" title="Close Tab (Ctrl+W)" onclick={stopPropagation(() => removeTab(tab.id))} onkeypress={stopPropagation((e: Event) => (e as KeyboardEvent).key === 'Enter' && removeTab(tab.id))}>
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
           </svg>
@@ -20,7 +22,7 @@
       </button>
     {/each}
   </div>
-  <button class="new-tab-btn" on:click={() => addTab()} title="New Tab (Ctrl+T)">
+  <button class="new-tab-btn" onclick={() => addTab()} title="New Tab (Ctrl+T)">
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
       <path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
     </svg>

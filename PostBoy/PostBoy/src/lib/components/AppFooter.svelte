@@ -2,9 +2,13 @@
   import { onMount } from 'svelte';
   import { responseLayout, toggleResponseLayout, showShortcuts, showToolsPanel, showDiffTool } from '$lib/stores/uiStore';
 
-  export let version: string = '';
+  interface Props {
+    version?: string;
+  }
 
-  let zoomLevel = 100;
+  let { version = '' }: Props = $props();
+
+  let zoomLevel = $state(100);
   let currentZoom = 100;
   let animFrame = 0;
   let appContainer: HTMLElement | null = null;
@@ -95,7 +99,7 @@
   </div>
 
   <div class="footer-center">
-    <button class="zoom-btn" on:click={() => stepZoom(-10)} title="Zoom Out (Ctrl+-)" disabled={zoomLevel <= 50}>
+    <button class="zoom-btn" onclick={() => stepZoom(-10)} title="Zoom Out (Ctrl+-)" disabled={zoomLevel <= 50}>
       <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M4 8a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7A.5.5 0 0 1 4 8z"/></svg>
     </button>
     <input
@@ -105,41 +109,41 @@
       max="200"
       step="5"
       bind:value={zoomLevel}
-      on:input={onSliderInput}
+      oninput={onSliderInput}
       title="Zoom: {zoomLevel}%"
     />
-    <button class="zoom-btn" on:click={() => stepZoom(10)} title="Zoom In (Ctrl+=)" disabled={zoomLevel >= 200}>
+    <button class="zoom-btn" onclick={() => stepZoom(10)} title="Zoom In (Ctrl+=)" disabled={zoomLevel >= 200}>
       <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
     </button>
-    <button class="zoom-pct" on:click={resetZoom} title="Reset to 100%" class:is-zoomed={zoomLevel !== 100}>{zoomLevel}%</button>
+    <button class="zoom-pct" onclick={resetZoom} title="Reset to 100%" class:is-zoomed={zoomLevel !== 100}>{zoomLevel}%</button>
     {#if zoomLevel !== 100}
-      <button class="zoom-reset" on:click={resetZoom} title="Reset Zoom">
+      <button class="zoom-reset" onclick={resetZoom} title="Reset Zoom">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 1 1 .908-.418A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>
       </button>
     {/if}
   </div>
 
   <div class="footer-right">
-    <button class="footer-btn" on:click={() => showToolsPanel.update(v => v === 'jwt' ? false : 'jwt')} title="JWT Decoder (Ctrl+Shift+J)">
+    <button class="footer-btn" onclick={() => showToolsPanel.update(v => v === 'jwt' ? false : 'jwt')} title="JWT Decoder (Ctrl+Shift+J)">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 0a.5.5 0 0 1 .5.5v4A1.5 1.5 0 0 1 4.5 6h-4a.5.5 0 0 1 0-1h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 1 .5-.5Zm5 0a.5.5 0 0 1 .5.5v4a.5.5 0 0 0 .5.5h4a.5.5 0 0 1 0 1h-4A1.5 1.5 0 0 1 10 4.5v-4a.5.5 0 0 1 .5-.5ZM0 10.5a.5.5 0 0 1 .5-.5h4A1.5 1.5 0 0 1 6 11.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 1-.5-.5Zm10 1a1.5 1.5 0 0 1 1.5-1.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 0-.5.5v4a.5.5 0 0 1-1 0v-4Z"/></svg>
     </button>
-    <button class="footer-btn" on:click={() => showToolsPanel.update(v => v === 'encoder' ? false : 'encoder')} title="Base64/URL Encoder (Ctrl+Shift+E)">
+    <button class="footer-btn" onclick={() => showToolsPanel.update(v => v === 'encoder' ? false : 'encoder')} title="Base64/URL Encoder (Ctrl+Shift+E)">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.708 5.578L2.061 8.224l2.647 2.646-.708.708L.94 8.518a.5.5 0 0 1 0-.708L4 4.87l.708.708zm6.584 0l2.647 2.646-2.647 2.646.708.708 3.06-3.06a.5.5 0 0 0 0-.708L12 4.87l-.708.708zm-3.31-1.46-.925.382L8.94 12.118l.926-.382L7.982 4.118Z"/></svg>
     </button>
-    <button class="footer-btn" on:click={() => showToolsPanel.update(v => v === 'sql' ? false : 'sql')} title="SQL Query Runner (Ctrl+Shift+Q)">
+    <button class="footer-btn" onclick={() => showToolsPanel.update(v => v === 'sql' ? false : 'sql')} title="SQL Query Runner (Ctrl+Shift+Q)">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1c-4.4 0-7 1.8-7 3.5v7C1 13.2 3.6 15 8 15s7-1.8 7-3.5v-7C15 2.8 12.4 1 8 1Zm0 1.2c3.6 0 5.8 1.4 5.8 2.3S11.6 6.8 8 6.8 2.2 5.4 2.2 4.5 4.4 2.2 8 2.2ZM2.2 6.8c1.2.9 3.3 1.5 5.8 1.5s4.6-.6 5.8-1.5v1.7c0 .9-2.2 2.3-5.8 2.3S2.2 9.4 2.2 8.5V6.8Zm0 4c1.2.9 3.3 1.5 5.8 1.5s4.6-.6 5.8-1.5v1.7c0 .9-2.2 2.3-5.8 2.3S2.2 13.4 2.2 12.5v-1.7Z"/></svg>
     </button>
-    <button class="footer-btn" on:click={() => showDiffTool.update(v => !v)} title="Diff / Compare (Ctrl+Shift+B)">
+    <button class="footer-btn" onclick={() => showDiffTool.update(v => !v)} title="Diff / Compare (Ctrl+Shift+B)">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3.75A.75.75 0 0 1 2.75 3h5.5a.75.75 0 0 1 0 1.5h-5.5A.75.75 0 0 1 2 3.75Zm0 4A.75.75 0 0 1 2.75 7h5.5a.75.75 0 0 1 0 1.5h-5.5A.75.75 0 0 1 2 7.75Zm0 4a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 0 1.5h-5.5a.75.75 0 0 1-.75-.75ZM13.25 3a.75.75 0 0 0-.75.75v8.5a.75.75 0 0 0 1.5 0v-8.5a.75.75 0 0 0-.75-.75Zm-3 0a.75.75 0 0 0-.75.75v8.5a.75.75 0 0 0 1.5 0v-8.5a.75.75 0 0 0-.75-.75Z"/></svg>
     </button>
-    <button class="footer-btn" on:click={toggleResponseLayout} title="Toggle response panel position (Ctrl+Shift+L)">
+    <button class="footer-btn" onclick={toggleResponseLayout} title="Toggle response panel position (Ctrl+Shift+L)">
       {#if $responseLayout === 'right'}
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1 1h14v14H1V1zm1 7h12V2H2v6zm0 1v5h12V9H2z"/></svg>
       {:else}
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1 1h14v14H1V1zm7 1v12h6V2H8zM2 2v12h5V2H2z"/></svg>
       {/if}
     </button>
-    <button class="footer-btn" on:click={() => showShortcuts.update(v => !v)} title="Keyboard Shortcuts (Ctrl+/)">
+    <button class="footer-btn" onclick={() => showShortcuts.update(v => !v)} title="Keyboard Shortcuts (Ctrl+/)">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M14 5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h12zM2 4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H2z"/><path d="M13 10.25a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm0-2a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm-5 0A.25.25 0 0 1 8.25 8h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 8 8.75v-.5zm2 0a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm1 2a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm-5-2A.25.25 0 0 1 6.25 8h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 6 8.75v-.5zm-2 0A.25.25 0 0 1 4.25 8h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 4 8.75v-.5zm-2 0A.25.25 0 0 1 2.25 8h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 2 8.75v-.5zm11-2a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm-2 0a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm-2 0A.25.25 0 0 1 9.25 6h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 9 6.75v-.5zm-2 0A.25.25 0 0 1 7.25 6h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 7 6.75v-.5zm-2 0A.25.25 0 0 1 5.25 6h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 5 6.75v-.5zm-3 0A.25.25 0 0 1 2.25 6h1.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-1.5A.25.25 0 0 1 2 6.75v-.5zm0 4a.25.25 0 0 1 .25-.25h8.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-8.5a.25.25 0 0 1-.25-.25v-.5z"/></svg>
     </button>
     <span class="footer-credit" title="Developed by Gaurav Saroha">GS</span>

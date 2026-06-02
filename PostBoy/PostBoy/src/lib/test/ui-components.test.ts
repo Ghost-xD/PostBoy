@@ -80,7 +80,7 @@ describe('UI Component Tests', () => {
     it('should create new collection', async () => {
       vi.mocked(invoke).mockResolvedValue(1);
 
-      const collectionId = await invoke('db_create_collection', {
+      const collectionId = await invoke<any>('db_create_collection', {
         name: 'New Collection',
         description: 'Description'
       });
@@ -95,7 +95,7 @@ describe('UI Component Tests', () => {
     it('should delete collection', async () => {
       vi.mocked(invoke).mockResolvedValue(undefined);
 
-      await invoke('db_delete_collection', { id: 1 });
+      await invoke<any>('db_delete_collection', { id: 1 });
 
       expect(invoke).toHaveBeenCalledWith('db_delete_collection', { id: 1 });
     });
@@ -143,7 +143,7 @@ describe('UI Component Tests', () => {
     it('should clear history', async () => {
       vi.mocked(invoke).mockResolvedValue(undefined);
 
-      await invoke('db_clear_history');
+      await invoke<any>('db_clear_history');
 
       expect(invoke).toHaveBeenCalledWith('db_clear_history');
     });
@@ -356,7 +356,7 @@ describe('UI Component Tests', () => {
 
       vi.mocked(invoke).mockResolvedValue(1);
 
-      const requestId = await invoke('db_save_request', { requestData });
+      const requestId = await invoke<any>('db_save_request', { requestData });
 
       expect(requestId).toBe(1);
       expect(invoke).toHaveBeenCalledWith('db_save_request', { requestData });
@@ -390,7 +390,7 @@ describe('UI Component Tests', () => {
 
       vi.mocked(invoke).mockResolvedValue(mockExport);
 
-      const exportData = await invoke('db_export_collections');
+      const exportData = await invoke<any>('db_export_collections');
 
       expect(exportData).toBeDefined();
       expect(exportData.version).toBe('1.0');
@@ -411,7 +411,7 @@ describe('UI Component Tests', () => {
 
       vi.mocked(invoke).mockResolvedValue(undefined);
 
-      await invoke('db_import_collections', {
+      await invoke<any>('db_import_collections', {
         importData,
         overwrite: false
       });
@@ -428,7 +428,7 @@ describe('UI Component Tests', () => {
         collections: []
       };
 
-      const invalidData = {
+      const invalidData: { version?: string; collections: never[] } = {
         collections: []
       };
 
@@ -491,7 +491,7 @@ describe('UI Component Tests', () => {
     it('should save theme preference', async () => {
       vi.mocked(invoke).mockResolvedValue(undefined);
 
-      await invoke('db_set_setting', {
+      await invoke<any>('db_set_setting', {
         key: 'theme',
         value: 'dark'
       });

@@ -38,7 +38,7 @@ export function initWsListeners() {
   listen<{ id: string }>('ws-connected', (event) => {
     const { id } = event.payload;
     updateTabWs(id, { wsStatus: 'connected' });
-    addLog('info', `WebSocket connected: ${id}`);
+    addLog(`WebSocket connected: ${id}`, 'info');
   });
 
   listen<{ id: string; data: string; binary: boolean; timestamp: number }>('ws-message', (event) => {
@@ -56,13 +56,13 @@ export function initWsListeners() {
   listen<{ id: string; code: number; reason: string }>('ws-disconnected', (event) => {
     const { id, code, reason } = event.payload;
     updateTabWs(id, { wsStatus: 'disconnected' });
-    addLog('info', `WebSocket disconnected (${code}): ${reason}`);
+    addLog(`WebSocket disconnected (${code}): ${reason}`, 'info');
   });
 
   listen<{ id: string; error: string }>('ws-error', (event) => {
     const { id, error } = event.payload;
     updateTabWs(id, { wsStatus: 'error' });
-    addLog('error', `WebSocket error [${id}]: ${error}`);
+    addLog(`WebSocket error [${id}]: ${error}`, 'error');
   });
 }
 
@@ -72,7 +72,7 @@ export async function wsConnect(tabId: string, url: string, headers?: Record<str
     await ws.connect(tabId, url, headers);
   } catch (err: any) {
     updateTabWs(tabId, { wsStatus: 'error' });
-    addLog('error', `WebSocket connect failed: ${err}`);
+    addLog(`WebSocket connect failed: ${err}`, 'error');
   }
 }
 
@@ -88,7 +88,7 @@ export async function wsSend(tabId: string, message: string) {
       size: new Blob([message]).size,
     });
   } catch (err: any) {
-    addLog('error', `WebSocket send failed: ${err}`);
+    addLog(`WebSocket send failed: ${err}`, 'error');
   }
 }
 
@@ -96,7 +96,7 @@ export async function wsDisconnect(tabId: string) {
   try {
     await ws.disconnect(tabId);
   } catch (err: any) {
-    addLog('warn', `WebSocket disconnect: ${err}`);
+    addLog(`WebSocket disconnect: ${err}`, 'warn');
   }
 }
 

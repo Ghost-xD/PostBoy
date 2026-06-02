@@ -210,6 +210,94 @@ export const sse = {
   }
 };
 
+// AI Chatbot — every command requires the `chatbot` Cargo feature except
+// `aiSupported` which is always compiled.
+export const ai = {
+  isSupported: async (): Promise<boolean> => {
+    try {
+      return (await invoke('ai_supported')) as boolean;
+    } catch {
+      return false;
+    }
+  },
+  getStatus: async (): Promise<{ supported: boolean; engine_loaded: boolean; active_model_id: string | null; installed_model_ids: string[] }> => {
+    return (await invoke('ai_get_status')) as any;
+  },
+  listModels: async (): Promise<{ schemaVersion: number; models: Array<{ id: string; displayName: string; filename: string; sizeBytes: number; sha256: string | null; contextSize: number; recommendedThreads: number | null; supportsTools: boolean; toolCallStyle: string; downloads: Array<{ source: string; url: string }> }> }> => {
+    return (await invoke('ai_list_models')) as any;
+  },
+  listInstalled: async (): Promise<Array<{ id: string; path: string; size_bytes: number }>> => {
+    return (await invoke('ai_list_installed')) as any;
+  },
+  downloadModel: async (modelId: string): Promise<string> => {
+    return (await invoke('ai_download_model', { modelId })) as string;
+  },
+  cancelDownload: async (modelId: string): Promise<void> => {
+    return (await invoke('ai_cancel_download', { modelId })) as void;
+  },
+  pauseDownload: async (modelId: string): Promise<void> => {
+    return (await invoke('ai_pause_download', { modelId })) as void;
+  },
+  resumeDownload: async (modelId: string): Promise<string> => {
+    return (await invoke('ai_resume_download', { modelId })) as string;
+  },
+  deleteModel: async (modelId: string): Promise<void> => {
+    return (await invoke('ai_delete_model', { modelId })) as void;
+  },
+  loadEngine: async (modelId: string, threads?: number, ctxSize?: number): Promise<void> => {
+    return (await invoke('ai_load_engine', { modelId, threads, ctxSize })) as void;
+  },
+  unloadEngine: async (): Promise<void> => {
+    return (await invoke('ai_unload_engine')) as void;
+  },
+  chatSend: async (
+    messages: Array<{ role: string; content: string }>,
+    opts?: { systemPrompt?: string; maxTokens?: number }
+  ): Promise<string> => {
+    return (await invoke('ai_chat_send', {
+      messages,
+      systemPrompt: opts?.systemPrompt,
+      maxTokens: opts?.maxTokens,
+    })) as string;
+  },
+  chatCancel: async (): Promise<void> => {
+    return (await invoke('ai_chat_cancel')) as void;
+  },
+  getActionLog: async (): Promise<Array<{ timestamp: string; tool: string; arguments: any; result: any; error: string | null }>> => {
+    return (await invoke('ai_get_action_log')) as any;
+  },
+  clearActionLog: async (): Promise<void> => {
+    return (await invoke('ai_clear_action_log')) as void;
+  },
+
+  // Chat history
+  listChats: async (): Promise<Array<{ id: number; title: string; created_at: string; updated_at: string; message_count: number }>> => {
+    return (await invoke('ai_list_chats')) as any;
+  },
+  getChat: async (sessionId: number): Promise<{ id: number; title: string; messages: Array<{ role: string; content: string; timestamp: number }> }> => {
+    return (await invoke('ai_get_chat', { sessionId })) as any;
+  },
+  saveChat: async (sessionId: number | null, title: string, messages: Array<{ role: string; content: string; timestamp: number }>): Promise<number> => {
+    return (await invoke('ai_save_chat', { sessionId, title, messages })) as number;
+  },
+  deleteChat: async (sessionId: number): Promise<void> => {
+    return (await invoke('ai_delete_chat', { sessionId })) as void;
+  },
+  deleteAllChats: async (): Promise<void> => {
+    return (await invoke('ai_delete_all_chats')) as void;
+  },
+
+  // Composer autocomplete: returns the bundle of past user phrases + saved
+  // request/collection names. The frontend builds a typeahead off this.
+  getSuggestionCorpus: async (): Promise<{
+    phrases: Array<{ text: string; frequency: number }>;
+    requests: Array<{ name: string; collection: string | null }>;
+    collections: string[];
+  }> => {
+    return (await invoke('ai_get_suggestion_corpus')) as any;
+  },
+};
+
 // WebSocket client
 export const ws = {
   connect: async (id: string, url: string, headers?: Record<string, string>) => {

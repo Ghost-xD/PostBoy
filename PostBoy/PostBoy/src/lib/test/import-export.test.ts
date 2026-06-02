@@ -43,7 +43,7 @@ describe('Import/Export Tests', () => {
 
       vi.mocked(invoke).mockResolvedValue(mockExportData);
 
-      const exportData = await invoke('db_export_collections');
+      const exportData = await invoke<any>('db_export_collections');
 
       expect(exportData).toBeDefined();
       expect(exportData.version).toBe('1.0');
@@ -61,7 +61,7 @@ describe('Import/Export Tests', () => {
 
       vi.mocked(invoke).mockResolvedValue(mockExportData);
 
-      const exportData = await invoke('db_export_collections');
+      const exportData = await invoke<any>('db_export_collections');
 
       expect(exportData.collections).toHaveLength(0);
     });
@@ -82,7 +82,7 @@ describe('Import/Export Tests', () => {
 
       vi.mocked(invoke).mockResolvedValue(mockExportData);
 
-      const exportData = await invoke('db_export_collections');
+      const exportData = await invoke<any>('db_export_collections');
       const collection = exportData.collections[0];
 
       expect(collection.id).toBeDefined();
@@ -117,7 +117,7 @@ describe('Import/Export Tests', () => {
 
       vi.mocked(invoke).mockResolvedValue(mockExportData);
 
-      const exportData = await invoke('db_export_collections');
+      const exportData = await invoke<any>('db_export_collections');
       const request = exportData.collections[0].requests[0];
 
       expect(request.id).toBeDefined();
@@ -157,7 +157,7 @@ describe('Import/Export Tests', () => {
 
       vi.mocked(invoke).mockResolvedValue(mockExportData);
 
-      const exportData = await invoke('db_export_collections');
+      const exportData = await invoke<any>('db_export_collections');
 
       expect(exportData.collections).toHaveLength(3);
       expect(exportData.collections[0].name).toBe('Collection 1');
@@ -186,7 +186,7 @@ describe('Import/Export Tests', () => {
 
       vi.mocked(invoke).mockResolvedValue(mockExportData);
 
-      const exportData = await invoke('db_export_collections');
+      const exportData = await invoke<any>('db_export_collections');
 
       expect(exportData.collections[0].requests).toHaveLength(4);
     });
@@ -207,7 +207,7 @@ describe('Import/Export Tests', () => {
 
       vi.mocked(invoke).mockResolvedValue(undefined);
 
-      await invoke('db_import_collections', {
+      await invoke<any>('db_import_collections', {
         importData,
         overwrite: false
       });
@@ -232,7 +232,7 @@ describe('Import/Export Tests', () => {
 
       vi.mocked(invoke).mockResolvedValue(undefined);
 
-      await invoke('db_import_collections', {
+      await invoke<any>('db_import_collections', {
         importData,
         overwrite: true
       });
@@ -266,7 +266,7 @@ describe('Import/Export Tests', () => {
 
       vi.mocked(invoke).mockResolvedValue(undefined);
 
-      await invoke('db_import_collections', {
+      await invoke<any>('db_import_collections', {
         importData,
         overwrite: false
       });
@@ -381,7 +381,7 @@ describe('Import/Export Tests', () => {
 
       vi.mocked(invoke).mockResolvedValue(undefined);
 
-      await invoke('write_file', {
+      await invoke<any>('write_file', {
         path: filePath,
         contents: fileContent
       });
@@ -400,7 +400,7 @@ describe('Import/Export Tests', () => {
 
       vi.mocked(invoke).mockResolvedValue(mockFileContent);
 
-      const content = await invoke('read_file', {
+      const content = await invoke<any>('read_file', {
         path: '/path/to/import.json'
       });
 
@@ -414,7 +414,7 @@ describe('Import/Export Tests', () => {
       const mockPath = '/path/to/collections-export.json';
       vi.mocked(invoke).mockResolvedValue(mockPath);
 
-      const filePath = await invoke('show_save_dialog', {
+      const filePath = await invoke<any>('show_save_dialog', {
         title: 'Export Collections',
         defaultPath: 'postboy-collections.json'
       });
@@ -430,7 +430,7 @@ describe('Import/Export Tests', () => {
       const mockPath = '/path/to/import.json';
       vi.mocked(invoke).mockResolvedValue(mockPath);
 
-      const filePath = await invoke('show_open_dialog', {
+      const filePath = await invoke<any>('show_open_dialog', {
         title: 'Import Collections',
         filters: ['.json']
       });
@@ -531,11 +531,11 @@ describe('Import/Export Tests', () => {
 
       // Export
       vi.mocked(invoke).mockResolvedValueOnce(originalData);
-      const exportData = await invoke('db_export_collections');
+      const exportData = await invoke<any>('db_export_collections');
 
       // Import
       vi.mocked(invoke).mockResolvedValueOnce(undefined);
-      await invoke('db_import_collections', {
+      await invoke<any>('db_import_collections', {
         importData: exportData,
         overwrite: false
       });
@@ -600,7 +600,7 @@ describe('Import/Export Tests', () => {
       };
 
       vi.mocked(invoke).mockResolvedValue(largeData);
-      const exportData = await invoke('db_export_collections');
+      const exportData = await invoke<any>('db_export_collections');
 
       expect(exportData.collections).toHaveLength(100);
       expect(exportData.collections[0].requests).toHaveLength(50);

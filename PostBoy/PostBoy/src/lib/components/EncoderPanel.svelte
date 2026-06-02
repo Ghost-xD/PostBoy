@@ -1,16 +1,18 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { onMount, onDestroy } from 'svelte';
   import { encodeBase64, decodeBase64, encodeUrlString, decodeUrlString } from '$lib/utils/encodingUtils';
 
   type Mode = 'base64' | 'url';
   type Direction = 'encode' | 'decode';
 
-  let mode: Mode = 'base64';
-  let direction: Direction = 'encode';
-  let input = '';
-  let output = '';
-  let error = '';
-  let copied = false;
+  let mode: Mode = $state('base64');
+  let direction: Direction = $state('encode');
+  let input = $state('');
+  let output = $state('');
+  let error = $state('');
+  let copied = $state(false);
 
   function handlePanelKeydown(e: KeyboardEvent) {
     // Ctrl+D — toggle encode/decode direction
@@ -35,7 +37,7 @@
     window.removeEventListener('keydown', handlePanelKeydown);
   });
 
-  $: {
+  run(() => {
     error = '';
     if (!input) {
       output = '';
@@ -51,7 +53,7 @@
         error = e.message || 'Invalid input';
       }
     }
-  }
+  });
 
   function swap() {
     const temp = input;
@@ -78,12 +80,12 @@
 <div class="encoder-panel">
   <div class="encoder-toolbar">
     <div class="mode-tabs">
-      <button class="mode-tab" class:active={mode === 'base64'} on:click={() => mode = 'base64'}>Base64</button>
-      <button class="mode-tab" class:active={mode === 'url'} on:click={() => mode = 'url'}>URL</button>
+      <button class="mode-tab" class:active={mode === 'base64'} onclick={() => mode = 'base64'}>Base64</button>
+      <button class="mode-tab" class:active={mode === 'url'} onclick={() => mode = 'url'}>URL</button>
     </div>
     <div class="direction-toggle">
-      <button class="dir-btn" class:active={direction === 'encode'} on:click={() => direction = 'encode'}>Encode</button>
-      <button class="dir-btn" class:active={direction === 'decode'} on:click={() => direction = 'decode'}>Decode</button>
+      <button class="dir-btn" class:active={direction === 'encode'} onclick={() => direction = 'encode'}>Encode</button>
+      <button class="dir-btn" class:active={direction === 'decode'} onclick={() => direction = 'decode'}>Decode</button>
     </div>
   </div>
 
@@ -91,7 +93,7 @@
     <div class="encoder-pane">
       <div class="pane-header">
         <span class="pane-label">Input</span>
-        <button class="pane-action" on:click={clear}>Clear</button>
+        <button class="pane-action" onclick={clear}>Clear</button>
       </div>
       <textarea
         bind:value={input}
@@ -103,7 +105,7 @@
     </div>
 
     <div class="swap-row">
-      <button class="swap-btn" on:click={swap} title="Swap input and output">
+      <button class="swap-btn" onclick={swap} title="Swap input and output">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M5.22 14.78a.75.75 0 0 0 1.06-1.06L4.56 12h8.69a.75.75 0 0 0 0-1.5H4.56l1.72-1.72a.75.75 0 0 0-1.06-1.06l-3 3a.75.75 0 0 0 0 1.06l3 3ZM10.78 1.22a.75.75 0 0 0-1.06 1.06L11.44 4H2.75a.75.75 0 0 0 0 1.5h8.69l-1.72 1.72a.75.75 0 1 0 1.06 1.06l3-3a.75.75 0 0 0 0-1.06l-3-3Z"/></svg>
       </button>
     </div>
@@ -114,7 +116,7 @@
         {#if output}
           <span class="output-size">{output.length} chars</span>
         {/if}
-        <button class="pane-action" on:click={copyOutput} disabled={!output}>
+        <button class="pane-action" onclick={copyOutput} disabled={!output}>
           {copied ? 'Copied!' : 'Copy'}
         </button>
       </div>

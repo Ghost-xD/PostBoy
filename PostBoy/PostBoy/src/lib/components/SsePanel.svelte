@@ -1,30 +1,34 @@
 <script lang="ts">
   import { activeTab } from '$lib/stores/tabStore';
   import { sseConnect, sseDisconnect, clearSseMessages } from '$lib/stores/sseStore';
-  import { afterUpdate } from 'svelte';
 
-  let autoScroll = true;
-  let autoReconnect = true;
-  let filterEventType = '';
-  let messageLog: HTMLDivElement;
+  let autoScroll = $state(true);
+  let autoReconnect = $state(true);
+  let filterEventType = $state('');
+  let messageLog: HTMLDivElement | undefined = $state();
 
-  $: tabId = $activeTab.id;
-  $: sseStatus = $activeTab.sseStatus;
-  $: sseMessages = $activeTab.sseMessages || [];
-  $: url = $activeTab.url;
-  $: headers = ($activeTab.headers || []).filter((h: any) => h.key && h.value);
+  const tabId = $derived($activeTab.id);
+  const sseStatus = $derived($activeTab.sseStatus);
+  const sseMessages = $derived($activeTab.sseMessages || []);
+  const url = $derived($activeTab.url);
+  const headers = $derived(($activeTab.headers || []).filter((h: any) => h.key && h.value));
 
-  $: isConnected = sseStatus === 'connected';
-  $: isConnecting = sseStatus === 'connecting';
-  $: isReconnecting = sseStatus === 'reconnecting';
-  $: isActive = isConnected || isConnecting || isReconnecting;
+  const isConnected = $derived(sseStatus === 'connected');
+  const isConnecting = $derived(sseStatus === 'connecting');
+  const isReconnecting = $derived(sseStatus === 'reconnecting');
+  const isActive = $derived(isConnected || isConnecting || isReconnecting);
 
-  $: eventTypes = [...new Set(sseMessages.map(m => m.eventType))].sort();
-  $: filteredMessages = filterEventType
+  const eventTypes = $derived([...new Set(sseMessages.map(m => m.eventType))].sort());
+  const filteredMessages = $derived(filterEventType
     ? sseMessages.filter(m => m.eventType === filterEventType)
-    : sseMessages;
+    : sseMessages);
 
-  afterUpdate(() => {
+  // Auto-scroll the log to the bottom whenever new events arrive.
+  // Reading `sseMessages.length` is what makes the effect re-run on each
+  // new message; the previous Svelte-4 implementation used `afterUpdate`
+  // which had the same effect implicitly.
+  $effect(() => {
+    void sseMessages.length;
     if (autoScroll && messageLog) {
       messageLog.scrollTop = messageLog.scrollHeight;
     }
@@ -92,7 +96,7 @@
       </label>
       <button
         class="sse-connect-btn {isActive ? 'disconnect' : ''}"
-        on:click={handleConnect}
+        onclick={handleConnect}
         disabled={isConnecting || !url}
         title={isActive ? 'Disconnect (Ctrl+Enter)' : 'Connect (Ctrl+Enter)'}
       >
@@ -134,7 +138,7 @@
         <input type="checkbox" bind:checked={autoScroll} />
         Auto-scroll
       </label>
-      <button class="clear-btn" on:click={() => clearSseMessages(tabId)} title="Clear messages (Ctrl+L)">
+      <button class="clear-btn" onclick={() => clearSseMessages(tabId)} title="Clear messages (Ctrl+L)">
         Clear
       </button>
     </div>
@@ -166,7 +170,7 @@
             {#if msg.lastEventId}
               <span class="msg-event-id" title="Last Event ID">id: {msg.lastEventId}</span>
             {/if}
-            <button class="msg-copy-btn" on:click={() => navigator.clipboard.writeText(msg.data)} title="Copy">
+            <button class="msg-copy-btn" onclick={() => navigator.clipboard.writeText(msg.data)} title="Copy">
               <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25ZM5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>
             </button>
           </div>
@@ -192,8 +196,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 8px 12px;
-    background: #2b2d31;
-    border-bottom: 1px solid #3e4045;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
     gap: 12px;
     flex-shrink: 0;
   }
@@ -257,8 +261,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 6px 12px;
-    background: #2b2d31;
-    border-bottom: 1px solid #3e4045;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
     font-size: 12px;
     flex-shrink: 0;
   }
@@ -286,8 +290,8 @@
 
   .event-filter {
     padding: 2px 6px;
-    background: #1e1f22;
-    border: 1px solid #3e4045;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
     border-radius: 3px;
     color: #dbdee1;
     font-size: 11px;
@@ -308,7 +312,7 @@
   .clear-btn {
     padding: 3px 8px;
     background: transparent;
-    border: 1px solid #3e4045;
+    border: 1px solid var(--border-color);
     border-radius: 3px;
     color: #b5bac1;
     font-size: 11px;

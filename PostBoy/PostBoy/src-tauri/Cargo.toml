@@ -17,6 +17,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[features]
+default = ["chatbot"]
+chatbot = ["dep:llama-cpp-2", "dep:sha2", "dep:num_cpus", "dep:encoding_rs"]
+
 [dependencies]
 tauri = { version = "2", features = ["devtools"] }
 tauri-plugin-opener = "2"
@@ -44,4 +48,24 @@ base64 = "0.22"
 url = "2"
 hickory-resolver = "0.25"
 surge-ping = "0.8"
+
+# Optional dependencies for the `chatbot` feature.
+# When the feature is disabled (`--no-default-features`), none of these are compiled,
+# which means no C++/cmake toolchain is needed to build PostBoy without the chatbot.
+sha2 = { version = "0.10", optional = true }
+num_cpus = { version = "1", optional = true }
+encoding_rs = { version = "0.8", optional = true }
+
+# llama-cpp-2 with platform-appropriate GPU backend baked in:
+#   - macOS  → Metal (no extra build deps; Metal ships with the OS)
+#   - others → Vulkan (universal across NVIDIA/AMD/Intel; requires the
+#     Vulkan SDK to be installed at build time:
+#     https://vulkan.lunarg.com/sdk/home)
+# At runtime, llama.cpp probes for a usable device and falls back to CPU
+# automatically if no GPU/driver is found, so users with no GPU still work.
+[target.'cfg(target_os = "macos")'.dependencies]
+llama-cpp-2 = { version = "0.1", optional = true, default-features = false, features = ["metal"] }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+llama-cpp-2 = { version = "0.1", optional = true, default-features = false, features = ["vulkan"] }
 

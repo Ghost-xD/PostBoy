@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { activeModals, closeModal, updateModalInput, updateModalField } from '$lib/utils/modalManager.svelte';
   import type { Modal } from '$lib/utils/modalManager.svelte';
 
@@ -55,14 +58,15 @@
 {#each $activeModals as modal (modal.id)}
   <div
     class="modal-overlay"
-    on:click={() => handleBackdropClick(modal)}
-    on:keydown={(e) => handleKeydown(e, modal)}
+    onclick={() => handleBackdropClick(modal)}
+    onkeydown={(e) => handleKeydown(e, modal)}
     role="dialog"
     aria-modal="true"
+    tabindex="-1"
   >
-    <div class="modal-container {getAccentClass(modal.type || 'info')}" role="presentation" on:click|stopPropagation use:focusFirst>
+    <div class="modal-container {getAccentClass(modal.type || 'info')}" role="presentation" onclick={stopPropagation(bubble('click'))} use:focusFirst>
       {#if modal.cancelable}
-        <button class="modal-x" on:click={() => closeModal(modal.id, -1)} aria-label="Close">
+        <button class="modal-x" onclick={() => closeModal(modal.id, -1)} aria-label="Close">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
           </svg>
@@ -82,12 +86,13 @@
       <!-- Simple text input (legacy prompt support) -->
       {#if modal.inputValue !== undefined && !modal.fields}
         <div class="modal-fields">
+          <!-- svelte-ignore a11y_autofocus -->
           <input
             type="text"
             class="field-input"
             value={modal.inputValue}
-            on:input={(e) => updateModalInput(modal.id, e.currentTarget.value)}
-            on:keydown={(e) => e.key === 'Enter' && closeModal(modal.id, 0)}
+            oninput={(e) => updateModalInput(modal.id, e.currentTarget.value)}
+            onkeydown={(e) => e.key === 'Enter' && closeModal(modal.id, 0)}
             placeholder={modal.message}
             autofocus
           />
@@ -101,11 +106,12 @@
             <div class="field-group">
               <label class="field-label" for="field-{field.id}">{field.label}</label>
               {#if field.type === 'select' && field.options}
+                <!-- svelte-ignore a11y_autofocus -->
                 <select
                   id="field-{field.id}"
                   class="field-select"
                   value={field.value}
-                  on:change={(e) => updateModalField(modal.id, field.id, e.currentTarget.value)}
+                  onchange={(e) => updateModalField(modal.id, field.id, e.currentTarget.value)}
                   autofocus={field.autofocus}
                 >
                   {#each field.options as opt}
@@ -113,14 +119,15 @@
                   {/each}
                 </select>
               {:else}
+                <!-- svelte-ignore a11y_autofocus -->
                 <input
                   id="field-{field.id}"
                   type={field.type === 'password' ? 'password' : 'text'}
                   class="field-input"
                   value={field.value}
                   placeholder={field.placeholder || ''}
-                  on:input={(e) => updateModalField(modal.id, field.id, e.currentTarget.value)}
-                  on:keydown={(e) => e.key === 'Enter' && closeModal(modal.id, 0)}
+                  oninput={(e) => updateModalField(modal.id, field.id, e.currentTarget.value)}
+                  onkeydown={(e) => e.key === 'Enter' && closeModal(modal.id, 0)}
                   autofocus={field.autofocus}
                 />
               {/if}
@@ -133,7 +140,7 @@
         {#each (modal.buttons || ['OK']) as button, idx}
           <button
             class="modal-btn {idx === (modal.defaultButton || 0) ? 'btn-primary' : 'btn-secondary'}"
-            on:click={() => closeModal(modal.id, idx)}
+            onclick={() => closeModal(modal.id, idx)}
             type="button"
           >
             {button}
@@ -289,7 +296,7 @@
   .field-input:focus,
   .field-select:focus {
     border-color: var(--accent-color);
-    box-shadow: 0 0 0 2px rgba(135, 118, 213, 0.15);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 18%, transparent);
   }
 
   .field-select {
@@ -340,7 +347,7 @@
 
   .btn-primary:hover {
     filter: brightness(1.1);
-    box-shadow: 0 4px 12px rgba(135, 118, 213, 0.35);
+    box-shadow: 0 4px 12px var(--accent-glow);
   }
 
   .btn-secondary {

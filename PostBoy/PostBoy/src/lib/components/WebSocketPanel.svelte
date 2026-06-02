@@ -1,23 +1,27 @@
 <script lang="ts">
   import { activeTab, type WsMessage } from '$lib/stores/tabStore';
   import { wsConnect, wsSend, wsDisconnect, clearWsMessages } from '$lib/stores/wsStore';
-  import { onMount, afterUpdate } from 'svelte';
 
-  let messageInput = '';
-  let autoScroll = true;
-  let messageLog: HTMLDivElement;
+  let messageInput = $state('');
+  let autoScroll = $state(true);
+  let messageLog: HTMLDivElement | undefined = $state();
 
-  $: tabId = $activeTab.id;
-  $: wsStatus = $activeTab.wsStatus;
-  $: wsMessages = $activeTab.wsMessages || [];
-  $: url = $activeTab.url;
-  $: headers = ($activeTab.headers || []).filter(h => h.key && h.value);
-  $: sentCount = wsMessages.filter(m => m.direction === 'sent').length;
-  $: receivedCount = wsMessages.filter(m => m.direction === 'received').length;
-  $: isConnected = wsStatus === 'connected';
-  $: isConnecting = wsStatus === 'connecting';
+  const tabId = $derived($activeTab.id);
+  const wsStatus = $derived($activeTab.wsStatus);
+  const wsMessages = $derived($activeTab.wsMessages || []);
+  const url = $derived($activeTab.url);
+  const headers = $derived(($activeTab.headers || []).filter((h: { key: string; value: string }) => h.key && h.value));
+  const sentCount = $derived(wsMessages.filter((m: WsMessage) => m.direction === 'sent').length);
+  const receivedCount = $derived(wsMessages.filter((m: WsMessage) => m.direction === 'received').length);
+  const isConnected = $derived(wsStatus === 'connected');
+  const isConnecting = $derived(wsStatus === 'connecting');
 
-  afterUpdate(() => {
+  // Auto-scroll the log to the bottom whenever new messages arrive.
+  // Reading `wsMessages.length` is what makes the effect re-run on each
+  // new message; the previous Svelte-4 implementation used `afterUpdate`
+  // which had the same effect implicitly.
+  $effect(() => {
+    void wsMessages.length;
     if (autoScroll && messageLog) {
       messageLog.scrollTop = messageLog.scrollHeight;
     }
@@ -86,7 +90,7 @@
     </div>
     <button
       class="ws-connect-btn {isConnected ? 'disconnect' : ''}"
-      on:click={handleConnect}
+      onclick={handleConnect}
       disabled={isConnecting || !url}
       title={isConnected ? 'Disconnect (Ctrl+Enter)' : 'Connect (Ctrl+Enter)'}
     >
@@ -119,7 +123,7 @@
         <input type="checkbox" bind:checked={autoScroll} />
         Auto-scroll
       </label>
-      <button class="clear-btn" on:click={() => clearWsMessages(tabId)} title="Clear messages (Ctrl+L)">
+      <button class="clear-btn" onclick={() => clearWsMessages(tabId)} title="Clear messages (Ctrl+L)">
         Clear
       </button>
     </div>
@@ -154,7 +158,7 @@
             {#if msg.type === 'binary'}
               <span class="msg-badge binary-badge">BIN</span>
             {/if}
-            <button class="msg-copy-btn" on:click={() => navigator.clipboard.writeText(msg.data)} title="Copy">
+            <button class="msg-copy-btn" onclick={() => navigator.clipboard.writeText(msg.data)} title="Copy">
               <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25ZM5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>
             </button>
           </div>
@@ -167,14 +171,14 @@
   <div class="ws-composer" class:disabled={!isConnected}>
     <textarea
       bind:value={messageInput}
-      on:keydown={handleKeydown}
+      onkeydown={handleKeydown}
       placeholder={isConnected ? 'Type a message... (Enter to send, Shift+Enter for newline)' : 'Connect to send messages'}
       disabled={!isConnected}
       rows="3"
     ></textarea>
     <button
       class="ws-send-btn"
-      on:click={handleSend}
+      onclick={handleSend}
       disabled={!isConnected || !messageInput.trim()}
       title="Send message (Enter)"
     >
@@ -198,8 +202,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 8px 12px;
-    background: #2b2d31;
-    border-bottom: 1px solid #3e4045;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
     gap: 12px;
     flex-shrink: 0;
   }
@@ -260,8 +264,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 6px 12px;
-    background: #2b2d31;
-    border-bottom: 1px solid #3e4045;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
     font-size: 12px;
     flex-shrink: 0;
   }
@@ -303,7 +307,7 @@
   .clear-btn {
     padding: 3px 8px;
     background: transparent;
-    border: 1px solid #3e4045;
+    border: 1px solid var(--border-color);
     border-radius: 3px;
     color: #b5bac1;
     font-size: 11px;
@@ -438,8 +442,8 @@
     display: flex;
     gap: 8px;
     padding: 10px 12px;
-    background: #2b2d31;
-    border-top: 1px solid #3e4045;
+    background: var(--bg-tertiary);
+    border-top: 1px solid var(--border-color);
     flex-shrink: 0;
   }
 
@@ -450,8 +454,8 @@
   .ws-composer textarea {
     flex: 1;
     padding: 8px 12px;
-    background: #1e1f22;
-    border: 1px solid #3e4045;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
     border-radius: 6px;
     color: #dbdee1;
     font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;

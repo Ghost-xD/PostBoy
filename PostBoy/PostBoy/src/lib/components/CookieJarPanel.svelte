@@ -23,20 +23,20 @@
     name: string;
   }
 
-  let collections: Collection[] = [];
-  let selectedCollectionId: number | null = null;
-  let cookies: CookieRow[] = [];
-  let searchFilter = '';
-  let editingCookie: Partial<CookieRow> | null = null;
-  let showAddForm = false;
+  let collections: Collection[] = $state([]);
+  let selectedCollectionId: number | null = $state(null);
+  let cookies: CookieRow[] = $state([]);
+  let searchFilter = $state('');
+  let editingCookie: Partial<CookieRow> | null = $state(null);
+  let showAddForm = $state(false);
 
-  $: filteredCookies = searchFilter
+  let filteredCookies = $derived(searchFilter
     ? cookies.filter(c =>
         c.name.toLowerCase().includes(searchFilter.toLowerCase()) ||
         c.domain.toLowerCase().includes(searchFilter.toLowerCase()) ||
         c.value.toLowerCase().includes(searchFilter.toLowerCase())
       )
-    : cookies;
+    : cookies);
 
   onMount(async () => {
     try {
@@ -134,7 +134,7 @@
 <div class="cookie-panel">
   <div class="cookie-header">
     <div class="header-left">
-      <select class="collection-select" bind:value={selectedCollectionId} on:change={handleCollectionChange}>
+      <select class="collection-select" bind:value={selectedCollectionId} onchange={handleCollectionChange}>
         {#each collections as col}
           <option value={col.id}>{col.name}</option>
         {/each}
@@ -148,11 +148,11 @@
         bind:value={searchFilter}
         placeholder="Filter cookies..."
       />
-      <button class="action-btn add-btn" on:click={startAdd} title="Add cookie">
+      <button class="action-btn add-btn" onclick={startAdd} title="Add cookie">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 8 2Z"/></svg>
         Add
       </button>
-      <button class="action-btn clear-btn" on:click={clearAll} disabled={cookies.length === 0} title="Clear all cookies">
+      <button class="action-btn clear-btn" onclick={clearAll} disabled={cookies.length === 0} title="Clear all cookies">
         Clear All
       </button>
     </div>
@@ -199,8 +199,8 @@
         </label>
       </div>
       <div class="form-actions">
-        <button class="save-btn" on:click={saveCookie}>Save</button>
-        <button class="cancel-btn" on:click={cancelEdit}>Cancel</button>
+        <button class="save-btn" onclick={saveCookie}>Save</button>
+        <button class="cancel-btn" onclick={cancelEdit}>Cancel</button>
       </div>
     </div>
   {/if}
@@ -247,10 +247,10 @@
                 <span class="flag samesite-flag" title="SameSite: {cookie.same_site}">{cookie.same_site[0]}</span>
               </td>
               <td class="actions-cell">
-                <button class="icon-btn" on:click={() => startEdit(cookie)} title="Edit">
+                <button class="icon-btn" onclick={() => startEdit(cookie)} title="Edit">
                   <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.25.25 0 0 0-.064.108l-.558 1.953 1.953-.558a.249.249 0 0 0 .108-.064l6.286-6.286Z"/></svg>
                 </button>
-                <button class="icon-btn delete-btn" on:click={() => deleteCookie(cookie)} title="Delete">
+                <button class="icon-btn delete-btn" onclick={() => deleteCookie(cookie)} title="Delete">
                   <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM6.5 1.75v1.25h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25ZM3.613 5.5l.7 8.39a1.5 1.5 0 0 0 1.494 1.36h4.386a1.5 1.5 0 0 0 1.494-1.36l.7-8.39Z"/></svg>
                 </button>
               </td>
@@ -277,8 +277,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 10px 14px;
-    background: #2b2d31;
-    border-bottom: 1px solid #3e4045;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
     gap: 12px;
     flex-shrink: 0;
     flex-wrap: wrap;
@@ -292,8 +292,8 @@
 
   .collection-select {
     padding: 5px 8px;
-    background: #1e1f22;
-    border: 1px solid #3e4045;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     color: #dbdee1;
     font-size: 13px;
@@ -314,8 +314,8 @@
 
   .search-input {
     padding: 5px 10px;
-    background: #1e1f22;
-    border: 1px solid #3e4045;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     color: #dbdee1;
     font-size: 12px;
@@ -330,7 +330,7 @@
     align-items: center;
     gap: 4px;
     padding: 5px 10px;
-    border: 1px solid #3e4045;
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     background: transparent;
     color: #b5bac1;
@@ -346,8 +346,8 @@
 
   .cookie-form {
     padding: 12px 14px;
-    background: #2b2d31;
-    border-bottom: 1px solid #3e4045;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -374,8 +374,8 @@
   .form-row input[type="text"],
   .form-row select {
     padding: 5px 8px;
-    background: #1e1f22;
-    border: 1px solid #3e4045;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     color: #dbdee1;
     font-size: 12px;
@@ -417,7 +417,7 @@
   .cancel-btn {
     padding: 5px 14px;
     background: transparent;
-    border: 1px solid #3e4045;
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     color: #b5bac1;
     font-size: 12px;
@@ -452,7 +452,7 @@
   .cookie-table thead th {
     position: sticky;
     top: 0;
-    background: #2b2d31;
+    background: var(--bg-tertiary);
     padding: 6px 10px;
     text-align: left;
     font-weight: 600;
@@ -460,7 +460,7 @@
     color: #b5bac1;
     text-transform: uppercase;
     letter-spacing: 0.03em;
-    border-bottom: 1px solid #3e4045;
+    border-bottom: 1px solid var(--border-color);
   }
 
   .cookie-table tbody tr {
