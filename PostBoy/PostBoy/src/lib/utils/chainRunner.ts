@@ -129,7 +129,7 @@ export async function resolveRequest(request: any, collectionId: number): Promis
         );
 
         if (resolvedTextPairs.length > 0 || filePairs.length > 0) {
-          const boundary = '----PostBoyFormBoundary' + Date.now();
+          const boundary = '----RippleFormBoundary' + Date.now();
           let body = '';
           resolvedTextPairs.forEach((p: any) => {
             body += `--${boundary}\r\nContent-Disposition: form-data; name="${p.key}"\r\n\r\n${p.value}\r\n`;

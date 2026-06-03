@@ -1,8 +1,8 @@
-# PostBoy
+# Ripple
 
 A fast, native desktop API client built with **Tauri 2**, **Rust**, and **SvelteKit**. All data stays local in **SQLite** — no accounts, no cloud, no telemetry.
 
-![PostBoy](PostBoy/PostBoy/app-icon.png)
+![Ripple](PostBoy/PostBoy/app-icon.png)
 
 ## Features
 
@@ -21,8 +21,8 @@ A fast, native desktop API client built with **Tauri 2**, **Rust**, and **Svelte
 - **Collection-scoped variables** — key/value pairs persisted in SQLite, used for interpolation
 - **Token refresh** — configure a saved request + JSON path-to-variable mappings per collection; run refresh to update variables automatically (supports form-urlencoded and JSON bodies, with auth)
 - Save, update, and duplicate requests within collections
-- **Import collections** from Postman v2.1, Insomnia v4, or PostBoy JSON (auto-detected) — preserves requests, folders, variables, and auth
-- Export collections as PostBoy JSON or Postman v2.1 format
+- **Import collections** from Postman v2.1, Insomnia v4, or Ripple JSON (auto-detected) — preserves requests, folders, variables, and auth
+- Export collections as Ripple JSON or Postman v2.1 format
 
 ### Response Viewing
 - **Preview modes:** Tree view (expandable JSON), Raw (CodeMirror with syntax highlighting), and **Graph** (interactive node graph via JSONCrack — fullscreen with zoom/pan)
@@ -192,29 +192,9 @@ Generate request snippets in:
   - A C/C++ toolchain — MSVC on Windows, Xcode CLT on macOS, build-essential on Linux
   - *Optional:* Vulkan SDK on Windows/Linux or Xcode on macOS for GPU acceleration (auto-detected at build time; CPU-only otherwise)
 
-## Quick Start
-
-```bash
-git clone https://github.com/Ghost-xD/PostBoy.git
-cd postboy/PostBoy/PostBoy
-
-yarn install
-yarn tauri dev
-```
-
-| Command | What it does |
-|---------|--------------|
-| `yarn tauri dev` | Desktop app with hot reload |
-| `yarn dev` | Frontend only (Vite dev server) |
-| `yarn tauri build` | Production build (MSI, NSIS, DMG, AppImage, deb) |
-| `yarn tauri build -- --no-default-features` | Production build **without** Son of Anton (no CMake / C++ toolchain required) |
-| `yarn test` | Run tests |
-| `yarn test -- --coverage` | Run tests with coverage report |
-| `yarn check` | Svelte type checking |
-
 ## Son of Anton (local AI assistant, optional)
 
-PostBoy ships with **Son of Anton**, a fully-local AI assistant that can list collections, run and inspect saved requests, summarize responses, and edit collection variables — all by calling the same code paths the UI uses. Inference runs entirely on your machine via embedded [llama.cpp](https://github.com/ggml-org/llama.cpp) (no external binaries, no cloud, no telemetry).
+Ripple ships with **Son of Anton**, a fully-local AI assistant that can list collections, run and inspect saved requests, summarize responses, and edit collection variables — all by calling the same code paths the UI uses. Inference runs entirely on your machine via embedded [llama.cpp](https://github.com/ggml-org/llama.cpp) (no external binaries, no cloud, no telemetry).
 
 ### GPU acceleration
 
@@ -226,7 +206,7 @@ GPU offload is enabled automatically when a supported toolchain is found at buil
 | macOS | Metal | Builds on macOS pick this up unconditionally |
 | Anywhere else | CPU | Fallback; works everywhere |
 
-On Windows the wrapper script `scripts/tauri-env.cjs` auto-discovers the Vulkan SDK, sets the MSVC environment, applies a short `CARGO_TARGET_DIR` to dodge `MAX_PATH`, and retries flaky parallel MSBuild runs. See [`PostBoy/PostBoy/BUILDING.md`](PostBoy/PostBoy/BUILDING.md) for the full Windows checklist.
+On Windows the wrapper script `scripts/tauri-env.cjs` auto-discovers the Vulkan SDK, sets the MSVC environment, applies a short `CARGO_TARGET_DIR` to dodge `MAX_PATH`, and retries flaky parallel MSBuild runs. See BUILDING.md for the full Windows checklist.
 
 ### Enable / disable at build time
 
@@ -279,8 +259,6 @@ When built without the feature, the UI hides every entry point automatically (a 
 | Qwen 2.5 1.5B Instruct (Q4_K_M) | ~1.0 GB | Recommended default — strong tool-calling, runs fast on most laptops. |
 | Phi 3.5 Mini Instruct (Q4_K_M) | ~2.4 GB | Best reasoning of the three; slower. |
 
-Adding a new model is a JSON entry away — edit [`PostBoy/PostBoy/src-tauri/resources/models.json`](PostBoy/PostBoy/src-tauri/resources/models.json) with the GGUF download URLs.
-
 ## Deploy (Self-Hosted Update Server)
 
 Two-step process — build first, then push to server.
@@ -305,25 +283,6 @@ node deploy.mjs push --dry-run       # show what would be pushed without uploadi
 | Frontend | SvelteKit, TypeScript, CodeMirror 6 |
 | Backend | Rust, Tauri 2, reqwest |
 | Build | Vite, Cargo |
-
-## Repository Layout
-
-```
-postboy/
-├── .github/workflows/    # CI/CD release pipeline
-└── PostBoy/PostBoy/
-    ├── src/
-    │   ├── routes/        # SvelteKit pages (+page.svelte)
-    │   └── lib/
-    │       ├── components/ # UI components
-    │       ├── stores/     # Svelte stores (tabs, UI, variables, console)
-    │       ├── utils/      # cURL parser, code generator, helpers
-    │       └── test/       # Vitest unit tests
-    ├── src-tauri/
-    │   ├── src/            # Rust backend (HTTP client, DB commands, updater)
-    │   └── migrations/     # SQLite schema migrations
-    └── static/             # Icons, splash screen, favicon
-```
 
 ## Roadmap
 
@@ -367,7 +326,7 @@ postboy/
 - ⬜ **Load testing** — Configurable concurrent requests with response time distribution charts and error rate tracking
 
 ### Data & Database
-- ✅ **SQL query runner** — Connect to Postgres/MySQL/SQLite directly from PostBoy, run queries, view results in a table
+- ✅ **SQL query runner** — Connect to Postgres/MySQL/SQLite directly from Ripple, run queries, view results in a table
 - ⬜ **Response-to-DB diff** — Compare an API response against a direct DB query to catch serialization bugs, missing fields, or stale cache
 
 ### Import, Export & Collaboration
@@ -386,7 +345,7 @@ postboy/
 - ✅ **Request documentation** — Markdown notes and descriptions per request and collection
 - ✅ **Settings panel** — Proxy configuration, request timeout, SSL & redirect preferences
 - ⬜ **Mock server** — Serve mock responses locally for frontend development
-- ⬜ **Plugin system** — Extend PostBoy with user scripts and community plugins
+- ⬜ **Plugin system** — Extend Ripple with user scripts and community plugins
 
 ## Contributing
 

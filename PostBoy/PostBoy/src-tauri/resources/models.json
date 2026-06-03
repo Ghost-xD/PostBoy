@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "models": [
     {
-      "id": "qwen2.5-coder-7b-instruct-q4",
-      "displayName": "Qwen 2.5 Coder 7B Instruct (Q4_K_M) — recommended for tools",
-      "filename": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
-      "sizeBytes": 4680000000,
+      "id": "hermes3-llama3.1-8b-q4",
+      "displayName": "Hermes 3 Llama 3.1 8B (Q4_K_M) — recommended for tools",
+      "filename": "Hermes-3-Llama-3.1-8B.Q4_K_M.gguf",
+      "sizeBytes": 4920733824,
       "sha256": null,
       "contextSize": 8192,
       "recommendedThreads": null,
@@ -14,7 +14,7 @@
       "downloads": [
         {
           "source": "huggingface",
-          "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/qwen2.5-coder-7b-instruct-q4_k_m.gguf?download=true"
+          "url": "https://huggingface.co/NousResearch/Hermes-3-Llama-3.1-8B-GGUF/resolve/main/Hermes-3-Llama-3.1-8B.Q4_K_M.gguf?download=true"
         },
         {
           "source": "kaggle",
@@ -44,61 +44,19 @@
       ]
     },
     {
-      "id": "hermes3-llama3.1-8b-q4",
-      "displayName": "Hermes 3 Llama 3.1 8B (Q4_K_M) — tuned for tool calling",
-      "filename": "Hermes-3-Llama-3.1-8B.Q4_K_M.gguf",
-      "sizeBytes": 4920733824,
+      "id": "qwen2.5-coder-7b-instruct-q4",
+      "displayName": "Qwen 2.5 Coder 7B Instruct (Q4_K_M) — code-tuned, NOT recommended for tools (fabricates tool responses)",
+      "filename": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+      "sizeBytes": 4680000000,
       "sha256": null,
       "contextSize": 8192,
       "recommendedThreads": null,
-      "supportsTools": true,
+      "supportsTools": false,
       "toolCallStyle": "qwen",
       "downloads": [
         {
           "source": "huggingface",
-          "url": "https://huggingface.co/NousResearch/Hermes-3-Llama-3.1-8B-GGUF/resolve/main/Hermes-3-Llama-3.1-8B.Q4_K_M.gguf?download=true"
-        },
-        {
-          "source": "kaggle",
-          "url": ""
-        }
-      ]
-    },
-    {
-      "id": "qwen2.5-1.5b-instruct-q4",
-      "displayName": "Qwen 2.5 1.5B Instruct (Q4_K_M) — small/fast",
-      "filename": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
-      "sizeBytes": 986069024,
-      "sha256": null,
-      "contextSize": 8192,
-      "recommendedThreads": null,
-      "supportsTools": true,
-      "toolCallStyle": "qwen",
-      "downloads": [
-        {
-          "source": "huggingface",
-          "url": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf?download=true"
-        },
-        {
-          "source": "kaggle",
-          "url": ""
-        }
-      ]
-    },
-    {
-      "id": "qwen2.5-0.5b-instruct-q4",
-      "displayName": "Qwen 2.5 0.5B Instruct (Q4_K_M) — fastest",
-      "filename": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
-      "sizeBytes": 397800000,
-      "sha256": null,
-      "contextSize": 8192,
-      "recommendedThreads": null,
-      "supportsTools": true,
-      "toolCallStyle": "qwen",
-      "downloads": [
-        {
-          "source": "huggingface",
-          "url": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf?download=true"
+          "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/qwen2.5-coder-7b-instruct-q4_k_m.gguf?download=true"
         },
         {
           "source": "kaggle",

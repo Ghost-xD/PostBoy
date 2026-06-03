@@ -75,7 +75,7 @@
           // store previous automatically
         }
         previousResponses.set(currentUrl, currentResponse);
-        previousResponses = previousResponses;
+        previousResponses = new Map(previousResponses);
       }
     }
   });

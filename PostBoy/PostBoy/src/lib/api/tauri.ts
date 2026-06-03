@@ -172,6 +172,15 @@ export const http = {
 };
 
 // SQL client
+export interface SqlHistoryEntry {
+  id: number;
+  sql: string;
+  executionTimeMs: number;
+  rowCount: number;
+  error: string | null;
+  executedAt: number;
+}
+
 export const sql = {
   connect: async (dbType: string, host: string, port: number, database: string, username: string, password: string): Promise<string> => {
     return await invoke('sql_connect', { dbType, host, port, database, username, password }) as string;
@@ -181,7 +190,28 @@ export const sql = {
   },
   disconnect: async (connectionId: string) => {
     return await invoke('sql_disconnect', { connectionId });
-  }
+  },
+  historyAdd: async (
+    profileKey: string,
+    dbType: string,
+    sql: string,
+    executionTimeMs: number,
+    rowCount: number,
+    error: string | null,
+  ): Promise<number> => {
+    return await invoke('sql_history_add', {
+      profileKey, dbType, sql, executionTimeMs, rowCount, error,
+    }) as number;
+  },
+  historyList: async (profileKey: string, limit?: number): Promise<SqlHistoryEntry[]> => {
+    return await invoke('sql_history_list', { profileKey, limit }) as SqlHistoryEntry[];
+  },
+  historyClear: async (profileKey: string): Promise<void> => {
+    await invoke('sql_history_clear', { profileKey });
+  },
+  historyDelete: async (id: number): Promise<void> => {
+    await invoke('sql_history_delete', { id });
+  },
 };
 
 // Network diagnostics

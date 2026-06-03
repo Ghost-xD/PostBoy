@@ -23,11 +23,11 @@ describe('Database Schema Tests', () => {
     const home = os.homedir();
     
     if (platform === 'win32') {
-      dbPath = path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'com.moodysaroha.postboy', 'postboy.db');
+      dbPath = path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'com.ripple.app', 'ripple.db');
     } else if (platform === 'darwin') {
-      dbPath = path.join(home, 'Library', 'Application Support', 'com.moodysaroha.postboy', 'postboy.db');
+      dbPath = path.join(home, 'Library', 'Application Support', 'com.ripple.app', 'ripple.db');
     } else {
-      dbPath = path.join(home, '.config', 'com.moodysaroha.postboy', 'postboy.db');
+      dbPath = path.join(home, '.config', 'com.ripple.app', 'ripple.db');
     }
 
     // Create directory if it doesn't exist

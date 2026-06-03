@@ -1,4 +1,4 @@
-# PostBoy - How to Run Tests
+# Ripple - How to Run Tests
 
 All commands run from `PostBoy/PostBoy/`.
 
@@ -31,7 +31,7 @@ yarn test -t "should create collection"
 | `src/lib/test/websocket.test.ts` | 28 | WS message types, connection states, tab isolation, API wrapper, URL handling, shortcuts |
 | `src/lib/api/tauri.test.ts` | 19 | `invoke` wrappers — db, http, fileOps, app, ws |
 | `src/lib/test/api-collection.test.ts` | 29 | Collection loading, request execution, response handling, HTTP methods, headers, status codes |
-| `src/lib/test/import-export.test.ts` | 29 | Postman/PostBoy export & import, file ops, data validation, error handling |
+| `src/lib/test/import-export.test.ts` | 29 | Postman/Ripple export & import, file ops, data validation, error handling |
 | `src/lib/test/database-schema.test.ts` | 34 | SQLite schema, table existence, CRUD for collections/requests/history/settings, data integrity |
 | `src/lib/test/ui-components.test.ts` | 43 | Request builder, sidebars, tab management, headers, body, response display, save dialog, shortcuts, themes |
 | `src/lib/stores/appState.test.ts` | 13 | Tab store, collection store, history store, settings store |

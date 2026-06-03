@@ -1,6 +1,6 @@
-# PostBoy - Tauri 2.0 Edition
+# Ripple - Tauri 2.0 Edition
 
-A beautiful, modern API testing tool built with Tauri 2.0, Rust, and SvelteKit. This is a complete rewrite of the original Electron-based PostBoy application.
+A beautiful, modern API testing tool built with Tauri 2.0, Rust, and SvelteKit.
 
 ## 🚀 Features
 
@@ -156,28 +156,6 @@ PostBoy/PostBoy/
 ├── tests/                # Test files
 └── vitest.config.js      # Vitest configuration
 ```
-
-## 🔄 Migration from Electron
-
-This project is a complete rewrite from the original Electron-based PostBoy. Key changes:
-
-### Architecture Changes
-- **IPC**: Electron's `ipcRenderer` → Tauri commands via `@tauri-apps/api/core`
-- **HTTP**: Node.js `fetch` → Rust `reqwest`
-- **Database**: `better-sqlite3` (Node) → `rusqlite` (Rust)
-- **File System**: Node.js `fs` → `tauri-plugin-fs` + Rust `std::fs`
-
-### Performance Improvements
-- **Smaller Bundle**: ~10MB vs ~150MB (Electron)
-- **Faster Startup**: ~0.5s vs ~2s
-- **Lower Memory**: ~50MB vs ~200MB
-- **Native Performance**: Rust backend is blazing fast ⚡
-
-### Security Improvements
-- **Process Isolation**: Tauri's security model
-- **No Node.js Runtime**: Smaller attack surface
-- **Type-Safe IPC**: Rust type checking
-- **CSP Headers**: Content Security Policy enabled
 
 ## 🧪 Testing
 

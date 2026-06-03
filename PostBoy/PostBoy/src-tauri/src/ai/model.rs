@@ -283,7 +283,7 @@ async fn try_download(
     start_offset: u64,
 ) -> LoopOutcome {
     let client = match reqwest::Client::builder()
-        .user_agent("PostBoy/0.0 (AI model download)")
+        .user_agent("Ripple/0.0 (AI model download)")
         .build()
     {
         Ok(c) => c,

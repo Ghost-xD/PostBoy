@@ -392,13 +392,13 @@ const INSOMNIA_AUTH_TYPES: any = {
   ],
 };
 
-// ── PostBoy Fixture ────────────────────────────────────────────
+// ── Ripple Fixture ─────────────────────────────────────────────
 
-const POSTBOY_COLLECTION: any = {
-  format: 'postboy-collection',
+const RIPPLE_COLLECTION: any = {
+  format: 'ripple-collection',
   version: '1.0',
   collection: {
-    name: 'My PostBoy Collection',
+    name: 'My Ripple Collection',
     description: 'Test',
     variables: [{ key: 'host', value: 'localhost' }],
     requests: [
@@ -431,8 +431,8 @@ describe('detectFormat', () => {
     expect(detectFormat(INSOMNIA_BASIC)).toBe('insomnia-v4');
   });
 
-  it('detects PostBoy', () => {
-    expect(detectFormat(POSTBOY_COLLECTION)).toBe('postboy');
+  it('detects Ripple', () => {
+    expect(detectFormat(RIPPLE_COLLECTION)).toBe('ripple');
   });
 
   it('returns null for unknown format', () => {
@@ -815,23 +815,23 @@ describe('importCollection — Insomnia v4', () => {
   });
 });
 
-// ── PostBoy format ─────────────────────────────────────────────
+// ── Ripple format ──────────────────────────────────────────────
 
-describe('importCollection — PostBoy format', () => {
-  it('parses PostBoy collection', () => {
-    const result = importCollection(JSON.stringify(POSTBOY_COLLECTION));
-    expect(result.format).toBe('postboy');
+describe('importCollection — Ripple format', () => {
+  it('parses Ripple collection', () => {
+    const result = importCollection(JSON.stringify(RIPPLE_COLLECTION));
+    expect(result.format).toBe('ripple');
     expect(result.collections).toHaveLength(1);
 
     const col = result.collections[0];
-    expect(col.name).toBe('My PostBoy Collection');
+    expect(col.name).toBe('My Ripple Collection');
     expect(col.requests).toHaveLength(1);
     expect(col.variables).toHaveLength(1);
     expect(col.variables[0]).toEqual({ key: 'host', value: 'localhost' });
   });
 
   it('parses request with string-encoded headers/params/authData', () => {
-    const result = importCollection(JSON.stringify(POSTBOY_COLLECTION));
+    const result = importCollection(JSON.stringify(RIPPLE_COLLECTION));
     const req = result.collections[0].requests[0];
     expect(req.headers).toEqual([{ key: 'Accept', value: '*/*' }]);
     expect(req.params).toEqual([]);
@@ -840,7 +840,7 @@ describe('importCollection — PostBoy format', () => {
   });
 
   it('handles missing collection field', () => {
-    const data = { format: 'postboy-collection', version: '1.0' };
+    const data = { format: 'ripple-collection', version: '1.0' };
     const result = importCollection(JSON.stringify(data));
     expect(result.collections).toHaveLength(0);
     expect(result.errors[0]).toContain('Missing');
@@ -848,7 +848,7 @@ describe('importCollection — PostBoy format', () => {
 
   it('handles malformed headers/params strings gracefully', () => {
     const data = {
-      format: 'postboy-collection', version: '1.0',
+      format: 'ripple-collection', version: '1.0',
       collection: {
         name: 'Bad', description: '',
         requests: [{

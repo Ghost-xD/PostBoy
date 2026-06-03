@@ -39,8 +39,8 @@
   import type { ToolsNavTab } from '$lib/components/ToolsNavBar.svelte';
   import DiffTool from '$lib/components/DiffTool.svelte';
   import SearchPicker from '$lib/components/SearchPicker.svelte';
-  import { loadSettings } from '$lib/stores/settingsStore';
-  import { chatbotSupported, chatbotStatus, initChatbotFeature, loadDefaultModel } from '$lib/stores/chatbotStore';
+  import { loadSettings, settings } from '$lib/stores/settingsStore';
+  import { chatbotSupported, chatbotStatus, initChatbotFeature, teardownChatbotFeature, loadDefaultModel } from '$lib/stores/chatbotStore';
 
   let version = $state('');
   let collections: any[] = $state([]);
@@ -60,7 +60,7 @@
   // The chatbot entry is filtered out at render time when the build
   // doesn't include the feature.
   let toolsNavTabs = ($derived([
-    $chatbotSupported ? { key: 'chatbot', label: 'Son of Anton', title: 'Ctrl+Shift+M' } : null,
+    ($chatbotSupported && $settings.chatbotEnabled) ? { key: 'chatbot', label: 'Son of Anton', title: 'Ctrl+Shift+M' } : null,
     { key: 'jwt', label: 'JWT Decoder', title: 'Ctrl+Shift+J' },
     { key: 'encoder', label: 'Encode / Decode', title: 'Ctrl+Shift+E' },
     { key: 'sql', label: 'SQL Runner', title: 'Ctrl+Shift+Q' },
@@ -134,8 +134,43 @@
     checkForUpdates();
     listenForRustUpdate();
     setupAppMenu();
-    loadSettings();
-    initChatbotFeature();
+    // Load persisted settings BEFORE deciding whether to bring up the chatbot
+    // stack. If the user disabled Anton, `initChatbotFeature` is skipped
+    // entirely — no model registry fetch, no default-model preload — which
+    // is the whole point of the toggle (fast cold start, no LLM memory).
+    void loadSettings().then(() => {
+      lastChatbotEnabled = get(settings).chatbotEnabled;
+      if (lastChatbotEnabled) {
+        initChatbotFeature();
+      }
+    });
+  });
+
+  // React to the user flipping the chatbot toggle at runtime. Enabling
+  // re-runs the same init path the cold-start uses; disabling unloads the
+  // engine to free RAM right away and resets `chatbotSupported` so the UI
+  // bits (tools pill, menu item, panel) re-hide reactively.
+  //
+  // `lastChatbotEnabled` stays `null` until `loadSettings()` resolves and
+  // sets the baseline above. That avoids two startup races: (a) the effect
+  // firing with the default-true value and triggering a redundant init,
+  // and (b) the loaded value being `false` then arriving and tearing down
+  // something we never initialised.
+  let lastChatbotEnabled: boolean | null = null;
+  $effect(() => {
+    const enabled = $settings.chatbotEnabled;
+    if (lastChatbotEnabled === null) return;
+    if (enabled === lastChatbotEnabled) return;
+    lastChatbotEnabled = enabled;
+    if (enabled) {
+      initChatbotFeature();
+    } else {
+      // Close the chatbot tools panel if it's currently showing, otherwise
+      // the user would be left staring at an empty Tools pane until they
+      // pick a different tool.
+      if (get(showToolsPanel) === 'chatbot') showToolsPanel.set(false);
+      void teardownChatbotFeature();
+    }
   });
 
   async function setupAppMenu() {
@@ -180,7 +215,7 @@
         await MenuItem.new({ id: 'diff-tool', text: 'Diff / Compare', accelerator: 'CmdOrCtrl+Shift+B', action: () => showDiffTool.update(v => !v) }),
       ];
 
-      if ($chatbotSupported) {
+      if ($chatbotSupported && $settings.chatbotEnabled) {
         toolsItems.unshift(
           await MenuItem.new({ id: 'ai-chatbot', text: 'Son of Anton', accelerator: 'CmdOrCtrl+Shift+M', action: () => showToolsPanel.update(v => v === 'chatbot' ? false : 'chatbot') }),
           await PredefinedMenuItem.new({ item: 'Separator' }),
@@ -216,8 +251,8 @@
         items: [
           await MenuItem.new({ id: 'help-shortcuts', text: 'Keyboard Shortcuts', action: () => showShortcuts.set(true) }),
           await PredefinedMenuItem.new({ item: 'Separator' }),
-          await MenuItem.new({ id: 'about', text: `About PostBoy v${version}`, action: async () => {
-            await modalManager.showInfo('About PostBoy', `PostBoy v${version}\n\nA fast, native desktop API client.\nBuilt with Tauri, Rust & SvelteKit.\n\nAll data stays local in SQLite.\nNo accounts, no cloud, no telemetry.`);
+          await MenuItem.new({ id: 'about', text: `About Ripple v${version}`, action: async () => {
+            await modalManager.showInfo('About Ripple', `Ripple v${version}\n\nA fast, native desktop API client.\nBuilt with Tauri, Rust & SvelteKit.\n\nAll data stays local in SQLite.\nNo accounts, no cloud, no telemetry.`);
           }}),
           await MenuItem.new({ id: 'check-updates', text: 'Check for Updates', action: () => checkForUpdates(true) }),
         ],
@@ -240,7 +275,7 @@
       const result = await invoke<string>('check_for_update');
       addLog(result, 'system');
       if (manual && !result.startsWith('Update available')) {
-        await modalManager.showSuccess('Up to Date', `You're running the latest version of PostBoy (v${version}).`);
+        await modalManager.showSuccess('Up to Date', `You're running the latest version of Ripple (v${version}).`);
       }
     } catch (e: any) {
       const msg = e?.message || e || 'Unknown error';
@@ -392,7 +427,7 @@
       // loaded in the background at app start (see initChatbotFeature), so
       // the shortcut is purely a UI toggle now.
       if (e.ctrlKey && e.shiftKey && (e.key === 'M' || e.key === 'm')) {
-        if ($chatbotSupported) {
+        if ($chatbotSupported && $settings.chatbotEnabled) {
           e.preventDefault();
           showToolsPanel.update((v) => (v === 'chatbot' ? false : 'chatbot'));
           // If somehow the background load didn't fire (e.g. user installed
@@ -810,7 +845,7 @@
   }
 
   async function importCollections() {
-    const openResult = await fileOps.showOpenDialog({ title: 'Import Collection (PostBoy / Postman / Insomnia)', filters: ['.json'] });
+    const openResult = await fileOps.showOpenDialog({ title: 'Import Collection (Ripple / Postman / Insomnia)', filters: ['.json'] });
     const filePath = Array.isArray(openResult) ? openResult[0] : openResult;
     if (!filePath) return;
 
@@ -856,7 +891,7 @@
     await loadCollections();
     const formatLabel = result.format === 'postman-v2.1' ? 'Postman v2.1'
       : result.format === 'insomnia-v4' ? 'Insomnia'
-      : 'PostBoy';
+      : 'Ripple';
     const summary = `Imported ${result.collections.length} collection(s) with ${totalRequests} request(s)${totalVars > 0 ? ` and ${totalVars} variable(s)` : ''} from ${formatLabel} format.`;
     const warnings = result.errors.length ? `\n\nWarnings:\n${result.errors.join('\n')}` : '';
     addLog(`✓ ${formatLabel} collection imported: ${totalRequests} requests`, 'system');
@@ -907,12 +942,12 @@
 
   async function exportCollections() {
     const result = await modalManager.showForm('Export Collections', 'Choose export options:', [
-      { id: 'format', label: 'Format', type: 'select', options: [{ value: 'postboy', label: 'PostBoy JSON' }, { value: 'postman', label: 'Postman v2.1' }], value: 'postboy' }
+      { id: 'format', label: 'Format', type: 'select', options: [{ value: 'ripple', label: 'Ripple JSON' }, { value: 'postman', label: 'Postman v2.1' }], value: 'ripple' }
     ]);
 
     if (!result) return;
     const exportData = await db.exportCollections(null, result.format) as string;
-    const filePath = await fileOps.showSaveDialog({ title: 'Save Export', defaultPath: `collections.${result.format === 'postman' ? 'postman_collection' : 'postboy'}.json` }) as string | null;
+    const filePath = await fileOps.showSaveDialog({ title: 'Save Export', defaultPath: `collections.${result.format === 'postman' ? 'postman_collection' : 'ripple'}.json` }) as string | null;
     if (filePath) {
       await fileOps.writeFile(filePath as string, exportData);
       addLog('✓ Collections exported', 'system');
@@ -1147,7 +1182,7 @@
 <svelte:window onmousemove={handleDrag} onmouseup={stopDrag} />
 
 <svelte:head>
-  <title>PostBoy v{version}</title>
+  <title>Ripple v{version}</title>
   <link rel="stylesheet" href="/app.css" />
   <link rel="stylesheet" href="/collapsed-sidebar.css" />
 </svelte:head>
@@ -1162,7 +1197,7 @@
     </div>
     <div class="update-toast-body">
       <div class="update-toast-title">Update Available</div>
-      <div class="update-toast-version">PostBoy v{updateAvailable.version} is ready</div>
+      <div class="update-toast-version">Ripple v{updateAvailable.version} is ready</div>
       {#if updateAvailable.body}
         <div class="update-toast-notes">{updateAvailable.body}</div>
       {/if}
@@ -1251,7 +1286,7 @@
               {/snippet}
       </ToolsNavBar>
       <div class="tools-body">
-        {#if $showToolsPanel === 'chatbot'}
+        {#if $showToolsPanel === 'chatbot' && $chatbotSupported && $settings.chatbotEnabled}
           <ChatbotPanel />
         {:else if $showToolsPanel === 'jwt'}
           <JwtDecoderPanel />

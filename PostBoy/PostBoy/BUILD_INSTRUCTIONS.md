@@ -15,24 +15,24 @@ This will:
 ### Output locations:
 
 - **Windows**:
-  - MSI installer: `src-tauri/target/release/bundle/msi/PostBoy_1.0.0_x64_en-US.msi`
-  - NSIS installer: `src-tauri/target/release/bundle/nsis/PostBoy_1.0.0_x64-setup.exe`
-  - Portable EXE: `src-tauri/target/release/PostBoy.exe`
+  - MSI installer: `src-tauri/target/release/bundle/msi/Ripple_1.0.0_x64_en-US.msi`
+  - NSIS installer: `src-tauri/target/release/bundle/nsis/Ripple_1.0.0_x64-setup.exe`
+  - Portable EXE: `src-tauri/target/release/Ripple.exe`
 
 - **macOS**:
-  - DMG: `src-tauri/target/release/bundle/dmg/PostBoy_1.0.0_x64.dmg`
-  - APP: `src-tauri/target/release/bundle/macos/PostBoy.app`
+  - DMG: `src-tauri/target/release/bundle/dmg/Ripple_1.0.0_x64.dmg`
+  - APP: `src-tauri/target/release/bundle/macos/Ripple.app`
 
 - **Linux**:
-  - DEB: `src-tauri/target/release/bundle/deb/postboy_1.0.0_amd64.deb`
-  - AppImage: `src-tauri/target/release/bundle/appimage/postboy_1.0.0_amd64.AppImage`
+  - DEB: `src-tauri/target/release/bundle/deb/ripple_1.0.0_amd64.deb`
+  - AppImage: `src-tauri/target/release/bundle/appimage/ripple_1.0.0_amd64.AppImage`
 
 ## Build Configuration
 
 The build is configured in `src-tauri/tauri.conf.json`:
 - Bundle targets: MSI, NSIS, DEB, AppImage, DMG
 - Version: 1.0.0
-- Identifier: com.postboy.app
+- Identifier: com.ripple.app
 
 ## Troubleshooting
 
@@ -106,11 +106,11 @@ After building:
 
 ## File Locations After Install
 
-- **Windows**: `%APPDATA%\com.postboy.app\`
-- **macOS**: `~/Library/Application Support/com.postboy.app/`
-- **Linux**: `~/.local/share/com.postboy.app/`
+- **Windows**: `%APPDATA%\com.ripple.app\`
+- **macOS**: `~/Library/Application Support/com.ripple.app/`
+- **Linux**: `~/.local/share/com.ripple.app/`
 
-Database: `postboy.db` in the above directories
+Database: `ripple.db` in the above directories.
 
 ## Build Size
 

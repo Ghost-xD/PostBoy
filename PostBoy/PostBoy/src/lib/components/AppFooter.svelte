@@ -93,8 +93,8 @@
 
 <div class="app-footer">
   <div class="footer-left">
-    <img src="/assets/icons/png/32x32.png" alt="PostBoy" class="footer-logo" />
-    <span class="footer-app-name">PostBoy</span>
+    <img src="/assets/icons/png/32x32.png" alt="Ripple" class="footer-logo" />
+    <span class="footer-app-name">Ripple</span>
     <span class="footer-version">v{version}</span>
   </div>
 

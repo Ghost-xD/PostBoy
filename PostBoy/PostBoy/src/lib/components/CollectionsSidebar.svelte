@@ -233,8 +233,8 @@
     try {
       const json = await db.exportSingleCollection(collectionId);
       const filePath = await fileOps.showSaveDialog({
-        defaultPath: `${collectionName.replace(/[^a-zA-Z0-9_-]/g, '_')}.postboy.json`,
-        filters: [{ name: 'PostBoy Collection', extensions: ['json'] }],
+        defaultPath: `${collectionName.replace(/[^a-zA-Z0-9_-]/g, '_')}.ripple.json`,
+        filters: [{ name: 'Ripple Collection', extensions: ['json'] }],
       });
       if (filePath) {
         await fileOps.writeFile(filePath as string, json);
@@ -248,7 +248,7 @@
   async function importSharedCollection() {
     try {
       const filePath = await fileOps.showOpenDialog({
-        filters: [{ name: 'PostBoy Collection', extensions: ['json'] }],
+        filters: [{ name: 'Ripple Collection', extensions: ['json'] }],
         multiple: false,
       });
       if (!filePath) return;
@@ -371,6 +371,9 @@
   let availableJsonPaths: Array<{ path: string; value: string }> = $state([]);
   let isTestingRequest = $state(false);
   let testRequestError: string | null = $state(null);
+  // Cached parsed JSON from the last successful Test in this modal session.
+  // Used by Save to write mapped variables without re-running the request.
+  let testResponseJson: any = $state(null);
 
   async function testTokenRequest() {
     if (!configModalCollectionId || !configModalRequestId) return;
@@ -378,6 +381,7 @@
     isTestingRequest = true;
     testRequestError = null;
     availableJsonPaths = [];
+    testResponseJson = null;
     
     try {
       const request = await db.getRequest(configModalRequestId) as any;
@@ -447,6 +451,7 @@
 
       const { flattenJsonPaths } = await import('$lib/stores/variableStore');
       availableJsonPaths = flattenJsonPaths(responseJson);
+      testResponseJson = responseJson;
       
       addLog(`✓ Found ${availableJsonPaths.length} JSON paths`, 'system');
     } catch (error: any) {
@@ -516,6 +521,7 @@
     configModalMappings = [];
     availableJsonPaths = [];
     testRequestError = null;
+    testResponseJson = null;
   }
 
   function addMapping() {
@@ -528,17 +534,44 @@
 
   async function saveConfigModal() {
     if (!configModalCollectionId || !configModalRequestId) return;
-    
-    const validMappings = configModalMappings.filter(m => m.jsonPath.trim() && m.variableName.trim());
+
+    const collectionId = configModalCollectionId;
+    const validMappings = configModalMappings
+      .map(m => ({ jsonPath: m.jsonPath.trim(), variableName: m.variableName.trim() }))
+      .filter(m => m.jsonPath && m.variableName);
+
     if (validMappings.length === 0) {
-      await saveTokenRefreshConfig(configModalCollectionId, null);
+      await saveTokenRefreshConfig(collectionId, null);
     } else {
-      await saveTokenRefreshConfig(configModalCollectionId, {
+      await saveTokenRefreshConfig(collectionId, {
         requestId: configModalRequestId,
-        mappings: validMappings.map(m => ({ jsonPath: m.jsonPath.trim(), variableName: m.variableName.trim() }))
+        mappings: validMappings
       });
     }
-    addLog(`✓ Token refresh configured for collection`, 'system');
+
+    // If the user already ran Test, materialize the mapped variables now so
+    // they show up under the collection's VARIABLES section without having
+    // to invoke the full token-refresh flow.
+    if (testResponseJson !== null && validMappings.length > 0) {
+      const { getValueAtPath } = await import('$lib/stores/variableStore');
+      await variables.load(collectionId);
+      let written = 0;
+      for (const m of validMappings) {
+        const value = getValueAtPath(testResponseJson, m.jsonPath);
+        if (value !== undefined) {
+          const ok = await variables.set(collectionId, m.variableName, value);
+          if (ok) written++;
+        }
+      }
+      if (written > 0) {
+        addLog(`✓ Token refresh configured; wrote ${written} variable(s) from Test response`, 'system');
+      } else {
+        addLog(`✓ Token refresh configured (no values extracted from Test response)`, 'system');
+      }
+    } else {
+      addLog(`✓ Token refresh configured for collection`, 'system');
+    }
+
     closeConfigModal();
   }
 
@@ -788,7 +821,10 @@
       expandedCollections.add(id);
       await variables.load(id);
     }
-    expandedCollections = expandedCollections;
+    // Svelte 5: reassigning to the same proxy is a no-op; cloning the Set
+    // gives the runtime a fresh reference so {#each} / `has(...)` callers
+    // re-render. Same pattern applies to the other `expanded*` Sets below.
+    expandedCollections = new Set(expandedCollections);
     saveExpandedState();
   }
 
@@ -798,7 +834,7 @@
     } else {
       expandedVariables.add(collectionId);
     }
-    expandedVariables = expandedVariables;
+    expandedVariables = new Set(expandedVariables);
   }
 
   async function copyVariable(key: string, value: string) {
@@ -812,7 +848,7 @@
     } else {
       revealedValues.add(key);
     }
-    revealedValues = revealedValues;
+    revealedValues = new Set(revealedValues);
   }
 
   async function deleteCollection(id: number) {
@@ -1053,7 +1089,7 @@
             </button>
             <button 
               class="collection-action-btn new-subfolder-btn" 
-              onclick={stopPropagation(() => { expandedCollections.add(collection.id); expandedCollections = expandedCollections; startCreateFolder(collection.id); })}
+              onclick={stopPropagation(() => { expandedCollections.add(collection.id); expandedCollections = new Set(expandedCollections); startCreateFolder(collection.id); })}
               title="New Subfolder"
             >
               📁

@@ -110,6 +110,29 @@
     {/if}
   </div>
 
+  <div class="settings-section">
+    <h4>AI Assistant</h4>
+
+    <div class="setting-row">
+      <label for="chatbot-enabled">Enable Son of Anton</label>
+      <div class="setting-control">
+        <input
+          id="chatbot-enabled"
+          type="checkbox"
+          checked={$settings.chatbotEnabled}
+          onchange={(e) => handleUpdate('chatbotEnabled', e.currentTarget.checked)}
+        />
+        <span class="setting-hint">
+          {#if $settings.chatbotEnabled}
+            Enabled — model loads in the background at startup
+          {:else}
+            Disabled — UI hidden and no model is loaded (faster startup, less memory)
+          {/if}
+        </span>
+      </div>
+    </div>
+  </div>
+
   <div class="settings-footer">
     <button class="reset-btn" onclick={handleReset}>Reset to Defaults</button>
     {#if saved}
