@@ -48,15 +48,7 @@ static BACKEND: OnceLock<&'static LlamaBackend> = OnceLock::new();
 const TOOL_CALL_GRAMMAR: &str = r#"
 root         ::= ws "{" ws "\"name\"" ws ":" ws tool-name ws "," ws "\"arguments\"" ws ":" ws json-object ws "}" ws "</tool_call>"
 
-tool-name    ::= "\"list_collections\""
-              | "\"list_requests\""
-              | "\"inspect_request\""
-              | "\"get_request\""
-              | "\"run_request\""
-              | "\"get_variables\""
-              | "\"set_variable\""
-              | "\"get_history\""
-              | "\"get_last_response\""
+tool-name    ::= "\"list_collections\"" | "\"list_requests\"" | "\"inspect_request\"" | "\"get_request\"" | "\"run_request\"" | "\"get_variables\"" | "\"set_variable\"" | "\"get_history\"" | "\"get_last_response\""
 
 json-value   ::= json-string | json-number | json-boolean | "null" | json-object | json-array
 

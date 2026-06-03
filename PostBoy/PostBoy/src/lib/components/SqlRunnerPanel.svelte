@@ -2,7 +2,7 @@
   import { stopPropagation } from 'svelte/legacy';
 
   import { onMount } from 'svelte';
-  import { sql, db } from '$lib/api/tauri';
+  import { sql, db, type SqlHistoryEntry } from '$lib/api/tauri';
 
   type DbType = 'postgres' | 'mysql' | 'sqlite';
   type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
@@ -23,12 +23,13 @@
     lastUsed: number;
   }
 
-  interface QueryHistoryEntry {
-    sql: string;
-    timestamp: number;
-    executionTimeMs: number;
-    rowCount: number;
-    error?: string;
+  // Stable identifier for "this database connection" used to bucket the
+  // persisted query history. Deliberately excludes `password` (so rotating
+  // a password keeps your history) and `name` (purely cosmetic). For sqlite
+  // we key by absolute db file path.
+  function profileKey(c: ConnectionConfig): string {
+    if (c.type === 'sqlite') return `sqlite|${c.database}`;
+    return `${c.type}|${c.host}|${c.port}|${c.database}|${c.username}`;
   }
 
   interface SqlColumn {
@@ -59,7 +60,8 @@
   let queryError = $state('');
   let executing = $state(false);
   let profiles: SavedProfile[] = $state([]);
-  let queryHistory: QueryHistoryEntry[] = $state([]);
+  let queryHistory: SqlHistoryEntry[] = $state([]);
+  let activeProfileKey = $state('');
   let showHistory = $state(false);
   let copied = $state('');
   let activeView: 'connection' | 'query' = $state('connection');
@@ -90,11 +92,41 @@
       );
       status = 'connected';
       activeView = 'query';
+      activeProfileKey = profileKey(config);
       saveCurrentProfile();
+      await loadHistory();
     } catch (e: any) {
       status = 'error';
       connectionError = typeof e === 'string' ? e : e?.message || 'Connection failed';
     }
+  }
+
+  async function loadHistory() {
+    if (!activeProfileKey) {
+      queryHistory = [];
+      return;
+    }
+    try {
+      queryHistory = await sql.historyList(activeProfileKey);
+    } catch {
+      queryHistory = [];
+    }
+  }
+
+  async function clearHistory() {
+    if (!activeProfileKey) return;
+    if (!confirm('Clear the saved query history for this connection?')) return;
+    try {
+      await sql.historyClear(activeProfileKey);
+      queryHistory = [];
+    } catch {}
+  }
+
+  async function deleteHistoryEntry(id: number) {
+    try {
+      await sql.historyDelete(id);
+      queryHistory = queryHistory.filter(h => h.id !== id);
+    } catch {}
   }
 
   async function disconnect() {
@@ -106,6 +138,8 @@
     result = null;
     queryError = '';
     activeView = 'connection';
+    activeProfileKey = '';
+    queryHistory = [];
   }
 
   async function executeQuery() {
@@ -119,21 +153,45 @@
     executing = true;
     queryError = '';
     result = null;
+    const sqlText = queryText.trim();
 
     try {
-      result = await sql.query(connectionId, queryText.trim()) as SqlQueryResult;
-      queryHistory = [
-        { sql: queryText.trim(), timestamp: Date.now(), executionTimeMs: result.executionTimeMs, rowCount: result.rowCount },
-        ...queryHistory
-      ].slice(0, 50);
+      result = await sql.query(connectionId, sqlText) as SqlQueryResult;
+      await recordHistory(sqlText, result.executionTimeMs, result.rowCount, null);
     } catch (e: any) {
       queryError = typeof e === 'string' ? e : e?.message || 'Query failed';
-      queryHistory = [
-        { sql: queryText.trim(), timestamp: Date.now(), executionTimeMs: 0, rowCount: 0, error: queryError },
-        ...queryHistory
-      ].slice(0, 50);
+      await recordHistory(sqlText, 0, 0, queryError);
     } finally {
       executing = false;
+    }
+  }
+
+  async function recordHistory(
+    sqlText: string,
+    executionTimeMs: number,
+    rowCount: number,
+    error: string | null,
+  ) {
+    if (!activeProfileKey) return;
+    try {
+      const id = await sql.historyAdd(
+        activeProfileKey, config.type, sqlText, executionTimeMs, rowCount, error,
+      );
+      // Optimistic prepend rather than full reload so the dropdown updates
+      // instantly; the backend already enforced the 200-entry cap.
+      queryHistory = [
+        {
+          id,
+          sql: sqlText,
+          executionTimeMs,
+          rowCount,
+          error,
+          executedAt: Date.now(),
+        },
+        ...queryHistory,
+      ];
+    } catch {
+      // History persistence failure must not break the query workflow.
     }
   }
 
@@ -206,9 +264,22 @@
     saveProfiles();
   }
 
-  function loadHistoryQuery(entry: QueryHistoryEntry) {
+  function loadHistoryQuery(entry: SqlHistoryEntry) {
     queryText = entry.sql;
     showHistory = false;
+  }
+
+  function formatHistoryTime(ms: number): string {
+    const d = new Date(ms);
+    const now = new Date();
+    const sameDay = d.toDateString() === now.toDateString();
+    if (sameDay) {
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return d.toLocaleString([], {
+      month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    });
   }
 
   function saveCurrentProfile() {
@@ -387,20 +458,37 @@
           </div>
         </div>
 
-        {#if showHistory && queryHistory.length > 0}
+        {#if showHistory}
           <div class="history-dropdown">
-            {#each queryHistory as entry}
-              <button class="history-item" class:has-error={!!entry.error} onclick={() => loadHistoryQuery(entry)}>
-                <span class="history-sql">{entry.sql.length > 80 ? entry.sql.slice(0, 80) + '...' : entry.sql}</span>
-                <span class="history-meta">
-                  {#if entry.error}
-                    <span class="history-error">Error</span>
-                  {:else}
-                    {entry.rowCount} rows · {entry.executionTimeMs}ms
-                  {/if}
-                </span>
-              </button>
-            {/each}
+            <div class="history-header">
+              <span class="history-title">Query history · {queryHistory.length}</span>
+              {#if queryHistory.length > 0}
+                <button class="history-clear-btn" onclick={clearHistory} title="Clear all history for this connection">
+                  Clear all
+                </button>
+              {/if}
+            </div>
+            {#if queryHistory.length === 0}
+              <div class="history-empty">No queries yet for this connection.</div>
+            {:else}
+              {#each queryHistory as entry (entry.id)}
+                <div class="history-item" class:has-error={!!entry.error}>
+                  <button class="history-item-body" onclick={() => loadHistoryQuery(entry)}>
+                    <span class="history-sql">{entry.sql.length > 80 ? entry.sql.slice(0, 80) + '...' : entry.sql}</span>
+                    <span class="history-meta">
+                      <span class="history-time">{formatHistoryTime(entry.executedAt)}</span>
+                      <span class="history-meta-sep">·</span>
+                      {#if entry.error}
+                        <span class="history-error">Error</span>
+                      {:else}
+                        <span>{entry.rowCount} row{entry.rowCount === 1 ? '' : 's'} · {entry.executionTimeMs}ms</span>
+                      {/if}
+                    </span>
+                  </button>
+                  <button class="history-delete-btn" onclick={stopPropagation(() => deleteHistoryEntry(entry.id))} title="Remove from history">×</button>
+                </div>
+              {/each}
+            {/if}
           </div>
         {/if}
 
@@ -900,23 +988,84 @@
     z-index: 100;
   }
 
+  .history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
+  .history-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+  }
+
+  .history-clear-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    color: var(--text-secondary);
+    font-size: 10px;
+    padding: 2px 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .history-clear-btn:hover { color: #f04747; border-color: rgba(240, 71, 71, 0.4); }
+
+  .history-empty {
+    padding: 16px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-style: italic;
+  }
+
   .history-item {
+    display: flex;
+    align-items: stretch;
+    border-bottom: 1px solid var(--border-color);
+    transition: background 0.1s;
+  }
+
+  .history-item:last-child { border-bottom: none; }
+  .history-item:hover { background: var(--bg-tertiary); }
+
+  .history-item-body {
+    flex: 1;
     display: flex;
     flex-direction: column;
     gap: 2px;
     padding: 8px 12px;
     background: none;
     border: none;
-    border-bottom: 1px solid var(--border-color);
-    width: 100%;
     text-align: left;
     cursor: pointer;
     color: var(--text-primary);
-    transition: background 0.1s;
+    overflow: hidden;
   }
 
-  .history-item:last-child { border-bottom: none; }
-  .history-item:hover { background: var(--bg-tertiary); }
+  .history-delete-btn {
+    flex: 0 0 24px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 14px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s;
+  }
+
+  .history-item:hover .history-delete-btn { opacity: 1; }
+  .history-delete-btn:hover { color: #f04747; }
 
   .history-sql {
     font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
@@ -930,8 +1079,13 @@
   .history-meta {
     font-size: 10px;
     color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 5px;
   }
 
+  .history-time { font-weight: 500; }
+  .history-meta-sep { opacity: 0.4; }
   .history-error { color: #f04747; font-weight: 600; }
 
   .query-input {

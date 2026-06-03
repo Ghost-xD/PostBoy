@@ -1,12 +1,12 @@
 //! Tool registry + dispatcher.
 //!
-//! Tools are the chatbot's bridge to the rest of PostBoy. They mirror a
+//! Tools are the chatbot's bridge to the rest of Ripple. They mirror a
 //! subset of the existing Tauri commands. The schemas here are emitted into
 //! the model's system prompt (see [`tool_parser::build_prompt`]); the
 //! dispatcher executes the tool and returns a JSON value the model can read.
 //!
 //! Most tools are thin wrappers around `rusqlite::Connection` queries against
-//! the existing `postboy.db`, so we re-implement the read paths instead of
+//! the existing `ripple.db`, so we re-implement the read paths instead of
 //! going back through Tauri's `invoke` layer.
 
 use rusqlite::Connection;
@@ -20,7 +20,7 @@ use crate::http_client;
 fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir.join("postboy.db"))
+    Ok(dir.join("ripple.db"))
 }
 
 fn open_db(app: &AppHandle) -> Result<Connection, String> {

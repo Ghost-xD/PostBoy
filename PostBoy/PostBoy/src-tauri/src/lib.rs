@@ -11,7 +11,7 @@ mod sse_client;
 use tauri::Manager;
 use tauri::Emitter;
 
-/// Always-compiled feature probe. Returns whether this build of PostBoy
+/// Always-compiled feature probe. Returns whether this build of Ripple
 /// includes the chatbot feature. The frontend uses this to hide chatbot UI
 /// entirely when the build was produced with `--no-default-features`.
 #[tauri::command]
@@ -47,7 +47,7 @@ async fn github_fetch_latest_json(token: &str) -> Result<(String, serde_json::Va
         .get("https://api.github.com/repos/moodysaroha/postboy/releases/latest")
         .header("Authorization", format!("Bearer {token}"))
         .header("Accept", "application/vnd.github+json")
-        .header("User-Agent", "PostBoy-Updater")
+        .header("User-Agent", "Ripple-Updater")
         .send()
         .await
         .map_err(|e| format!("Failed to fetch release info: {e}"))?
@@ -72,7 +72,7 @@ async fn github_fetch_latest_json(token: &str) -> Result<(String, serde_json::Va
         .get(asset_api_url)
         .header("Authorization", format!("Bearer {token}"))
         .header("Accept", "application/octet-stream")
-        .header("User-Agent", "PostBoy-Updater")
+        .header("User-Agent", "Ripple-Updater")
         .send()
         .await
         .map_err(|e| format!("Failed to download latest.json: {e}"))?
@@ -205,7 +205,7 @@ async fn perform_update(app: tauri::AppHandle) -> Result<(), String> {
             .header("Authorization", &format!("Bearer {token}"))
             .map_err(|e| format!("Failed to set auth header: {e}"))?;
         let builder = builder
-            .header("User-Agent", "PostBoy-Updater")
+            .header("User-Agent", "Ripple-Updater")
             .map_err(|e| format!("Failed to set user-agent header: {e}"))?;
 
         let updater = builder
@@ -240,7 +240,7 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(
             tauri_plugin_sql::Builder::new()
-                .add_migrations("sqlite:postboy.db", database::get_migrations())
+                .add_migrations("sqlite:ripple.db", database::get_migrations())
                 .build()
         )
         .plugin(tauri_plugin_dialog::init())
@@ -258,7 +258,7 @@ pub fn run() {
         .setup(|app| {
             use tauri::WebviewWindowBuilder;
             use tauri::WebviewUrl;
-            
+
             // Get main window handle (devtools feature in Cargo.toml enables Ctrl+Shift+I in production)
             let main_window = app.get_webview_window("main").expect("Failed to get main window");
             
@@ -268,7 +268,7 @@ pub fn run() {
                 "splashscreen",
                 WebviewUrl::App("splashscreen.html".into())
             )
-            .title("PostBoy")
+            .title("Ripple")
             .inner_size(500.0, 400.0)
             .resizable(false)
             .decorations(false)
@@ -292,12 +292,12 @@ pub fn run() {
                 std::fs::create_dir_all(&app_data_dir)
                     .expect("Failed to create app data directory");
                 
-                let db_path = app_data_dir.join("postboy.db");
+                let db_path = app_data_dir.join("ripple.db");
                 
                 database::initialize_database(db_path)
                     .expect("Failed to initialize database");
                 
-                println!("PostBoy app initialized successfully");
+                println!("Ripple app initialized successfully");
                 
                 // Wait a moment for visual effect
                 std::thread::sleep(std::time::Duration::from_millis(2500));
@@ -399,6 +399,10 @@ pub fn run() {
                     sql_client::sql_connect,
                     sql_client::sql_query,
                     sql_client::sql_disconnect,
+                    sql_client::sql_history_add,
+                    sql_client::sql_history_list,
+                    sql_client::sql_history_clear,
+                    sql_client::sql_history_delete,
                     net_client::dns_resolve,
                     net_client::port_check,
                     net_client::ping_host,
@@ -484,6 +488,10 @@ pub fn run() {
                     sql_client::sql_connect,
                     sql_client::sql_query,
                     sql_client::sql_disconnect,
+                    sql_client::sql_history_add,
+                    sql_client::sql_history_list,
+                    sql_client::sql_history_clear,
+                    sql_client::sql_history_delete,
                     net_client::dns_resolve,
                     net_client::port_check,
                     net_client::ping_host,

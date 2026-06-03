@@ -4030,43 +4030,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c33a9471896f1c69cecef8d20cbe2f7accd12527ce60845ff44c153bb2a21b49"
 
 [[package]]
-name = "postboy"
-version = "0.0.16"
-dependencies = [
- "base64 0.22.1",
- "chrono",
- "encoding_rs",
- "futures-util",
- "hickory-resolver",
- "lazy_static",
- "llama-cpp-2",
- "mysql_async",
- "num_cpus",
- "reqwest 0.12.28",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "surge-ping",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
- "tauri-plugin-log",
- "tauri-plugin-opener",
- "tauri-plugin-process",
- "tauri-plugin-shell",
- "tauri-plugin-sql",
- "tauri-plugin-updater",
- "tokio",
- "tokio-postgres",
- "tokio-tungstenite",
- "tokio-util",
- "url",
- "uuid",
-]
-
-[[package]]
 name = "postgres-protocol"
 version = "0.6.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4096,6 +4059,7 @@ dependencies = [
  "postgres-protocol",
  "serde_core",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -4626,6 +4590,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "ripple"
+version = "0.0.16"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "encoding_rs",
+ "futures-util",
+ "hickory-resolver",
+ "lazy_static",
+ "llama-cpp-2",
+ "mysql_async",
+ "num_cpus",
+ "reqwest 0.12.28",
+ "rusqlite",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "surge-ping",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-log",
+ "tauri-plugin-opener",
+ "tauri-plugin-process",
+ "tauri-plugin-shell",
+ "tauri-plugin-sql",
+ "tauri-plugin-updater",
+ "tokio",
+ "tokio-postgres",
+ "tokio-tungstenite",
+ "tokio-util",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "rkyv"
 version = "0.7.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4698,6 +4700,7 @@ dependencies = [
  "borsh",
  "bytes",
  "num-traits",
+ "postgres-types",
  "rand 0.8.5",
  "rkyv",
  "serde",

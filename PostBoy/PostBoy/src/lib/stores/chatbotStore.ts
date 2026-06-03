@@ -55,7 +55,7 @@ export const downloadProgress = writable<Record<string, { downloaded: number; to
 // Models that are currently paused mid-download. Keyed by model id.
 export const pausedDownloads = writable<Set<string>>(new Set());
 
-// Chat-history sessions persisted in `postboy.db` (table `chat_sessions`).
+// Chat-history sessions persisted in `ripple.db` (table `chat_sessions`).
 export interface ChatSessionSummary {
   id: number;
   title: string;
@@ -123,6 +123,26 @@ export async function initChatbotFeature() {
         console.warn(`[chatbot] background load failed: ${res.message}`);
       }
     });
+  }
+}
+
+/**
+ * Mark the chatbot feature as not-supported from the JS side and unload any
+ * llama-cpp engine the process is currently holding. Used when the user
+ * disables Anton via Settings: we want immediate RAM reclamation, not a
+ * "reload to apply" toast. `initChatbotFeature` will re-run from scratch
+ * if the user toggles it back on (we reset the supported sentinel so the
+ * guard at the top of init lets us back in).
+ */
+export async function teardownChatbotFeature() {
+  chatbotSupported.set(null);
+  chatbotStatus.set(DEFAULT_STATUS);
+  resetConversation();
+  try {
+    await ai.unloadEngine();
+  } catch {
+    // unload is best-effort; if the engine was never loaded the call
+    // succeeds anyway, and any other failure shouldn't block the toggle.
   }
 }
 

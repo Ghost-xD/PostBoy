@@ -465,7 +465,7 @@
           ).filter(p => p.key);
 
           if (resolvedTextPairs.length > 0 || filePairs.length > 0) {
-            const boundary = '----PostBoyFormBoundary' + Date.now();
+            const boundary = '----RippleFormBoundary' + Date.now();
             let body = '';
             resolvedTextPairs.forEach(p => {
               body += `--${boundary}\r\nContent-Disposition: form-data; name="${p.key}"\r\n\r\n${p.value}\r\n`;

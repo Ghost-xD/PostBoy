@@ -159,6 +159,17 @@ export function addTab(): Tab {
 
 // Remove a tab by ID
 export function removeTab(id: string) {
+  // If the tab has a live WebSocket connection, close it on the backend
+  // before discarding the tab. Otherwise the Rust side keeps the socket
+  // open (and, for chatty feeds like Binance, keeps streaming + logging)
+  // until the process exits, because the connection id == tab id and
+  // nothing else ever calls ws_disconnect for it.
+  const closing = get(tabs).find(t => t.id === id);
+  if (closing && (closing.wsStatus === 'connected' || closing.wsStatus === 'connecting')) {
+    // Lazy import to avoid a circular dep with wsStore (which imports tabStore).
+    import('$lib/stores/wsStore').then(m => m.wsDisconnect(id)).catch(() => {});
+  }
+
   tabs.update(currentTabs => {
     if (currentTabs.length <= 1) {
       const freshTab = createDefaultTab();

@@ -8,6 +8,17 @@ export interface AppSettings {
   sslVerification: boolean;
   followRedirects: boolean;
   maxRedirects: number;
+  /**
+   * User opt-in for the on-device LLM ("Son of Anton"). When `false`, the
+   * Tools nav-bar pill, app-menu entry, and Ctrl+Shift+M shortcut are
+   * hidden, AND `initChatbotFeature()` skips its background work — no
+   * model registry fetch, no default model load, no llama-cpp context.
+   * That makes cold start noticeably faster on machines where the user
+   * never uses Anton. Independent of `chatbotSupported`, which reflects
+   * the platform-level capability (the `chatbot` Cargo feature being
+   * compiled in).
+   */
+  chatbotEnabled: boolean;
 }
 
 const DEFAULTS: AppSettings = {
@@ -17,6 +28,7 @@ const DEFAULTS: AppSettings = {
   sslVerification: false,
   followRedirects: true,
   maxRedirects: 10,
+  chatbotEnabled: true,
 };
 
 export const settings = writable<AppSettings>({ ...DEFAULTS });

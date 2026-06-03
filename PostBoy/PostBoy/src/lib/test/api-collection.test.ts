@@ -27,7 +27,7 @@ describe('API Collection Tests', () => {
   describe('Test Collection Loading', () => {
     it('should load test collection successfully', () => {
       expect(testCollection).toBeDefined();
-      expect(testCollection.name).toBe('Postboy Test API Collection');
+      expect(testCollection.name).toBe('Ripple Test API Collection');
       expect(testCollection.categories).toBeInstanceOf(Array);
       expect(testCollection.categories.length).toBeGreaterThan(0);
     });

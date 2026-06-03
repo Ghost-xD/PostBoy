@@ -55,7 +55,7 @@
   let showSuggestions = $state(false);
 
   // Starter templates the model is good at answering. Mirrors the
-  // PATTERN_TEMPLATES idea from HealthCheckServer but tuned to PostBoy.
+  // PATTERN_TEMPLATES idea from HealthCheckServer but tuned to Ripple.
   const TEMPLATE_SUGGESTIONS: string[] = [
     'list my collections',
     'list requests in ',
@@ -171,6 +171,7 @@
 
   // Tauri event listener handles
   let unlistenDelta: (() => void) | null = null;
+  let unlistenReplace: (() => void) | null = null;
   let unlistenTool: (() => void) | null = null;
   let unlistenError: (() => void) | null = null;
   let unlistenDone: (() => void) | null = null;
@@ -197,6 +198,15 @@
     unlistenDelta = await listen<string>('ai-chat-delta', (event) => {
       if (streamingStartTs === null) streamingStartTs = Date.now();
       streamingAssistant.update((s) => s + event.payload);
+      scrollToBottom();
+    });
+
+    // Backend fires this when it strips fabricated <tool_response> blocks
+    // out of the generated text. Hard-swap the live streaming buffer so the
+    // user doesn't see the fake JSON sitting on screen between stream-end
+    // and final persistence.
+    unlistenReplace = await listen<string>('ai-chat-replace', (event) => {
+      streamingAssistant.set(event.payload);
       scrollToBottom();
     });
 
@@ -251,6 +261,7 @@
 
   onDestroy(() => {
     unlistenDelta?.();
+    unlistenReplace?.();
     unlistenTool?.();
     unlistenError?.();
     unlistenDone?.();

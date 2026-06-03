@@ -1,6 +1,6 @@
-# Building PostBoy
+# Building Ripple
 
-PostBoy bundles a local LLM via [`llama-cpp-2`](https://crates.io/crates/llama-cpp-2). It uses platform-native GPU backends so the chatbot runs on the user's GPU when one is available, with automatic CPU fallback otherwise:
+Ripple bundles a local LLM via [`llama-cpp-2`](https://crates.io/crates/llama-cpp-2). It uses platform-native GPU backends so the chatbot runs on the user's GPU when one is available, with automatic CPU fallback otherwise:
 
 | OS              | Backend | Notes                                                   |
 | --------------- | ------- | ------------------------------------------------------- |

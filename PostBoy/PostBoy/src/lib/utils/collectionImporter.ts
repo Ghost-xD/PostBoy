@@ -1,6 +1,6 @@
 /**
  * Postman v2.1 and Insomnia v4 collection importer.
- * Detects the format automatically and converts into PostBoy's internal
+ * Detects the format automatically and converts into Ripple's internal
  * collection/request model, reusing the same interfaces as openApiParser.
  */
 
@@ -16,12 +16,12 @@ export interface ImportedCollection extends ParsedCollection {
 }
 
 export interface CollectionImportResult {
-  format: 'postman-v2.1' | 'insomnia-v4' | 'postboy';
+  format: 'postman-v2.1' | 'insomnia-v4' | 'ripple';
   collections: ImportedCollection[];
   errors: string[];
 }
 
-type DetectedFormat = 'postman-v2.1' | 'insomnia-v4' | 'postboy' | null;
+type DetectedFormat = 'postman-v2.1' | 'insomnia-v4' | 'ripple' | null;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -32,15 +32,15 @@ export function importCollection(raw: string): CollectionImportResult {
   try {
     data = JSON.parse(raw);
   } catch (e: any) {
-    return { format: 'postboy', collections: [], errors: [`Invalid JSON: ${e.message}`] };
+    return { format: 'ripple', collections: [], errors: [`Invalid JSON: ${e.message}`] };
   }
 
   const format = detectFormat(data);
   if (!format) {
     return {
-      format: 'postboy',
+      format: 'ripple',
       collections: [],
-      errors: ['Unrecognised file format. Expected Postman v2.1, Insomnia v4, or PostBoy collection JSON.'],
+      errors: ['Unrecognised file format. Expected Postman v2.1, Insomnia v4, or Ripple collection JSON.'],
     };
   }
 
@@ -49,8 +49,8 @@ export function importCollection(raw: string): CollectionImportResult {
       return parsePostmanCollection(data);
     case 'insomnia-v4':
       return parseInsomniaExport(data);
-    case 'postboy':
-      return parsePostBoyCollection(data);
+    case 'ripple':
+      return parseRippleCollection(data);
   }
 }
 
@@ -65,8 +65,8 @@ export function detectFormat(data: any): DetectedFormat {
     return 'insomnia-v4';
   }
 
-  if (data.format === 'postboy-collection') {
-    return 'postboy';
+  if (data.format === 'ripple-collection') {
+    return 'ripple';
   }
 
   return null;
@@ -429,13 +429,13 @@ function convertInsomniaAuth(auth: any): { authType: string; authData: Record<st
 }
 
 // ---------------------------------------------------------------------------
-// PostBoy native format (pass-through)
+// Ripple native format (pass-through)
 // ---------------------------------------------------------------------------
 
-function parsePostBoyCollection(data: any): CollectionImportResult {
+function parseRippleCollection(data: any): CollectionImportResult {
   const col = data.collection;
   if (!col) {
-    return { format: 'postboy', collections: [], errors: ['Missing "collection" field in PostBoy export.'] };
+    return { format: 'ripple', collections: [], errors: ['Missing "collection" field in Ripple export.'] };
   }
 
   const requests: ParsedRequest[] = (col.requests || []).map((r: any) => {
@@ -474,7 +474,7 @@ function parsePostBoyCollection(data: any): CollectionImportResult {
     .map((v: any) => ({ key: v.key, value: String(v.value ?? '') }));
 
   return {
-    format: 'postboy',
+    format: 'ripple',
     collections: [{
       name: col.name || 'Imported Collection',
       description: col.description || '',

@@ -81,7 +81,7 @@ export function generateSnapshotHtml(tab: Tab): string {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${escapeHtml(tab.method)} ${escapeHtml(tab.url)} — PostBoy Snapshot</title>
+<title>${escapeHtml(tab.method)} ${escapeHtml(tab.url)} — Ripple Snapshot</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -196,9 +196,9 @@ export function generateSnapshotHtml(tab: Tab): string {
 <div class="container">
   <div class="header">
     <div class="brand">
-      <div class="brand-icon">P</div>
+      <div class="brand-icon">R</div>
       <div>
-        <div class="brand-name">PostBoy</div>
+        <div class="brand-name">Ripple</div>
         <div class="brand-sub">Request Snapshot</div>
       </div>
     </div>
@@ -265,7 +265,7 @@ ${tab.responseBody
   </div>
 `}
   <div class="footer">
-    Exported from <a href="https://github.com/moodysaroha/postboy">PostBoy</a> &middot; ${escapeHtml(timestamp)}
+    Exported from <a href="https://github.com/moodysaroha/postboy">Ripple</a> &middot; ${escapeHtml(timestamp)}
   </div>
 </div>
 </body>

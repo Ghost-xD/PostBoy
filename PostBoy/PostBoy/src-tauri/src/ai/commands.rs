@@ -12,7 +12,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use super::{engine::Engine, model, tool_parser, tools, ActionLogEntry, AiState, DownloadControl};
 
-const DEFAULT_SYSTEM_PROMPT: &str = "You are PostBoy's local AI assistant. You help the user inspect and run their saved HTTP API requests. Be concise, accurate, and use tools only when the user actually wants data or an action — for greetings or small talk, just reply directly. When summarizing a response, lead with the status code and the most relevant fields.";
+const DEFAULT_SYSTEM_PROMPT: &str = "You are Ripple's local AI assistant. You help the user inspect and run their saved HTTP API requests. Be concise, accurate, and use tools only when the user actually wants data or an action — for greetings or small talk, just reply directly. When summarizing a response, lead with the status code and the most relevant fields.";
 
 // Effectively "use the rest of the context window for the reply". The engine
 // clamps this to (ctx_size - prompt_tokens) so we never error on length, and
@@ -254,9 +254,10 @@ async fn chat_loop(
     // ------------------------------------------------------------------
     // Deterministic intercept: explicit "VERB NAME" run-request commands
     // ------------------------------------------------------------------
-    // The 1.5B model occasionally pattern-matches past tool-result output
-    // and fabricates a fresh "200 OK" response without actually calling
-    // run_request. That's catastrophic: the user thinks the API was hit,
+    // Smaller / code-tuned models occasionally pattern-match past
+    // tool-result output and fabricate a fresh "200 OK" response without
+    // actually calling run_request. That's catastrophic: the user thinks
+    // the API was hit,
     // but no network call ever happened (no action log entry, no real
     // status, fake body). When the user is unambiguously asking to run a
     // saved request, bypass the model entirely and dispatch the tool
@@ -293,9 +294,9 @@ async fn chat_loop(
             }
         }
 
-        // Same defense for "list all requests across every collection". The
-        // 1.5B model treats `list_requests` as strictly per-collection and
-        // refuses outright when asked for a global list, even though the
+        // Same defense for "list all requests across every collection".
+        // Smaller models can treat `list_requests` as strictly per-collection
+        // and refuse outright when asked for a global list, even though the
         // tool now accepts a missing `collection_id`. Detecting the intent
         // and dispatching ourselves guarantees a real answer.
         if parse_list_all_requests_intent(last_user) {
@@ -446,7 +447,26 @@ async fn chat_loop(
         }
 
         match call {
-            None => return Ok(full),
+            None => {
+                // Strip any fabricated `<tool_response>...</tool_response>`
+                // blocks before we hand the text to the frontend (which will
+                // persist it). If we don't, the fake exchange becomes part
+                // of the chat history and the model treats it as a real
+                // past tool call on the very next turn, snowballing the
+                // hallucination. See `strip_fake_tool_responses` doc.
+                //
+                // Also re-emit a sentinel delta so the UI replaces what the
+                // user just saw streaming with the cleaned version. The
+                // frontend keys on `ai-chat-replace` to drop the live
+                // buffer and adopt the clean string. If your UI doesn't
+                // handle it yet, harmless — the persisted message is still
+                // sanitized.
+                let cleaned = tool_parser::strip_fake_tool_responses(&full);
+                if cleaned != full {
+                    let _ = app.emit("ai-chat-replace", cleaned.clone());
+                }
+                return Ok(cleaned);
+            }
             Some(call) => {
                 let arguments = call.arguments.clone();
                 let tool_name = call.name.clone();
@@ -473,16 +493,22 @@ async fn chat_loop(
                     }
                 }
 
-                // Short-circuit: when the tool *is* the answer the user wanted
-                // (the live HTTP response, or the saved request definition),
-                // we skip the second LLM turn and emit a structured markdown
-                // payload directly. This avoids the slow, paraphrased prose
-                // summary the model otherwise produces — the user gets the
-                // raw result with proper formatting (status/headers/body)
-                // exactly like the main response panel.
-                if let Some(formatted) = format_tool_result_for_user(&tool_name, &result) {
-                    let _ = app.emit("ai-chat-delta", formatted.clone());
-                    return Ok(formatted);
+                // Short-circuit only for tools whose result genuinely IS the
+                // answer (saved-request definitions). We deliberately do NOT
+                // short-circuit `run_request` here: when the model picked
+                // run_request, the user may have asked something like
+                // "summarize the response of X" or "compare X and Y" — they
+                // want prose, not the raw HTTP markdown. Let the loop run a
+                // second LLM turn so the model can actually answer.
+                //
+                // (The deterministic VERB intercept above — "hit X", "run X" —
+                // still short-circuits run_request because that intent is
+                // unambiguous: the user literally asked for the raw response.)
+                if tool_name != "run_request" {
+                    if let Some(formatted) = format_tool_result_for_user(&tool_name, &result) {
+                        let _ = app.emit("ai-chat-delta", formatted.clone());
+                        return Ok(formatted);
+                    }
                 }
 
                 // Append the assistant turn (preamble + the tool_call) and a
@@ -1024,7 +1050,7 @@ fn format_request_definition_md(v: &serde_json::Value) -> String {
 // Chat history (saved conversations)
 // ----------------------------------------------------------------------------
 //
-// All chat-history work goes through the same `postboy.db` SQLite database
+// All chat-history work goes through the same `ripple.db` SQLite database
 // that the rest of the app uses. The schema (see `database/mod.rs` migration
 // v7) is two tables — `chat_sessions` (id, title, timestamps) and
 // `chat_messages` (session_id, role, content, ts) with cascade-on-delete.
@@ -1058,7 +1084,7 @@ pub struct ChatSessionDetail {
 
 fn chat_db(app: &AppHandle) -> Result<rusqlite::Connection, String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    rusqlite::Connection::open(dir.join("postboy.db")).map_err(|e| e.to_string())
+    rusqlite::Connection::open(dir.join("ripple.db")).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

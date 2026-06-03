@@ -1,7 +1,7 @@
 {
-  "name": "postboy",
+  "name": "ripple",
   "version": "0.0.16",
-  "description": "A minimal PostBoy built with Tauri for API testing",
+  "description": "A minimal Ripple built with Tauri for API testing",
   "type": "module",
   "scripts": {
     "dev": "vite dev",

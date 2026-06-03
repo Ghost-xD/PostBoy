@@ -416,13 +416,13 @@ describe('Import/Export Tests', () => {
 
       const filePath = await invoke<any>('show_save_dialog', {
         title: 'Export Collections',
-        defaultPath: 'postboy-collections.json'
+        defaultPath: 'ripple-collections.json'
       });
 
       expect(filePath).toBe(mockPath);
       expect(invoke).toHaveBeenCalledWith('show_save_dialog', {
         title: 'Export Collections',
-        defaultPath: 'postboy-collections.json'
+        defaultPath: 'ripple-collections.json'
       });
     });
 

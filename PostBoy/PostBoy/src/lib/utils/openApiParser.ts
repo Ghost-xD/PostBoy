@@ -1,6 +1,6 @@
 /**
  * OpenAPI / Swagger spec parser.
- * Converts OpenAPI 2.0 (Swagger) and 3.x specs into PostBoy request templates.
+ * Converts OpenAPI 2.0 (Swagger) and 3.x specs into Ripple request templates.
  */
 
 export interface ParsedRequest {

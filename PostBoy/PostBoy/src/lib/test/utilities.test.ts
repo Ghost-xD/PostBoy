@@ -159,7 +159,7 @@ describe('Base64 Encode/Decode', () => {
   });
 
   it('should roundtrip encode/decode', () => {
-    const input = 'PostBoy API Testing Tool!';
+    const input = 'Ripple API Testing Tool!';
     expect(decodeBase64(encodeBase64(input))).toBe(input);
   });
 

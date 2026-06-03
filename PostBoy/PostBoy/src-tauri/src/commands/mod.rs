@@ -12,7 +12,7 @@ fn get_db_path(app: &AppHandle) -> Result<PathBuf, String> {
     std::fs::create_dir_all(&app_data_dir)
         .map_err(|e| format!("Failed to create app data directory: {}", e))?;
     
-    Ok(app_data_dir.join("postboy.db"))
+    Ok(app_data_dir.join("ripple.db"))
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -465,7 +465,7 @@ pub async fn db_export_single_collection(app: AppHandle, collection_id: i64) -> 
     .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
 
     let export = serde_json::json!({
-        "format": "postboy-collection",
+        "format": "ripple-collection",
         "version": "1.0",
         "collection": {
             "name": collection.0,

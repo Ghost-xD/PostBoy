@@ -1,5 +1,7 @@
 <script lang="ts">
   import { run, createBubbler, stopPropagation } from 'svelte/legacy';
+  import { settings } from '$lib/stores/settingsStore';
+  import { chatbotSupported } from '$lib/stores/chatbotStore';
 
   const bubble = createBubbler();
   interface Props {
@@ -112,8 +114,14 @@
 
   let lowerQuery = $derived(searchQuery.toLowerCase());
 
+  // Hide the Son of Anton row from the cheat sheet when Anton is disabled
+  // or the chatbot feature isn't compiled in — otherwise the user sees a
+  // shortcut for something that won't open.
+  let antonAvailable = $derived(!!$chatbotSupported && $settings.chatbotEnabled);
+
   let filteredSections = $derived(sections
     .map(s => ({ ...s, items: s.items.filter(item => {
+      if (!antonAvailable && item.label === 'Son of Anton') return false;
       if (!lowerQuery) return true;
       return item.label.toLowerCase().includes(lowerQuery) || item.keys.toLowerCase().includes(lowerQuery);
     })}))
