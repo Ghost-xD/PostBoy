@@ -30,6 +30,9 @@
         "installerIcon": "icons/icon.ico"
       }
     },
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    },
     "createUpdaterArtifacts": true
   },
   "app": {
@@ -55,7 +58,7 @@
       "endpoints": [
         "https://github.com/Ghost-xD/PostBoy/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDEzNkM1MjI1MjczOEJCQzkKUldUSnV6Z25KVkpzRTNEVjNSWlVJOW5PalRwZUtWYXNNNWpCbVIwZXhaeW1iRk9xR1JUb3NBVjAK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDEyMDY5QjkwQ0M3QTMwODEKUldTQk1Ick1rSnNHRWhqeEo2c2RSb2h0NldwZi8vOWxEZnMvWkxTaTFlWmNZeHZyQWUrVmROeWgK",
       "dangerousInsecureTransportProtocol": true
     }
   }
