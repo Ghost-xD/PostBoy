@@ -357,6 +357,16 @@ export const loadTest = {
   running: async (): Promise<boolean> => {
     return (await invoke('load_test_running')) as boolean;
   },
+  /**
+   * Discovery / probe: run each TS-resolved request once, sequentially.
+   * Rust handles execution, token detection, fresh-token injection into
+   * later requests, and returns a ready-to-edit draft plan with
+   * extractions wired and downstream Authorization rewritten to {{var}}.
+   * Emits `probe-progress` per step and `probe-done` at the end.
+   */
+  probeCollection: async (requests: any[]): Promise<any> => {
+    return (await invoke('probe_collection', { requests })) as any;
+  },
 };
 
 // WebSocket client

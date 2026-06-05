@@ -192,3 +192,114 @@ function parseJsonRows(text: string): Record<string, string>[] {
     return obj;
   });
 }
+
+// ---------------------------------------------------------------------------
+// Data-flow analysis for the review screen.
+//
+// Walks the plan once to produce, per step, the variables it *provides*
+// (via `extractions[].variableName`) and the variables it *uses* (any
+// `{{name}}` reference in the url, header keys/values, or body). The
+// `producers` map answers "which step first provided `accessToken`?", which
+// drives the "from Step 1" badges and warning highlights for unresolved
+// references.
+//
+// This is what makes the order intelligible: the user can see at a glance
+// that Step 1 → accessToken → consumed by Steps 2, 4, 5, instead of
+// re-reading every URL and header looking for {{vars}}.
+// ---------------------------------------------------------------------------
+
+export interface VarReference {
+  /** Variable name, e.g. `accessToken`. */
+  name: string;
+  /** Step index that first provided this var, or null if it's a missing or
+   *  initial var (the caller checks against `initialVars` to disambiguate). */
+  fromStep: number | null;
+}
+
+export interface StepDataFlow {
+  provides: string[];
+  uses: VarReference[];
+  /** Vars referenced but never produced earlier and not in initialVars. */
+  warnings: string[];
+}
+
+export interface DataFlowSummary {
+  producers: Map<string, number>;
+  /** Reverse index: var name -> step indices that consume it. */
+  consumers: Map<string, number[]>;
+  perStep: StepDataFlow[];
+  /** Names referenced but never produced and not in initialVars. */
+  unresolved: string[];
+}
+
+const VAR_RE = /\{\{\s*([\w.-]+?)\s*\}\}/g;
+
+function extractVarNames(...sources: (string | undefined | null)[]): string[] {
+  const found = new Set<string>();
+  for (const src of sources) {
+    if (!src) continue;
+    VAR_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = VAR_RE.exec(src)) !== null) {
+      if (m[1]) found.add(m[1]);
+    }
+  }
+  return Array.from(found);
+}
+
+export function computeDataFlow(
+  steps: PlanStep[],
+  initialVars: Record<string, string> = {},
+): DataFlowSummary {
+  const producers = new Map<string, number>();
+  const consumers = new Map<string, number[]>();
+  const perStep: StepDataFlow[] = [];
+  const unresolved = new Set<string>();
+  const initialNames = new Set(Object.keys(initialVars));
+
+  steps.forEach((step, idx) => {
+    // Sources to scan for {{var}} references — every place the Rust worker
+    // does interpolation: url, header keys + values, body.
+    const headerStrings: string[] = [];
+    for (const [k, v] of Object.entries(step.headers || {})) {
+      headerStrings.push(k, v);
+    }
+    const used = extractVarNames(step.url, step.body, ...headerStrings);
+
+    const uses: VarReference[] = used.map((name) => {
+      const fromStep = producers.has(name) ? producers.get(name)! : null;
+      const list = consumers.get(name) ?? [];
+      list.push(idx);
+      consumers.set(name, list);
+      return { name, fromStep };
+    });
+
+    const warnings: string[] = [];
+    for (const ref of uses) {
+      if (ref.fromStep === null && !initialNames.has(ref.name)) {
+        warnings.push(ref.name);
+        unresolved.add(ref.name);
+      }
+    }
+
+    const provides: string[] = [];
+    for (const ex of step.extractions || []) {
+      if (!ex.variableName) continue;
+      provides.push(ex.variableName);
+      // First producer wins — that's the step the consumer badge will point
+      // at. Subsequent re-extractions don't shadow it.
+      if (!producers.has(ex.variableName)) {
+        producers.set(ex.variableName, idx);
+      }
+    }
+
+    perStep.push({ provides, uses, warnings });
+  });
+
+  return {
+    producers,
+    consumers,
+    perStep,
+    unresolved: Array.from(unresolved),
+  };
+}

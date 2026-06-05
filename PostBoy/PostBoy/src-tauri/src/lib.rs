@@ -3,6 +3,7 @@ mod ai;
 mod commands;
 mod database;
 mod http_client;
+mod load_probe;
 mod load_test;
 mod net_client;
 mod sql_client;
@@ -433,6 +434,7 @@ pub fn run() {
                     load_test::load_test_start,
                     load_test::load_test_cancel,
                     load_test::load_test_running,
+                    load_probe::probe_collection,
                     ai::commands::ai_get_status,
                     ai::commands::ai_list_models,
                     ai::commands::ai_list_installed,
@@ -527,6 +529,7 @@ pub fn run() {
                     load_test::load_test_start,
                     load_test::load_test_cancel,
                     load_test::load_test_running,
+                    load_probe::probe_collection,
                 ]
             }
         })

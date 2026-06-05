@@ -152,7 +152,35 @@ export interface DoneEvent {
   cancelled: boolean;
 }
 
-export type RunPhase = 'configure' | 'review' | 'running' | 'results';
+export type RunPhase = 'configure' | 'probe' | 'review' | 'running' | 'results';
+
+// ---------------------------------------------------------------------------
+// Probe / discovery shapes (must match load_probe.rs wire types)
+// ---------------------------------------------------------------------------
+
+/** Live status of a single probed request, kept in `probeResults` and
+ *  updated as `probe-progress` events arrive. */
+export interface ProbeResult {
+  index: number;
+  requestId: number;
+  name: string;
+  method: string;
+  url: string;
+  statusCode: number;
+  timeMs: number;
+  bodyPreview: string;
+  headers: Record<string, string>;
+  error: string | null;
+  ok: boolean;
+  detectedVars: string[];
+}
+
+export interface DiscoveredVar {
+  variableName: string;
+  jsonPath: string;
+  sourceStepIndex: number;
+  sourceRequestName: string;
+}
 
 // ---------------------------------------------------------------------------
 // Defaults
@@ -190,6 +218,14 @@ export const aiAnalysis = writable<string>('');
 export const aiAnalysisLoading = writable<boolean>(false);
 export const runError = writable<string | null>(null);
 
+// Probe / discovery stores. Driven by the new probe phase UI and the live
+// `probe-progress` event subscription in LoadTestScreen.
+export const probeRunning = writable<boolean>(false);
+export const probeError = writable<string | null>(null);
+/** Index -> live result map. Empty until a probe starts. */
+export const probeResults = writable<Record<number, ProbeResult>>({});
+export const discoveredVars = writable<DiscoveredVar[]>([]);
+
 export function resetForNewRun(keepConfig = true) {
   if (!keepConfig) config.set(defaultConfig());
   draftPlan.set(null);
@@ -200,6 +236,10 @@ export function resetForNewRun(keepConfig = true) {
   aiAnalysis.set('');
   aiAnalysisLoading.set(false);
   runError.set(null);
+  probeRunning.set(false);
+  probeError.set(null);
+  probeResults.set({});
+  discoveredVars.set([]);
   phase.set('configure');
 }
 
