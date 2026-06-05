@@ -70,9 +70,13 @@ export async function resolveRequest(request: any, collectionId: number): Promis
 
   let requestUrl = interpolate(request.url, collectionId);
   if (validParams.length > 0) {
+    // Params tab is the source of truth: strip any existing query string
+    // from the URL to avoid sending duplicates (server would see arrays).
+    const qIdx = requestUrl.indexOf('?');
+    if (qIdx >= 0) requestUrl = requestUrl.slice(0, qIdx);
     const urlParams = new URLSearchParams();
     validParams.forEach((p: any) => urlParams.append(p.key, p.value));
-    requestUrl += (requestUrl.includes('?') ? '&' : '?') + urlParams.toString();
+    requestUrl += '?' + urlParams.toString();
   }
 
   const resolvedHeaders = interpolateKeyValues(headers, collectionId);

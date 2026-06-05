@@ -39,6 +39,10 @@ pub struct Request {
     pub auth_type: Option<String>,
     pub auth_data: String,
     pub description: Option<String>,
+    pub status_code: Option<i64>,
+    pub response_time: Option<i64>,
+    pub response_headers: Option<String>,
+    pub response_body: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -59,6 +63,16 @@ pub struct RequestData {
     #[serde(rename = "authData")]
     pub auth_data: Option<serde_json::Value>,
     pub description: Option<String>,
+    // Response snapshot: persisted on explicit Save so reopening a saved request
+    // restores the last response the user saw. None = leave unchanged on update.
+    #[serde(rename = "statusCode")]
+    pub status_code: Option<i64>,
+    #[serde(rename = "responseTime")]
+    pub response_time: Option<i64>,
+    #[serde(rename = "responseHeaders")]
+    pub response_headers: Option<String>,
+    #[serde(rename = "responseBody")]
+    pub response_body: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -231,7 +245,7 @@ pub async fn db_create_request(
         .map_err(|e| e.to_string())?;
     
     conn.execute(
-        "INSERT INTO requests (collection_id, name, method, url, headers, params, body_type, body_content, auth_type, auth_data, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO requests (collection_id, name, method, url, headers, params, body_type, body_content, auth_type, auth_data, description, status_code, response_time, response_headers, response_body) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         rusqlite::params![
             collection_id,
             request_data.name,
@@ -244,6 +258,10 @@ pub async fn db_create_request(
             request_data.auth_type.unwrap_or_else(|| "none".to_string()),
             auth_data,
             request_data.description.unwrap_or_default(),
+            request_data.status_code,
+            request_data.response_time,
+            request_data.response_headers,
+            request_data.response_body,
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -257,7 +275,7 @@ pub async fn db_get_requests(app: AppHandle, collection_id: i64) -> Result<Vec<R
     let conn = rusqlite::Connection::open(db_path)
         .map_err(|e| e.to_string())?;
     
-    let mut stmt = conn.prepare("SELECT id, collection_id, name, method, url, headers, params, body_type, body_content, auth_type, auth_data, description, created_at, updated_at FROM requests WHERE collection_id = ? ORDER BY sort_order ASC, created_at DESC")
+    let mut stmt = conn.prepare("SELECT id, collection_id, name, method, url, headers, params, body_type, body_content, auth_type, auth_data, description, status_code, response_time, response_headers, response_body, created_at, updated_at FROM requests WHERE collection_id = ? ORDER BY sort_order ASC, created_at DESC")
         .map_err(|e| e.to_string())?;
 
     let requests = stmt.query_map([collection_id], |row| {
@@ -274,8 +292,12 @@ pub async fn db_get_requests(app: AppHandle, collection_id: i64) -> Result<Vec<R
             auth_type: row.get(9)?,
             auth_data: row.get(10)?,
             description: row.get(11)?,
-            created_at: row.get(12)?,
-            updated_at: row.get(13)?,
+            status_code: row.get(12)?,
+            response_time: row.get(13)?,
+            response_headers: row.get(14)?,
+            response_body: row.get(15)?,
+            created_at: row.get(16)?,
+            updated_at: row.get(17)?,
         })
     })
     .map_err(|e| e.to_string())?
@@ -291,7 +313,7 @@ pub async fn db_get_request(app: AppHandle, id: i64) -> Result<Option<Request>, 
     let conn = rusqlite::Connection::open(db_path)
         .map_err(|e| e.to_string())?;
     
-    let mut stmt = conn.prepare("SELECT id, collection_id, name, method, url, headers, params, body_type, body_content, auth_type, auth_data, description, created_at, updated_at FROM requests WHERE id = ?")
+    let mut stmt = conn.prepare("SELECT id, collection_id, name, method, url, headers, params, body_type, body_content, auth_type, auth_data, description, status_code, response_time, response_headers, response_body, created_at, updated_at FROM requests WHERE id = ?")
         .map_err(|e| e.to_string())?;
     
     let mut rows = stmt.query([id])
@@ -311,8 +333,12 @@ pub async fn db_get_request(app: AppHandle, id: i64) -> Result<Option<Request>, 
             auth_type: row.get(9).map_err(|e| e.to_string())?,
             auth_data: row.get(10).map_err(|e| e.to_string())?,
             description: row.get::<_, Option<String>>(11).unwrap_or(None),
-            created_at: row.get(12).map_err(|e| e.to_string())?,
-            updated_at: row.get(13).map_err(|e| e.to_string())?,
+            status_code: row.get(12).map_err(|e| e.to_string())?,
+            response_time: row.get(13).map_err(|e| e.to_string())?,
+            response_headers: row.get(14).map_err(|e| e.to_string())?,
+            response_body: row.get(15).map_err(|e| e.to_string())?,
+            created_at: row.get(16).map_err(|e| e.to_string())?,
+            updated_at: row.get(17).map_err(|e| e.to_string())?,
         }))
     } else {
         Ok(None)
@@ -337,7 +363,10 @@ pub async fn db_update_request(
         .map_err(|e| e.to_string())?;
     
     conn.execute(
-        "UPDATE requests SET name = ?, method = ?, url = ?, headers = ?, params = ?, body_type = ?, body_content = ?, auth_type = ?, auth_data = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        // For response_* columns, COALESCE keeps the existing value when the
+        // frontend doesn't send a snapshot (e.g. metadata-only edits before
+        // any send), and replaces it when the user explicitly saves a new one.
+        "UPDATE requests SET name = ?, method = ?, url = ?, headers = ?, params = ?, body_type = ?, body_content = ?, auth_type = ?, auth_data = ?, description = ?, status_code = COALESCE(?, status_code), response_time = COALESCE(?, response_time), response_headers = COALESCE(?, response_headers), response_body = COALESCE(?, response_body), updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         rusqlite::params![
             request_data.name,
             request_data.method,
@@ -349,6 +378,10 @@ pub async fn db_update_request(
             request_data.auth_type.unwrap_or_else(|| "none".to_string()),
             auth_data,
             request_data.description.unwrap_or_default(),
+            request_data.status_code,
+            request_data.response_time,
+            request_data.response_headers,
+            request_data.response_body,
             id,
         ],
     )

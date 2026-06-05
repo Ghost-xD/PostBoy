@@ -88,7 +88,11 @@ describe('resolveRequest', () => {
     expect(result.url).toMatch(/\?q=test&page=1$/);
   });
 
-  it('appends params with & when URL already has ?', async () => {
+  it('replaces existing query string when params array is provided (params is source of truth)', async () => {
+    // The request builder auto-mirrors the URL's query string into the params
+    // tab, so when params has entries it represents the full intended query.
+    // To avoid duplicate params (e.g. ?limit=10&limit=10), the URL's existing
+    // query string is dropped and rebuilt from the params array.
     mockDbCalls({ getVariables: [] });
     await variables.load(1);
 
@@ -102,7 +106,8 @@ describe('resolveRequest', () => {
       1
     );
 
-    expect(result.url).toContain('&extra=1');
+    expect(result.url).toBe('https://api.com/search?extra=1');
+    expect(result.url).not.toContain('existing=yes');
   });
 
   it('filters out params with empty key or value', async () => {

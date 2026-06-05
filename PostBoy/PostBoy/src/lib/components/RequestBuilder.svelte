@@ -419,9 +419,14 @@
       const resolvedParams = interpolateKeyValues(params, collectionId);
       const validParams = resolvedParams.filter(p => p.key && p.value);
       if (validParams.length > 0) {
+        // Params tab is the source of truth: strip any existing query string
+        // from the URL since parseUrlParams() already mirrored it into params.
+        // Without this, params would be sent twice (server sees them as arrays).
+        const qIdx = requestUrl.indexOf('?');
+        if (qIdx >= 0) requestUrl = requestUrl.slice(0, qIdx);
         const urlParams = new URLSearchParams();
         validParams.forEach(p => urlParams.append(p.key, p.value));
-        requestUrl += (resolvedUrl.includes('?') ? '&' : '?') + urlParams.toString();
+        requestUrl += '?' + urlParams.toString();
       }
 
       // Interpolate headers

@@ -6,8 +6,13 @@
   import { onMount, onDestroy } from 'svelte';
   import { variables, type Variable, getValueAtPath, interpolate, interpolateKeyValues } from '$lib/stores/variableStore';
   import { addLog } from '$lib/stores/consoleStore';
+  import { showLoadTest } from '$lib/stores/uiStore';
   import RequestChainPanel from './RequestChainPanel.svelte';
   import { loadChains as loadChainsFromDb, executeChain, type Chain } from '$lib/utils/chainRunner';
+
+  function openLoadTest(collectionId: number) {
+    showLoadTest.set({ collectionId });
+  }
 
   interface Props {
     collections?: any[];
@@ -405,9 +410,13 @@
       
       let requestUrl = interpolate(request.url, configModalCollectionId);
       if (validParams.length > 0) {
+        // Params tab is the source of truth: strip any existing query string
+        // from the URL to avoid sending duplicates (server would see arrays).
+        const qIdx = requestUrl.indexOf('?');
+        if (qIdx >= 0) requestUrl = requestUrl.slice(0, qIdx);
         const urlParams = new URLSearchParams();
         validParams.forEach((p: any) => urlParams.append(p.key, p.value));
-        requestUrl += (requestUrl.includes('?') ? '&' : '?') + urlParams.toString();
+        requestUrl += '?' + urlParams.toString();
       }
 
       const resolvedHeaders = interpolateKeyValues(headers, configModalCollectionId);
@@ -621,9 +630,13 @@
       
       let requestUrl = interpolate(request.url, collectionId);
       if (validParams.length > 0) {
+        // Params tab is the source of truth: strip any existing query string
+        // from the URL to avoid sending duplicates (server would see arrays).
+        const qIdx = requestUrl.indexOf('?');
+        if (qIdx >= 0) requestUrl = requestUrl.slice(0, qIdx);
         const urlParams = new URLSearchParams();
         validParams.forEach((p: any) => urlParams.append(p.key, p.value));
-        requestUrl += (requestUrl.includes('?') ? '&' : '?') + urlParams.toString();
+        requestUrl += '?' + urlParams.toString();
       }
 
       const resolvedHeaders = interpolateKeyValues(headers, collectionId);
@@ -1094,15 +1107,22 @@
             >
               📁
             </button>
-            <button 
-              class="collection-action-btn share-collection-btn" 
+            <button
+              class="collection-action-btn share-collection-btn"
               onclick={stopPropagation(() => shareCollection(collection.id, collection.name))}
               title="Export/Share"
             >
               📤
             </button>
-            <button 
-              class="collection-action-btn delete-collection-btn" 
+            <button
+              class="collection-action-btn loadtest-collection-btn"
+              onclick={stopPropagation(() => openLoadTest(collection.id))}
+              title="Load Test (Ctrl+Shift+T)"
+            >
+              ⚡
+            </button>
+            <button
+              class="collection-action-btn delete-collection-btn"
               onclick={stopPropagation(() => deleteCollection(collection.id))}
               title="Delete"
             >

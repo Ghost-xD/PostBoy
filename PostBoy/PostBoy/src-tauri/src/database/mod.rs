@@ -182,6 +182,17 @@ pub fn get_migrations() -> Vec<Migration> {
             ",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 9,
+            description: "add_response_columns_to_requests",
+            sql: "
+                ALTER TABLE requests ADD COLUMN status_code INTEGER;
+                ALTER TABLE requests ADD COLUMN response_time INTEGER;
+                ALTER TABLE requests ADD COLUMN response_headers TEXT;
+                ALTER TABLE requests ADD COLUMN response_body TEXT;
+            ",
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
@@ -335,6 +346,27 @@ pub fn initialize_database(db_path: PathBuf) -> Result<(), String> {
             );
 
             CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, id);
+        "),
+        (8, "create_sql_query_history", "
+            CREATE TABLE IF NOT EXISTS sql_query_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile_key TEXT NOT NULL,
+                db_type TEXT NOT NULL,
+                sql TEXT NOT NULL,
+                execution_time_ms INTEGER NOT NULL DEFAULT 0,
+                row_count INTEGER NOT NULL DEFAULT 0,
+                error TEXT,
+                executed_at INTEGER NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_sql_history_profile_time
+                ON sql_query_history(profile_key, executed_at DESC);
+        "),
+        (9, "add_response_columns_to_requests", "
+            ALTER TABLE requests ADD COLUMN status_code INTEGER;
+            ALTER TABLE requests ADD COLUMN response_time INTEGER;
+            ALTER TABLE requests ADD COLUMN response_headers TEXT;
+            ALTER TABLE requests ADD COLUMN response_body TEXT;
         "),
     ];
 

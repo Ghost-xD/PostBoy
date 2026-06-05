@@ -290,6 +290,22 @@ export const ai = {
       maxTokens: opts?.maxTokens,
     })) as string;
   },
+  /**
+   * Raw `system + user → text` completion. Bypasses the chatbot tool-calling
+   * loop (no tool definitions injected, no `<tool_call>`/`{` hold-back, no
+   * deterministic intercepts), so callers like Load Test plan/analysis get
+   * the model's verbatim output.
+   */
+  complete: async (
+    prompt: string,
+    opts?: { systemPrompt?: string; maxTokens?: number }
+  ): Promise<string> => {
+    return (await invoke('ai_complete_text', {
+      prompt,
+      systemPrompt: opts?.systemPrompt,
+      maxTokens: opts?.maxTokens,
+    })) as string;
+  },
   chatCancel: async (): Promise<void> => {
     return (await invoke('ai_chat_cancel')) as void;
   },
@@ -325,6 +341,21 @@ export const ai = {
     collections: string[];
   }> => {
     return (await invoke('ai_get_suggestion_corpus')) as any;
+  },
+};
+
+// Load Test engine — Rust-side concurrency, streams `loadtest-progress` and
+// `loadtest-done` Tauri events. The frontend should listen via
+// `@tauri-apps/api/event#listen` before calling `start`.
+export const loadTest = {
+  start: async (plan: any): Promise<void> => {
+    return (await invoke('load_test_start', { plan })) as void;
+  },
+  cancel: async (): Promise<void> => {
+    return (await invoke('load_test_cancel')) as void;
+  },
+  running: async (): Promise<boolean> => {
+    return (await invoke('load_test_running')) as boolean;
   },
 };
 

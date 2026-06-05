@@ -10,7 +10,7 @@
   import {
     responseLayout, responsePanelHeight, leftSidebarWidth, rightSidebarWidth,
     leftSidebarCollapsed, rightSidebarCollapsed, activeSidebarTab,
-    activeRequestTab, activeResponseTab, showShortcuts, showToolsPanel, showDiffTool, toolsFullscreen, toggleResponseLayout, getUIState, restoreUIState, enableUIPersistence
+    activeRequestTab, activeResponseTab, showShortcuts, showToolsPanel, showDiffTool, showLoadTest, toolsFullscreen, toggleResponseLayout, getUIState, restoreUIState, enableUIPersistence
   } from '$lib/stores/uiStore';
   import { wsConnect, wsDisconnect, clearWsMessages } from '$lib/stores/wsStore';
   import { sseConnect, sseDisconnect, clearSseMessages } from '$lib/stores/sseStore';
@@ -38,6 +38,7 @@
   import ToolsNavBar from '$lib/components/ToolsNavBar.svelte';
   import type { ToolsNavTab } from '$lib/components/ToolsNavBar.svelte';
   import DiffTool from '$lib/components/DiffTool.svelte';
+  import LoadTestScreen from '$lib/components/LoadTestScreen.svelte';
   import SearchPicker from '$lib/components/SearchPicker.svelte';
   import { loadSettings, settings } from '$lib/stores/settingsStore';
   import { chatbotSupported, chatbotStatus, initChatbotFeature, teardownChatbotFeature, loadDefaultModel } from '$lib/stores/chatbotStore';
@@ -110,16 +111,32 @@
   let updateStatus = $state('');
 
   onMount(async () => {
-    version = (await app.getVersion()) as string;
-    await loadCollections();
-    await loadHistory();
-    
-    const savedData = await restoreTabs();
+    // These four startup reads are mutually independent, so run them
+    // concurrently instead of sequentially — time-to-ready becomes the slowest
+    // single read rather than the sum of all of them.
+    const [appVersion, , , savedData] = await Promise.all([
+      app.getVersion(),
+      loadCollections(),
+      loadHistory(),
+      restoreTabs(),
+    ]);
+    version = appVersion as string;
+
     if (savedData) {
       restoreUIState(savedData);
       addLog(`✓ Restored ${savedData.tabs?.length || 0} tab(s)`, 'system');
     }
-    
+
+    // The initial UI is now populated — tell Rust to close the splashscreen
+    // and reveal the main window. This replaces the old fixed 2.5s delay so
+    // the app appears the instant it's actually ready.
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('app_ready');
+    } catch (e) {
+      console.error('Failed to signal app readiness:', e);
+    }
+
     enableAutoSave();
     // Persist layout state (sidebar widths, response panel position/size,
     // collapsed flags) whenever the user resizes a panel or toggles a
@@ -213,6 +230,7 @@
         await MenuItem.new({ id: 'cookie-jar', text: 'Cookie Jar', accelerator: 'CmdOrCtrl+Shift+X', action: () => showToolsPanel.update(v => v === 'cookies' ? false : 'cookies') }),
         await MenuItem.new({ id: 'diagnostics', text: 'Network Diagnostics', accelerator: 'CmdOrCtrl+Shift+N', action: () => showToolsPanel.update(v => v === 'diagnostics' ? false : 'diagnostics') }),
         await MenuItem.new({ id: 'diff-tool', text: 'Diff / Compare', accelerator: 'CmdOrCtrl+Shift+B', action: () => showDiffTool.update(v => !v) }),
+        await MenuItem.new({ id: 'load-test', text: 'Load Test Lab', accelerator: 'CmdOrCtrl+Shift+T', action: () => showLoadTest.update(v => v ? false : { collectionId: null }) }),
       ];
 
       if ($chatbotSupported && $settings.chatbotEnabled) {
@@ -340,9 +358,12 @@
   async function loadCollections() {
     try {
       const cols = await db.getCollections() as any[];
-      for (const col of cols) {
+      // Fetch each collection's requests concurrently instead of awaiting them
+      // one-by-one (the old N+1 serial loop dominated cold-start with many
+      // collections).
+      await Promise.all(cols.map(async (col) => {
         col.requests = await db.getRequests(col.id);
-      }
+      }));
       collections = cols;
       
       // Load variables in background (don't block UI)
@@ -452,6 +473,14 @@
         return;
       }
 
+      // Ctrl+Shift+T — Load Test Lab (standalone full-screen surface).
+      // T = "load Test"; Ctrl+Shift+L was already taken by toggleResponseLayout.
+      if (e.ctrlKey && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+        e.preventDefault();
+        showLoadTest.update(v => v ? false : { collectionId: null });
+        return;
+      }
+
       // Ctrl+, — Settings
       if (e.ctrlKey && e.key === ',') {
         e.preventDefault();
@@ -482,6 +511,11 @@
           showDiffTool.set(false);
           return;
         }
+        if ($showLoadTest) {
+          e.preventDefault();
+          showLoadTest.set(false);
+          return;
+        }
         if ($showToolsPanel) {
           e.preventDefault();
           showToolsPanel.set(false);
@@ -494,8 +528,9 @@
         }
       }
 
-      // When tools panel, shortcuts modal, or search picker is open, don't intercept request-specific keys
-      if ($showToolsPanel || $showShortcuts || showSearchPicker) return;
+      // When tools panel, shortcuts modal, search picker, or load-test
+      // screen is open, don't intercept request-specific keys.
+      if ($showToolsPanel || $showShortcuts || showSearchPicker || $showLoadTest) return;
 
       // Ctrl+F — open search picker
       if (e.ctrlKey && !e.shiftKey && e.key === 'f') {
@@ -728,6 +763,23 @@
     return tab.bodyContent;
   }
 
+  // Builds the response snapshot fields for a saveRequest payload. Returns an
+  // empty object when the tab has no response yet so that Rust's COALESCE
+  // leaves any previously-saved response untouched on metadata-only updates.
+  function buildResponsePayload(tab: any) {
+    if (tab.responseStatus == null) return {};
+    return {
+      statusCode: tab.responseStatus,
+      responseTime: tab.responseTime ?? null,
+      responseHeaders: typeof tab.responseHeaders === 'string'
+        ? tab.responseHeaders
+        : JSON.stringify(tab.responseHeaders ?? {}),
+      responseBody: typeof tab.responseBody === 'string'
+        ? tab.responseBody
+        : JSON.stringify(tab.responseBody ?? '')
+    };
+  }
+
   async function saveRequest() {
     const tab = $activeTab;
     if (!tab.url) {
@@ -768,7 +820,8 @@
           bodyType: tab.bodyType,
           authType: tab.authType,
           authData: updateAuthData,
-          description: tab.description
+          description: tab.description,
+          ...buildResponsePayload(tab)
         };
         await db.updateRequest(tab.requestId, requestData);
         await loadCollections();
@@ -821,8 +874,36 @@
       bodyType: tab.bodyType,
       authType: tab.authType,
       authData,
-      description: tab.description
+      description: tab.description,
+      ...buildResponsePayload(tab)
     };
+
+    // Detect duplicate name in the chosen collection (case-insensitive).
+    const targetCollection = collections.find(c => c.id === collectionId);
+    const existing = targetCollection?.requests?.find(
+      (r: any) => (r.name || '').toLowerCase() === requestName.toLowerCase()
+    );
+
+    if (existing) {
+      const choice = await modalManager.showModal({
+        type: 'question',
+        title: 'Request Already Exists',
+        message: `A request named <strong>"${requestName}"</strong> already exists in <strong>${targetCollection?.name}</strong>.`,
+        detail: 'Overwrite the existing one, save anyway as a duplicate, or cancel?',
+        buttons: ['Overwrite Existing', 'Save as New', 'Cancel'],
+        defaultButton: 0
+      });
+
+      if (choice === 2 || choice === -1) return;
+      if (choice === 0) {
+        await db.updateRequest(existing.id, requestData);
+        updateActiveTabBatch({ name: requestName, requestId: existing.id, collectionId });
+        await loadCollections();
+        addLog(`✓ Overwrote "${requestName}" in ${targetCollection?.name}`, 'system');
+        return;
+      }
+      // choice === 1: fall through to create-as-new
+    }
 
     const newRequestId = await db.createRequest(collectionId, requestData) as number;
     updateActiveTabBatch({ name: requestName, requestId: newRequestId, collectionId });
@@ -1014,6 +1095,17 @@
     const loadedBodyType = request.bodyType || request.body_type || 'json';
     const loadedBodyContent = request.bodyContent || request.body_content || '';
 
+    // Restore previously-saved response (if any) so the user sees the last
+    // response they captured for this request, mirroring the history flow.
+    let savedRespHeaders = request.responseHeaders ?? request.response_headers ?? {};
+    if (typeof savedRespHeaders === 'string') {
+      try { savedRespHeaders = JSON.parse(savedRespHeaders); } catch { savedRespHeaders = {}; }
+    }
+    let savedRespBody = request.responseBody ?? request.response_body ?? '';
+    if (typeof savedRespBody === 'string' && savedRespBody.startsWith('"') && savedRespBody.endsWith('"')) {
+      try { savedRespBody = JSON.parse(savedRespBody); } catch { /* keep as-is */ }
+    }
+
     const tabUpdate: any = {
       name: request.name,
       requestId: request.id,
@@ -1030,7 +1122,11 @@
       authPassword: authDataRaw.password || '',
       authApiKey: authDataRaw.key || '',
       authApiValue: authDataRaw.value || '',
-      description: request.description || ''
+      description: request.description || '',
+      responseStatus: request.statusCode ?? request.status_code ?? null,
+      responseTime: request.responseTime ?? request.response_time ?? null,
+      responseHeaders: savedRespHeaders,
+      responseBody: savedRespBody
     };
 
     if (loadedBodyType === 'form-data' && loadedBodyContent) {
@@ -1304,6 +1400,10 @@
       </div>
     </div>
   </div>
+{/if}
+
+{#if $showLoadTest}
+  <LoadTestScreen />
 {/if}
 
 {#if $showDiffTool}

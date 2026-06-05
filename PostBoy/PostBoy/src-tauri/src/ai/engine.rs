@@ -45,36 +45,28 @@ static BACKEND: OnceLock<&'static LlamaBackend> = OnceLock::new();
 ///   sampling only kicks in once the trigger has been emitted; we still
 ///   need a capable model (and the existing intercepts) for the
 ///   tool-vs-refusal decision.
+// llama.cpp's GBNF parser does NOT accept `|`-prefixed continuation lines
+// (every rule alternative must be on the same physical line, OR expressed
+// via parentheses/`?`/`*` operators). The official `grammars/json.gbnf` in
+// llama.cpp follows the same convention. Multi-line `|` continuations
+// produce `expecting name at | ...` parse errors and the entire grammar is
+// silently rejected, which is what was killing tool-call sampling here.
 const TOOL_CALL_GRAMMAR: &str = r#"
 root         ::= ws "{" ws "\"name\"" ws ":" ws tool-name ws "," ws "\"arguments\"" ws ":" ws json-object ws "}" ws "</tool_call>"
-
 tool-name    ::= "\"list_collections\"" | "\"list_requests\"" | "\"inspect_request\"" | "\"get_request\"" | "\"run_request\"" | "\"get_variables\"" | "\"set_variable\"" | "\"get_history\"" | "\"get_last_response\""
-
 json-value   ::= json-string | json-number | json-boolean | "null" | json-object | json-array
-
-json-object  ::= "{" ws "}"
-              | "{" ws json-pair (ws "," ws json-pair)* ws "}"
-
+json-object  ::= "{" ws ( json-pair (ws "," ws json-pair)* )? ws "}"
 json-pair    ::= json-string ws ":" ws json-value
-
-json-array   ::= "[" ws "]"
-              | "[" ws json-value (ws "," ws json-value)* ws "]"
-
+json-array   ::= "[" ws ( json-value (ws "," ws json-value)* )? ws "]"
 json-string  ::= "\"" json-char* "\""
-
 json-char    ::= [^"\\] | "\\" json-esc
-
 json-esc     ::= ["\\/bfnrt] | "u" hex hex hex hex
-
 hex          ::= [0-9a-fA-F]
-
 json-boolean ::= "true" | "false"
-
 json-number  ::= "-"? json-int json-frac? json-exp?
 json-int     ::= "0" | [1-9] [0-9]*
 json-frac    ::= "." [0-9]+
 json-exp     ::= [eE] ("-" | "+")? [0-9]+
-
 ws           ::= [ \t\n\r]*
 "#;
 

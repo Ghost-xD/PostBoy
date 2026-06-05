@@ -3,6 +3,7 @@ mod ai;
 mod commands;
 mod database;
 mod http_client;
+mod load_test;
 mod net_client;
 mod sql_client;
 mod ws_client;
@@ -235,6 +236,20 @@ async fn perform_update(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Called by the frontend once its `onMount` has finished loading the initial
+/// UI state (collections, history, tabs). Closes the splashscreen and reveals
+/// the main window — replacing the old fixed 2.5s timer with a "show as soon as
+/// the app is genuinely ready" handshake.
+#[tauri::command]
+fn app_ready(app: tauri::AppHandle) {
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.show();
+    }
+    if let Some(splash) = app.get_webview_window("splashscreen") {
+        let _ = splash.close();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
@@ -280,11 +295,12 @@ pub fn run() {
             
             // Clone for the async task
             let main_window_clone = main_window.clone();
-            let splashscreen_clone = splashscreen.clone();
             
-            // Spawn initialization task
+            // Spawn database initialization. The window is NOT shown here — the
+            // frontend calls `app_ready` once its UI has rendered, which closes
+            // the splash and reveals the main window. This means we display the
+            // app the instant it's genuinely ready, with no artificial delay.
             tauri::async_runtime::spawn(async move {
-                // Initialize database with migrations
                 let app_handle = main_window_clone.app_handle();
                 let app_data_dir = app_handle.path().app_data_dir()
                     .expect("Failed to get app data dir");
@@ -298,13 +314,19 @@ pub fn run() {
                     .expect("Failed to initialize database");
                 
                 println!("Ripple app initialized successfully");
-                
-                // Wait a moment for visual effect
-                std::thread::sleep(std::time::Duration::from_millis(2500));
-                
-                // Show main window and close splashscreen
-                main_window_clone.show().expect("Failed to show main window");
-                splashscreen_clone.close().expect("Failed to close splashscreen");
+            });
+
+            // Safety net: if the frontend never signals readiness (e.g. a JS
+            // error before it calls `app_ready`), force the main window to show
+            // after 10s so the user is never stuck staring at the splash.
+            let fallback_main = main_window.clone();
+            let fallback_splash = splashscreen.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                if !fallback_main.is_visible().unwrap_or(false) {
+                    let _ = fallback_main.show();
+                    let _ = fallback_splash.close();
+                }
             });
 
             // Check for updates on startup
@@ -344,6 +366,7 @@ pub fn run() {
             {
                 tauri::generate_handler![
                     ai_supported,
+                    app_ready,
                     commands::get_version,
                     commands::get_update_token,
                     check_for_update,
@@ -407,6 +430,9 @@ pub fn run() {
                     net_client::port_check,
                     net_client::ping_host,
                     net_client::trace_route,
+                    load_test::load_test_start,
+                    load_test::load_test_cancel,
+                    load_test::load_test_running,
                     ai::commands::ai_get_status,
                     ai::commands::ai_list_models,
                     ai::commands::ai_list_installed,
@@ -418,6 +444,7 @@ pub fn run() {
                     ai::commands::ai_load_engine,
                     ai::commands::ai_unload_engine,
                     ai::commands::ai_chat_send,
+                    ai::commands::ai_complete_text,
                     ai::commands::ai_chat_cancel,
                     ai::commands::ai_get_action_log,
                     ai::commands::ai_clear_action_log,
@@ -433,6 +460,7 @@ pub fn run() {
             {
                 tauri::generate_handler![
                     ai_supported,
+                    app_ready,
                     commands::get_version,
                     commands::get_update_token,
                     check_for_update,
@@ -496,6 +524,9 @@ pub fn run() {
                     net_client::port_check,
                     net_client::ping_host,
                     net_client::trace_route,
+                    load_test::load_test_start,
+                    load_test::load_test_cancel,
+                    load_test::load_test_running,
                 ]
             }
         })

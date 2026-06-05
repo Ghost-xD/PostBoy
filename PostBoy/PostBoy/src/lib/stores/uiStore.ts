@@ -26,6 +26,12 @@ export const toolsFullscreen = writable<boolean>(false);
 // Diff Tool has its own dedicated modal (not part of the tools panel)
 export const showDiffTool = writable<boolean>(false);
 
+// Load Test Lab — a full-screen surface that stands on its own (not part of
+// the Tools modal). `false` = closed; an object = open and seeded with the
+// collection the user picked. The collection id can be `null` so the screen
+// can also be opened from the footer/menu without a pre-selected collection.
+export const showLoadTest = writable<false | { collectionId: number | null }>(false);
+
 // Loading state for HTTP requests — tracks which tab IDs are currently sending
 export const sendingTabIds = writable<Set<string>>(new Set());
 export const isSendingRequest = writable<boolean>(false);

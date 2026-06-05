@@ -172,6 +172,76 @@ pub async fn ai_chat_cancel(state: State<'_, Arc<AiState>>) -> Result<(), String
     Ok(())
 }
 
+/// Raw text completion that bypasses the chatbot tool-calling loop entirely.
+/// `ai_chat_send` injects tool definitions into the system prompt, runs a
+/// multi-turn loop that hides leading `{` / `<tool_call>` bytes (in case the
+/// model emits a tool call), and short-circuits via deterministic intercepts.
+/// All of that is correct for the chatbot panel but actively harmful when a
+/// caller (e.g. Load Test plan drafting / post-run analysis) just wants
+/// "system + user → text". This command formats a single user turn into
+/// ChatML, runs `engine.complete` once, and returns the verbatim output.
+#[tauri::command]
+pub async fn ai_complete_text(
+    state: State<'_, Arc<AiState>>,
+    prompt: String,
+    system_prompt: Option<String>,
+    max_tokens: Option<u32>,
+) -> Result<String, String> {
+    {
+        let mut c = state.chat_cancel.lock().await;
+        *c = false;
+    }
+
+    let cancel_flag = Arc::new(AtomicBool::new(false));
+    let watcher_state = state.inner().clone();
+    let watcher_flag = cancel_flag.clone();
+    let watcher = tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            let c = watcher_state.chat_cancel.lock().await;
+            if *c {
+                watcher_flag.store(true, Ordering::Relaxed);
+                break;
+            }
+            if watcher_flag.load(Ordering::Relaxed) {
+                break;
+            }
+        }
+    });
+
+    let engine = {
+        let guard = state.engine.lock().await;
+        guard
+            .as_ref()
+            .ok_or_else(|| "No model loaded. Call ai_load_engine first.".to_string())?
+            .clone()
+    };
+
+    let sys = system_prompt.unwrap_or_default();
+    let mut full_prompt = String::with_capacity(prompt.len() + sys.len() + 64);
+    if !sys.trim().is_empty() {
+        full_prompt.push_str("<|im_start|>system\n");
+        full_prompt.push_str(sys.trim());
+        full_prompt.push_str("<|im_end|>\n");
+    }
+    full_prompt.push_str("<|im_start|>user\n");
+    full_prompt.push_str(&prompt);
+    full_prompt.push_str("<|im_end|>\n<|im_start|>assistant\n");
+
+    let max = max_tokens.unwrap_or(DEFAULT_MAX_TOKENS);
+    let cancel_for_thread = cancel_flag.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        engine.complete(&full_prompt, max, cancel_for_thread, |_delta| true)
+    })
+    .await
+    .map_err(|e| format!("complete task join failed: {e}"))?;
+
+    cancel_flag.store(true, Ordering::Relaxed);
+    let _ = watcher.await;
+
+    result
+}
+
 #[tauri::command]
 pub async fn ai_get_action_log(
     state: State<'_, Arc<AiState>>,

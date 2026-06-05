@@ -89,6 +89,7 @@
       { keys: 'Alt + N', label: 'Next diff change (in Diff Tool)', sub: true },
       { keys: 'Alt + P', label: 'Previous diff change (in Diff Tool)', sub: true },
       { keys: 'Ctrl + J', label: 'Toggle format JSON (in Diff Tool)', sub: true },
+      { keys: 'Ctrl + Shift + T', label: 'Load Test Lab' },
       { keys: 'Ctrl + Shift + F', label: 'Format body (JSON/XML/HTML)' },
       { keys: 'Ctrl + Shift + K', label: 'Copy as cURL' },
       { keys: 'Ctrl + Shift + G', label: 'Generate code snippet' },

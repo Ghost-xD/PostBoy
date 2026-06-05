@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { responseLayout, toggleResponseLayout, showShortcuts, showToolsPanel, showDiffTool } from '$lib/stores/uiStore';
+  import { responseLayout, toggleResponseLayout, showShortcuts, showToolsPanel, showDiffTool, showLoadTest } from '$lib/stores/uiStore';
 
   interface Props {
     version?: string;
@@ -135,6 +135,9 @@
     </button>
     <button class="footer-btn" onclick={() => showDiffTool.update(v => !v)} title="Diff / Compare (Ctrl+Shift+B)">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3.75A.75.75 0 0 1 2.75 3h5.5a.75.75 0 0 1 0 1.5h-5.5A.75.75 0 0 1 2 3.75Zm0 4A.75.75 0 0 1 2.75 7h5.5a.75.75 0 0 1 0 1.5h-5.5A.75.75 0 0 1 2 7.75Zm0 4a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 0 1.5h-5.5a.75.75 0 0 1-.75-.75ZM13.25 3a.75.75 0 0 0-.75.75v8.5a.75.75 0 0 0 1.5 0v-8.5a.75.75 0 0 0-.75-.75Zm-3 0a.75.75 0 0 0-.75.75v8.5a.75.75 0 0 0 1.5 0v-8.5a.75.75 0 0 0-.75-.75Z"/></svg>
+    </button>
+    <button class="footer-btn" onclick={() => showLoadTest.update(v => v ? false : { collectionId: null })} title="Load Test Lab (Ctrl+Shift+T)">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 11.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0v-2.5h-1a.5.5 0 0 1-.5-.5zm2.5-7a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1H4v9a.5.5 0 0 1-1 0v-9.5a.5.5 0 0 1 0-.5zm4-3a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5v13a.5.5 0 0 1-1 0V2H7a.5.5 0 0 1-.5-.5zM11 6.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-1 0V7h-1.5a.5.5 0 0 1-.5-.5z"/></svg>
     </button>
     <button class="footer-btn" onclick={toggleResponseLayout} title="Toggle response panel position (Ctrl+Shift+L)">
       {#if $responseLayout === 'right'}
