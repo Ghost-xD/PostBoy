@@ -313,7 +313,23 @@ pub fn run() {
                 
                 database::initialize_database(db_path)
                     .expect("Failed to initialize database");
-                
+
+                // Hydrate the MCP manager from persisted configs. We do
+                // this after the migration runs so the table is guaranteed
+                // to exist; we don't auto-connect here because launching
+                // child processes / OAuth-bearing remote sessions before
+                // the user has even seen the chat UI is a footgun (e.g. a
+                // bad config crashes the app on every startup).
+                #[cfg(feature = "chatbot")]
+                if let Some(state) = app_handle.try_state::<std::sync::Arc<ai::AiState>>() {
+                    match ai::mcp::db::load_all(app_handle) {
+                        Ok(configs) => {
+                            state.mcp.hydrate(configs).await;
+                        }
+                        Err(e) => eprintln!("MCP hydrate failed: {e}"),
+                    }
+                }
+
                 println!("Ripple app initialized successfully");
             });
 
@@ -456,6 +472,21 @@ pub fn run() {
                     ai::commands::ai_delete_chat,
                     ai::commands::ai_delete_all_chats,
                     ai::commands::ai_get_suggestion_corpus,
+                    ai::mcp::commands::mcp_list_servers,
+                    ai::mcp::commands::mcp_get_server,
+                    ai::mcp::commands::mcp_add_server,
+                    ai::mcp::commands::mcp_update_server,
+                    ai::mcp::commands::mcp_delete_server,
+                    ai::mcp::commands::mcp_set_enabled,
+                    ai::mcp::commands::mcp_set_tool_enabled,
+                    ai::mcp::commands::mcp_connect,
+                    ai::mcp::commands::mcp_disconnect,
+                    ai::mcp::commands::mcp_test_connection,
+                    ai::mcp::commands::mcp_authorize,
+                    ai::mcp::commands::mcp_clear_oauth,
+                    ai::mcp::commands::mcp_import_json,
+                    ai::mcp::commands::mcp_get_tool_cap,
+                    ai::mcp::commands::mcp_set_tool_cap,
                 ]
             }
             #[cfg(not(feature = "chatbot"))]

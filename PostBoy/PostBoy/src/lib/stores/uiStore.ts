@@ -17,7 +17,7 @@ export const activeResponseTab = writable<'preview' | 'headers' | 'console' | 'd
 
 // Modals and overlays
 export const showShortcuts = writable<boolean>(false);
-export const showToolsPanel = writable<false | 'jwt' | 'encoder' | 'sql' | 'diagnostics' | 'settings' | 'cookies' | 'chatbot'>(false);
+export const showToolsPanel = writable<false | 'jwt' | 'encoder' | 'sql' | 'diagnostics' | 'settings' | 'cookies' | 'mcp'>(false);
 // Tools panel fullscreen toggle. Exposed as a store so any component
 // (e.g. ChatbotPanel) can react to it for layout adjustments, and the
 // global keyboard handler can flip it without poking component state.
@@ -31,6 +31,11 @@ export const showDiffTool = writable<boolean>(false);
 // collection the user picked. The collection id can be `null` so the screen
 // can also be opened from the footer/menu without a pre-selected collection.
 export const showLoadTest = writable<false | { collectionId: number | null }>(false);
+
+// Son of Anton (AI chatbot) — a full-screen surface of its own, opened with
+// Ctrl+Shift+M. Kept separate from the Tools modal so it gets the whole
+// viewport like the Load Test Lab.
+export const showChatbot = writable<boolean>(false);
 
 // Loading state for HTTP requests — tracks which tab IDs are currently sending
 export const sendingTabIds = writable<Set<string>>(new Set());

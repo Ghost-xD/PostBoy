@@ -344,6 +344,134 @@ export const ai = {
   },
 };
 
+// MCP (Model Context Protocol) — bring user-supplied MCP servers into the
+// chatbot's tool surface. Only enabled when `chatbot` Cargo feature is on;
+// every command throws on builds without it. The `aiSupported()` probe
+// gates the UI so users on minimal builds don't see the panel at all.
+export type McpTransportInput =
+  | {
+      transport: 'stdio';
+      command: string;
+      args?: string[];
+      env?: Record<string, string>;
+      cwd?: string | null;
+    }
+  | {
+      transport: 'remote';
+      url: string;
+      headers?: Record<string, string>;
+    };
+
+export interface McpServerInput {
+  id?: string;
+  name: string;
+  enabled?: boolean;
+  toolOverrides?: Record<string, boolean>;
+  /** Optional bearer token / PAT pasted in the form. Stored in the OS
+   * keychain on save and referenced via `${secret:manual-token}` so the
+   * raw value never reaches `ripple.db`. */
+  manualToken?: string | null;
+  // Discriminated union of transport-specific fields.
+  transport: 'stdio' | 'remote';
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  cwd?: string | null;
+  url?: string;
+  headers?: Record<string, string>;
+}
+
+export type McpConnectionStatus =
+  | 'disconnected'
+  | 'connecting'
+  | 'connected'
+  | { failed: { error: string } };
+
+export interface McpToolView {
+  name: string;
+  namespaced_name: string;
+  description: string | null;
+  enabled: boolean;
+}
+
+export interface McpServerConfig {
+  id: string;
+  name: string;
+  transport: { kind: 'stdio'; command: string; args: string[]; env: Record<string, string>; cwd: string | null }
+    | { kind: 'remote'; url: string; headers: Record<string, string> };
+  enabled: boolean;
+  tool_overrides: Record<string, boolean>;
+  oauth: { authorization_server: string; scopes: string[]; last_refreshed_at: string | null } | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface McpServerView {
+  config: McpServerConfig;
+  status: McpConnectionStatus;
+  tools: McpToolView[];
+  server_info: any | null;
+}
+
+export const mcp = {
+  list: async (): Promise<McpServerView[]> =>
+    (await invoke('mcp_list_servers')) as McpServerView[],
+  get: async (id: string): Promise<McpServerView | null> =>
+    (await invoke('mcp_get_server', { id })) as McpServerView | null,
+  add: async (input: McpServerInput): Promise<McpServerView> =>
+    (await invoke('mcp_add_server', { input: toBackendInput(input) })) as McpServerView,
+  update: async (input: McpServerInput): Promise<McpServerView> =>
+    (await invoke('mcp_update_server', { input: toBackendInput(input) })) as McpServerView,
+  delete: async (id: string): Promise<void> => {
+    await invoke('mcp_delete_server', { id });
+  },
+  setEnabled: async (id: string, enabled: boolean): Promise<void> => {
+    await invoke('mcp_set_enabled', { id, enabled });
+  },
+  setToolEnabled: async (id: string, toolName: string, enabled: boolean): Promise<void> => {
+    await invoke('mcp_set_tool_enabled', { id, toolName, enabled });
+  },
+  connect: async (id: string): Promise<McpServerView> =>
+    (await invoke('mcp_connect', { id })) as McpServerView,
+  disconnect: async (id: string): Promise<void> => {
+    await invoke('mcp_disconnect', { id });
+  },
+  testConnection: async (id: string): Promise<McpServerView> =>
+    (await invoke('mcp_test_connection', { id })) as McpServerView,
+  authorize: async (id: string, scopes?: string[]): Promise<McpServerView> =>
+    (await invoke('mcp_authorize', { id, scopes })) as McpServerView,
+  clearOAuth: async (id: string): Promise<void> => {
+    await invoke('mcp_clear_oauth', { id });
+  },
+  importJson: async (json: string): Promise<McpServerView[]> =>
+    (await invoke('mcp_import_json', { json })) as McpServerView[],
+  getToolCap: async (): Promise<{ cap: number; default_cap: number }> =>
+    (await invoke('mcp_get_tool_cap')) as { cap: number; default_cap: number },
+  setToolCap: async (cap: number): Promise<void> => {
+    await invoke('mcp_set_tool_cap', { cap });
+  },
+};
+
+/** Convert the frontend input shape into the snake_case structure the
+ * Rust `McpServerInput` expects. We keep the snake_case mapping
+ * centralized so the form code never has to think about wire format. */
+function toBackendInput(input: McpServerInput) {
+  return {
+    id: input.id ?? null,
+    name: input.name,
+    transport: input.transport,
+    command: input.command ?? null,
+    args: input.args ?? [],
+    env: input.env ?? {},
+    cwd: input.cwd ?? null,
+    url: input.url ?? null,
+    headers: input.headers ?? {},
+    enabled: input.enabled ?? true,
+    tool_overrides: input.toolOverrides ?? {},
+    manual_token: input.manualToken ?? null,
+  };
+}
+
 // Load Test engine — Rust-side concurrency, streams `loadtest-progress` and
 // `loadtest-done` Tauri events. The frontend should listen via
 // `@tauri-apps/api/event#listen` before calling `start`.

@@ -13,9 +13,28 @@ use rusqlite::Connection;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
+use crate::ai::mcp::{McpManager, TOOL_PREFIX};
 use crate::http_client;
+
+/// Hardcoded names of the eight built-in tools. Used by callers that need to
+/// build a runtime tool allow-list (e.g. for the grammar). Kept in sync with
+/// the schema literal in `tools_schema_json` and the match arms in
+/// `dispatch`. There is no attempt to derive one from the other — both lists
+/// are short enough that drift is caught instantly by the chatbot tests.
+pub const BUILTIN_TOOL_NAMES: &[&str] = &[
+    "list_collections",
+    "list_requests",
+    "inspect_request",
+    "get_request",
+    "run_request",
+    "get_variables",
+    "set_variable",
+    "get_history",
+    "get_last_response",
+];
 
 fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
@@ -91,6 +110,67 @@ pub fn tools_schema_json() -> String {
         }
     ]))
     .unwrap_or_else(|_| "[]".to_string())
+}
+
+/// What the chat loop needs every turn: the full tool-schema JSON to splice
+/// into the system prompt, plus the flat list of tool names used to build
+/// the runtime grammar. Returned together so the two never go out of sync.
+pub struct ToolSet {
+    pub schema_json: String,
+    pub names: Vec<String>,
+}
+
+/// Merge built-in tool schemas with the active MCP tool schemas, capped at
+/// `cap` total tools (built-ins always count first). Returns both the
+/// merged JSON string and the flat list of tool names so the engine's
+/// runtime grammar can be regenerated in lockstep.
+///
+/// We splice the MCP tool list directly into the same JSON array the
+/// model has always seen — that way the existing prompt template,
+/// streaming logic, and `try_extract_tool_call` parsing all keep working
+/// unchanged. The only new vocabulary the model has to learn is the
+/// `mcp__<server>__<tool>` prefix convention, which is also what Cursor
+/// uses, so most code-tuned models have already seen it.
+pub async fn tool_set_with_mcp(mcp: &McpManager, cap: usize) -> ToolSet {
+    let cap = cap.max(BUILTIN_TOOL_NAMES.len());
+
+    // Built-in schemas first — `tools_schema_json` already pretty-prints
+    // them, so we re-parse to avoid string concatenation hacks.
+    let builtin_value: Value =
+        serde_json::from_str(&tools_schema_json()).unwrap_or_else(|_| json!([]));
+    let mut merged: Vec<Value> = match builtin_value {
+        Value::Array(arr) => arr,
+        _ => Vec::new(),
+    };
+
+    let mut names: Vec<String> = BUILTIN_TOOL_NAMES.iter().map(|s| s.to_string()).collect();
+
+    let mcp_room = cap.saturating_sub(names.len());
+    if mcp_room > 0 {
+        let merged_mcp = mcp.merged_tools(mcp_room).await;
+        merged.extend(merged_mcp.schemas.into_iter());
+        names.extend(merged_mcp.names.into_iter());
+    }
+
+    let schema_json = serde_json::to_string_pretty(&merged).unwrap_or_else(|_| "[]".to_string());
+    ToolSet { schema_json, names }
+}
+
+/// Same shape as the existing [`dispatch`], but routes `mcp__*` names to
+/// the [`McpManager`]. Built-in names fall through to the unchanged path so
+/// the previous behavior is byte-identical for non-MCP tools — important
+/// because the deterministic intercepts in `commands::chat_loop` rely on
+/// exact JSON shapes.
+pub async fn dispatch_with_mcp(
+    app: AppHandle,
+    mcp: Arc<McpManager>,
+    name: &str,
+    args: Value,
+) -> Value {
+    if name.starts_with(TOOL_PREFIX) {
+        return mcp.call_namespaced_tool(name, args).await;
+    }
+    dispatch(app, name, args).await
 }
 
 // Bound the body size we feed back to the model so a 10 MB JSON response

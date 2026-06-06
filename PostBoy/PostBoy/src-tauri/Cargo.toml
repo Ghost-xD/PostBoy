@@ -19,7 +19,17 @@ tauri-build = { version = "2", features = [] }
 
 [features]
 default = ["chatbot"]
-chatbot = ["dep:llama-cpp-2", "dep:sha2", "dep:num_cpus", "dep:encoding_rs"]
+# `mcp` is folded into `chatbot` because MCP only makes sense alongside the
+# tool-calling chat loop. Splitting it out would just bloat the build matrix.
+chatbot = [
+    "dep:llama-cpp-2",
+    "dep:sha2",
+    "dep:num_cpus",
+    "dep:encoding_rs",
+    "dep:rmcp",
+    "dep:keyring",
+    "dep:http",
+]
 
 [dependencies]
 tauri = { version = "2", features = ["devtools"] }
@@ -56,6 +66,38 @@ surge-ping = "0.8"
 sha2 = { version = "0.10", optional = true }
 num_cpus = { version = "1", optional = true }
 encoding_rs = { version = "0.8", optional = true }
+
+# MCP (Model Context Protocol) — official Rust SDK. Pulled in by the chatbot
+# feature so non-chatbot builds stay lean. We pick `reqwest-native-tls` so
+# rmcp shares the same TLS stack as the project's existing reqwest dep
+# (which inherits reqwest's default `default-tls = native-tls`); using the
+# rustls variant would link a second TLS implementation into the binary.
+# `which-command` lets `npx`/`uvx`/`docker` resolve through PATH on Windows
+# where binaries are usually `.cmd` shims.
+rmcp = { version = "1.7", optional = true, default-features = false, features = [
+    "client",
+    "transport-child-process",
+    "transport-streamable-http-client",
+    "transport-streamable-http-client-reqwest",
+    "reqwest-native-tls",
+    "auth",
+    "which-command",
+] }
+# OS keychain for OAuth tokens / personal access tokens. Refusing to put
+# bearer tokens in the plaintext SQLite DB is the entire reason this crate
+# is here; the in-DB record only stores non-secret config (URL, headers
+# *names*, env *names*, etc.).
+keyring = { version = "3", optional = true, features = [
+    "apple-native",
+    "windows-native",
+    "linux-native",
+] }
+# `http` v1 is pulled in by rmcp + reqwest transitively; declaring it here
+# explicitly so the `HeaderName`/`HeaderValue` we hand to rmcp's custom-headers
+# config resolves to the same crate instance rmcp expects (Cargo unifies on
+# version, but only when at least one root depends on it). This is gated on
+# the chatbot feature so non-chatbot builds don't pay for it.
+http = { version = "1", optional = true }
 
 # llama-cpp-2 with platform-appropriate GPU backend baked in:
 #   - macOS  → Metal (no extra build deps; Metal ships with the OS)

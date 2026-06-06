@@ -193,6 +193,32 @@ pub fn get_migrations() -> Vec<Migration> {
             ",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 10,
+            description: "create_mcp_servers",
+            sql: "
+                CREATE TABLE IF NOT EXISTS mcp_servers (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    transport TEXT NOT NULL CHECK (transport IN ('stdio','remote')),
+                    command TEXT,
+                    args_json TEXT,
+                    env_json TEXT,
+                    cwd TEXT,
+                    url TEXT,
+                    headers_json TEXT,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    tool_overrides_json TEXT NOT NULL DEFAULT '{}',
+                    oauth_meta_json TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_mcp_servers_enabled
+                    ON mcp_servers(enabled);
+            ",
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
@@ -367,6 +393,27 @@ pub fn initialize_database(db_path: PathBuf) -> Result<(), String> {
             ALTER TABLE requests ADD COLUMN response_time INTEGER;
             ALTER TABLE requests ADD COLUMN response_headers TEXT;
             ALTER TABLE requests ADD COLUMN response_body TEXT;
+        "),
+        (10, "create_mcp_servers", "
+            CREATE TABLE IF NOT EXISTS mcp_servers (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                transport TEXT NOT NULL CHECK (transport IN ('stdio','remote')),
+                command TEXT,
+                args_json TEXT,
+                env_json TEXT,
+                cwd TEXT,
+                url TEXT,
+                headers_json TEXT,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                tool_overrides_json TEXT NOT NULL DEFAULT '{}',
+                oauth_meta_json TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_mcp_servers_enabled
+                ON mcp_servers(enabled);
         "),
     ];
 

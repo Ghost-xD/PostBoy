@@ -10,7 +10,7 @@
   import {
     responseLayout, responsePanelHeight, leftSidebarWidth, rightSidebarWidth,
     leftSidebarCollapsed, rightSidebarCollapsed, activeSidebarTab,
-    activeRequestTab, activeResponseTab, showShortcuts, showToolsPanel, showDiffTool, showLoadTest, toolsFullscreen, toggleResponseLayout, getUIState, restoreUIState, enableUIPersistence
+    activeRequestTab, activeResponseTab, showShortcuts, showToolsPanel, showDiffTool, showLoadTest, showChatbot, toolsFullscreen, toggleResponseLayout, getUIState, restoreUIState, enableUIPersistence
   } from '$lib/stores/uiStore';
   import { wsConnect, wsDisconnect, clearWsMessages } from '$lib/stores/wsStore';
   import { sseConnect, sseDisconnect, clearSseMessages } from '$lib/stores/sseStore';
@@ -34,7 +34,8 @@
   import SettingsPanel from '$lib/components/SettingsPanel.svelte';
   import DiagnosticsPanel from '$lib/components/DiagnosticsPanel.svelte';
   import CookieJarPanel from '$lib/components/CookieJarPanel.svelte';
-  import ChatbotPanel from '$lib/components/ChatbotPanel.svelte';
+  import McpServersPanel from '$lib/components/McpServersPanel.svelte';
+  import ChatbotScreen from '$lib/components/ChatbotScreen.svelte';
   import ToolsNavBar from '$lib/components/ToolsNavBar.svelte';
   import type { ToolsNavTab } from '$lib/components/ToolsNavBar.svelte';
   import DiffTool from '$lib/components/DiffTool.svelte';
@@ -42,6 +43,7 @@
   import SearchPicker from '$lib/components/SearchPicker.svelte';
   import { loadSettings, settings } from '$lib/stores/settingsStore';
   import { chatbotSupported, chatbotStatus, initChatbotFeature, teardownChatbotFeature, loadDefaultModel } from '$lib/stores/chatbotStore';
+  import { isMac } from '$lib/utils/platform';
 
   let version = $state('');
   let collections: any[] = $state([]);
@@ -58,15 +60,19 @@
   });
 
   // Tools-modal tab list. Order here is the display order in the nav.
-  // The chatbot entry is filtered out at render time when the build
-  // doesn't include the feature.
+  // Son of Anton lives on its own full-screen surface (Ctrl+Shift+M), so it
+  // is intentionally not part of this list.
+  // Show the MCP tab only when the chatbot feature is compiled in AND the
+  // user has it turned on — same gating as the chatbot screen itself.
+  // Without the chatbot loop there's nothing to feed MCP tools into.
+  let mcpTabAvailable = $derived(!!$chatbotSupported && !!$settings.chatbotEnabled);
   let toolsNavTabs = ($derived([
-    ($chatbotSupported && $settings.chatbotEnabled) ? { key: 'chatbot', label: 'Son of Anton', title: 'Ctrl+Shift+M' } : null,
     { key: 'jwt', label: 'JWT Decoder', title: 'Ctrl+Shift+J' },
     { key: 'encoder', label: 'Encode / Decode', title: 'Ctrl+Shift+E' },
     { key: 'sql', label: 'SQL Runner', title: 'Ctrl+Shift+Q' },
     { key: 'diagnostics', label: 'Diagnostics', title: 'Ctrl+Shift+N' },
     { key: 'cookies', label: 'Cookie Jar', title: 'Ctrl+Shift+X' },
+    mcpTabAvailable ? { key: 'mcp', label: 'MCP Servers', title: 'Manage MCP servers' } : null,
     { key: 'settings', label: 'Settings', title: 'Ctrl+,' },
   ].filter(Boolean) as ToolsNavTab[]));
 
@@ -182,10 +188,9 @@
     if (enabled) {
       initChatbotFeature();
     } else {
-      // Close the chatbot tools panel if it's currently showing, otherwise
-      // the user would be left staring at an empty Tools pane until they
-      // pick a different tool.
-      if (get(showToolsPanel) === 'chatbot') showToolsPanel.set(false);
+      // Close the chatbot screen if it's currently open, otherwise the user
+      // would be left staring at a torn-down surface.
+      if (get(showChatbot)) showChatbot.set(false);
       void teardownChatbotFeature();
     }
   });
@@ -198,6 +203,8 @@
         text: 'File',
         items: [
           await MenuItem.new({ id: 'new-request', text: 'New Request', accelerator: 'CmdOrCtrl+N', action: () => storeAddTab() }),
+          await MenuItem.new({ id: 'new-tab', text: 'New Tab', accelerator: 'CmdOrCtrl+T', action: () => storeAddTab() }),
+          await MenuItem.new({ id: 'close-tab', text: 'Close Tab', accelerator: 'CmdOrCtrl+W', action: () => removeTab(get(activeTabId)) }),
           await MenuItem.new({ id: 'save-request', text: 'Save Request', accelerator: 'CmdOrCtrl+S', action: () => saveRequest() }),
           await PredefinedMenuItem.new({ item: 'Separator' }),
           await MenuItem.new({ id: 'import-collection', text: 'Import Collection', action: () => importCollections() }),
@@ -223,6 +230,58 @@
         ],
       });
 
+      const bodyTypeSubmenu = await Submenu.new({
+        text: 'Body Type',
+        items: [
+          await MenuItem.new({ id: 'body-json', text: 'JSON', action: () => setActiveBodyType('json') }),
+          await MenuItem.new({ id: 'body-xml', text: 'XML', action: () => setActiveBodyType('xml') }),
+          await MenuItem.new({ id: 'body-yaml', text: 'YAML', action: () => setActiveBodyType('yaml') }),
+          await MenuItem.new({ id: 'body-html', text: 'HTML', action: () => setActiveBodyType('html') }),
+          await MenuItem.new({ id: 'body-text', text: 'Plain Text', action: () => setActiveBodyType('text') }),
+          await MenuItem.new({ id: 'body-form-data', text: 'Form Data', action: () => setActiveBodyType('form-data') }),
+          await MenuItem.new({ id: 'body-form-urlencoded', text: 'Form URL Encoded', action: () => setActiveBodyType('form-urlencoded') }),
+          await MenuItem.new({ id: 'body-binary', text: 'Binary / File', action: () => setActiveBodyType('binary') }),
+          await MenuItem.new({ id: 'body-graphql', text: 'GraphQL', action: () => setActiveBodyType('graphql') }),
+          await MenuItem.new({ id: 'body-none', text: 'No Body', action: () => setActiveBodyType('none') }),
+        ],
+      });
+
+      const requestSubmenu = await Submenu.new({
+        text: 'Request',
+        items: [
+          await MenuItem.new({ id: 'send-request', text: 'Send / Connect', accelerator: 'CmdOrCtrl+Enter', action: () => triggerSendOrConnect() }),
+          await MenuItem.new({ id: 'method-dropdown', text: 'Open Method Dropdown', accelerator: 'CmdOrCtrl+M', action: () => openMethodDropdown() }),
+          await MenuItem.new({ id: 'focus-url', text: 'Focus URL', accelerator: 'CmdOrCtrl+I', action: () => focusUrlInput() }),
+          await PredefinedMenuItem.new({ item: 'Separator' }),
+          await MenuItem.new({ id: 'tab-params', text: 'Params', accelerator: 'CmdOrCtrl+P', action: () => openRequestTab('params') }),
+          await MenuItem.new({ id: 'tab-body', text: 'Body', accelerator: 'CmdOrCtrl+B', action: () => openRequestTab('body') }),
+          await MenuItem.new({ id: 'tab-auth', text: 'Auth', accelerator: 'CmdOrCtrl+Shift+A', action: () => openRequestTab('auth') }),
+          await MenuItem.new({ id: 'tab-headers', text: 'Headers', accelerator: 'CmdOrCtrl+H', action: () => openRequestTab('headers') }),
+          await MenuItem.new({ id: 'tab-docs', text: 'Docs', accelerator: 'CmdOrCtrl+D', action: () => openRequestTab('docs') }),
+          await MenuItem.new({ id: 'docs-toggle', text: 'Toggle Docs Edit / Preview', accelerator: 'CmdOrCtrl+Shift+D', action: () => toggleDocsEditPreview() }),
+          await PredefinedMenuItem.new({ item: 'Separator' }),
+          bodyTypeSubmenu,
+          await PredefinedMenuItem.new({ item: 'Separator' }),
+          await MenuItem.new({ id: 'clear-stream', text: 'Clear Messages / Events', accelerator: 'CmdOrCtrl+L', action: () => clearStreamMessages() }),
+        ],
+      });
+
+      const responseSubmenu = await Submenu.new({
+        text: 'Response',
+        items: [
+          await MenuItem.new({ id: 'resp-preview', text: 'Preview', accelerator: 'Alt+1', action: () => activeResponseTab.set('preview') }),
+          await MenuItem.new({ id: 'resp-headers', text: 'Headers', accelerator: 'Alt+2', action: () => activeResponseTab.set('headers') }),
+          await MenuItem.new({ id: 'resp-console', text: 'Console', accelerator: 'Alt+3', action: () => activeResponseTab.set('console') }),
+          await MenuItem.new({ id: 'resp-diff', text: 'Diff', accelerator: 'Alt+4', action: () => activeResponseTab.set('diff') }),
+          await PredefinedMenuItem.new({ item: 'Separator' }),
+          await MenuItem.new({ id: 'resp-tree', text: 'Tree View', accelerator: 'Alt+T', action: () => setPreviewMode('tree') }),
+          await MenuItem.new({ id: 'resp-raw', text: 'Raw View', accelerator: 'Alt+R', action: () => setPreviewMode('raw') }),
+          await MenuItem.new({ id: 'resp-graph', text: 'Graph View', accelerator: 'Alt+G', action: () => setPreviewMode('graph') }),
+          await PredefinedMenuItem.new({ item: 'Separator' }),
+          await MenuItem.new({ id: 'export-snapshot', text: 'Export as HTML Snapshot', accelerator: 'CmdOrCtrl+Shift+S', action: () => responsePanelRef?.exportSnapshot() }),
+        ],
+      });
+
       const toolsItems: any[] = [
         await MenuItem.new({ id: 'jwt-decoder', text: 'JWT Decoder', accelerator: 'CmdOrCtrl+Shift+J', action: () => showToolsPanel.update(v => v === 'jwt' ? false : 'jwt') }),
         await MenuItem.new({ id: 'encoder', text: 'Base64 / URL Encoder', accelerator: 'CmdOrCtrl+Shift+E', action: () => showToolsPanel.update(v => v === 'encoder' ? false : 'encoder') }),
@@ -235,7 +294,7 @@
 
       if ($chatbotSupported && $settings.chatbotEnabled) {
         toolsItems.unshift(
-          await MenuItem.new({ id: 'ai-chatbot', text: 'Son of Anton', accelerator: 'CmdOrCtrl+Shift+M', action: () => showToolsPanel.update(v => v === 'chatbot' ? false : 'chatbot') }),
+          await MenuItem.new({ id: 'ai-chatbot', text: 'Son of Anton', accelerator: 'CmdOrCtrl+Shift+M', action: () => showChatbot.update(v => !v) }),
           await PredefinedMenuItem.new({ item: 'Separator' }),
         );
       }
@@ -248,8 +307,6 @@
           await MenuItem.new({ id: 'copy-curl', text: 'Copy as cURL', accelerator: 'CmdOrCtrl+Shift+K', action: () => requestBuilderRef?.copyAsCurl() }),
           await MenuItem.new({ id: 'code-gen', text: 'Code Generation', accelerator: 'CmdOrCtrl+Shift+G', action: () => requestBuilderRef?.openCodeGen() }),
           await PredefinedMenuItem.new({ item: 'Separator' }),
-          await MenuItem.new({ id: 'export-snapshot', text: 'Export as HTML Snapshot', accelerator: 'CmdOrCtrl+Shift+S', action: () => responsePanelRef?.exportSnapshot() }),
-          await PredefinedMenuItem.new({ item: 'Separator' }),
           await MenuItem.new({ id: 'settings', text: 'Settings', accelerator: 'CmdOrCtrl+,', action: () => showToolsPanel.update(v => v === 'settings' ? false : 'settings') }),
         ],
       });
@@ -257,9 +314,16 @@
       const viewSubmenu = await Submenu.new({
         text: 'View',
         items: [
-          await MenuItem.new({ id: 'toggle-sidebar', text: 'Toggle Collections', accelerator: 'CmdOrCtrl+Shift+C', action: () => leftSidebarCollapsed.update(v => !v) }),
+          await MenuItem.new({ id: 'next-tab', text: 'Next Tab', accelerator: 'Ctrl+Tab', action: () => nextTab() }),
+          await MenuItem.new({ id: 'prev-tab', text: 'Previous Tab', accelerator: 'Ctrl+Shift+Tab', action: () => prevTab() }),
+          await PredefinedMenuItem.new({ item: 'Separator' }),
+          await MenuItem.new({ id: 'collections-sidebar', text: 'Collections Sidebar', accelerator: 'CmdOrCtrl+Shift+C', action: () => activeSidebarTab.set('collections') }),
+          await MenuItem.new({ id: 'history-sidebar', text: 'History Sidebar', accelerator: 'CmdOrCtrl+Shift+H', action: () => activeSidebarTab.set('history') }),
+          await MenuItem.new({ id: 'collapse-collections', text: 'Collapse / Expand Collections Panel', accelerator: 'CmdOrCtrl+Shift+[', action: () => leftSidebarCollapsed.update(v => !v) }),
+          await MenuItem.new({ id: 'collapse-response', text: 'Collapse / Expand Response Panel', accelerator: 'CmdOrCtrl+Shift+]', action: () => rightSidebarCollapsed.update(v => !v) }),
           await MenuItem.new({ id: 'toggle-response', text: 'Toggle Response Layout', accelerator: 'CmdOrCtrl+Shift+L', action: () => toggleResponseLayout() }),
           await PredefinedMenuItem.new({ item: 'Separator' }),
+          await MenuItem.new({ id: 'search-picker', text: 'Search (Collections / History / Response)', accelerator: 'CmdOrCtrl+F', action: () => { showSearchPicker = true; } }),
           await MenuItem.new({ id: 'shortcuts', text: 'Keyboard Shortcuts', accelerator: 'CmdOrCtrl+/', action: () => showShortcuts.update(v => !v) }),
         ],
       });
@@ -277,7 +341,7 @@
       });
 
       const menu = await Menu.new({
-        items: [fileSubmenu, editSubmenu, toolsSubmenu, viewSubmenu, helpSubmenu],
+        items: [fileSubmenu, editSubmenu, requestSubmenu, responseSubmenu, toolsSubmenu, viewSubmenu, helpSubmenu],
       });
 
       await menu.setAsAppMenu();
@@ -383,6 +447,78 @@
     }
   }
 
+  // --- Shared shortcut actions -------------------------------------------------
+  // These back both the global keyboard handler and the native menu so the two
+  // stay in lockstep. Anything wired to a menu accelerator should go through one
+  // of these rather than duplicating the logic inline.
+
+  function triggerSendOrConnect() {
+    const tab = $activeTab;
+    if (tab.method === 'WS' || tab.method === 'WSS') {
+      if (tab.wsStatus === 'connected') {
+        wsDisconnect(tab.id);
+      } else if (tab.wsStatus !== 'connecting') {
+        const hdrs: Record<string, string> = {};
+        for (const h of (tab.headers || [])) { if (h.key && h.value) hdrs[h.key] = h.value; }
+        wsConnect(tab.id, tab.url, Object.keys(hdrs).length > 0 ? hdrs : undefined);
+      }
+    } else if (tab.method === 'SSE') {
+      if (tab.sseStatus === 'connected' || tab.sseStatus === 'reconnecting') {
+        sseDisconnect(tab.id);
+      } else if (tab.sseStatus !== 'connecting') {
+        const hdrs: Record<string, string> = {};
+        for (const h of (tab.headers || [])) { if (h.key && h.value) hdrs[h.key] = h.value; }
+        sseConnect(tab.id, tab.url, Object.keys(hdrs).length > 0 ? hdrs : undefined);
+      }
+    } else {
+      document.getElementById('send-btn')?.click();
+    }
+  }
+
+  function clearStreamMessages() {
+    const tab = $activeTab;
+    if (tab.method === 'WS' || tab.method === 'WSS') clearWsMessages(tab.id);
+    else if (tab.method === 'SSE') clearSseMessages(tab.id);
+  }
+
+  function openMethodDropdown() {
+    const trigger = document.querySelector('.method-trigger') as HTMLButtonElement | null;
+    trigger?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+  }
+
+  function focusUrlInput() {
+    const urlInput = document.getElementById('url-input') as HTMLInputElement | null;
+    if (urlInput) { urlInput.focus(); urlInput.select(); }
+  }
+
+  function openRequestTab(tab: 'params' | 'body' | 'auth' | 'headers' | 'docs') {
+    activeRequestTab.set(tab);
+    const selectors: Partial<Record<typeof tab, string>> = {
+      params: '#params-container .key-input',
+      headers: '#headers-container .key-input',
+      auth: '#auth-tab input, #auth-tab select',
+      body: '.tab-pane.active .body-input, .tab-pane.active .cm-content',
+    };
+    const selector = selectors[tab];
+    if (selector) setTimeout(() => (document.querySelector(selector) as HTMLElement | null)?.focus(), 50);
+  }
+
+  function toggleDocsEditPreview() {
+    if (get(activeRequestTab) !== 'docs') activeRequestTab.set('docs');
+    requestBuilderRef?.toggleDocsMode();
+  }
+
+  function setActiveBodyType(bodyType: string) {
+    activeRequestTab.set('body');
+    updateActiveTabBatch({ bodyType });
+    setTimeout(() => (document.querySelector('.tab-pane.active .body-input, .tab-pane.active .cm-content') as HTMLElement | null)?.focus(), 50);
+  }
+
+  function setPreviewMode(mode: 'tree' | 'raw' | 'graph') {
+    activeResponseTab.set('preview');
+    window.dispatchEvent(new CustomEvent('set-preview-mode', { detail: mode }));
+  }
+
   let keyboardHandler: ((e: KeyboardEvent) => void) | null = null;
 
   function setupKeyboardShortcuts() {
@@ -392,51 +528,70 @@
     let helpTimeout: ReturnType<typeof setTimeout> | null = null;
     
     keyboardHandler = (e: KeyboardEvent) => {
-      // Ctrl+/ — toggle keyboard shortcuts panel
-      if (e.ctrlKey && (e.key === '/' || e.key === '?')) {
+      // Primary chord modifier: Cmd on macOS, Ctrl everywhere else.
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+
+      // Ctrl/Cmd+/ — toggle keyboard shortcuts panel
+      if (mod && (e.key === '/' || e.key === '?')) {
         e.preventDefault();
         showShortcuts.update(v => !v);
         return;
       }
 
       // Ctrl+Shift+J — JWT Decoder
-      if (e.ctrlKey && e.shiftKey && e.key === 'J') {
+      if (mod && e.shiftKey && e.key === 'J') {
         e.preventDefault();
         showToolsPanel.update(v => v === 'jwt' ? false : 'jwt');
         return;
       }
 
       // Ctrl+Shift+E — Base64/URL Encoder
-      if (e.ctrlKey && e.shiftKey && e.key === 'E') {
+      if (mod && e.shiftKey && e.key === 'E') {
         e.preventDefault();
         showToolsPanel.update(v => v === 'encoder' ? false : 'encoder');
         return;
       }
 
       // Ctrl+Shift+Q — SQL Query Runner
-      if (e.ctrlKey && e.shiftKey && e.key === 'Q') {
+      if (mod && e.shiftKey && e.key === 'Q') {
         e.preventDefault();
         showToolsPanel.update(v => v === 'sql' ? false : 'sql');
         return;
       }
 
       // Ctrl+Shift+X — Cookie Jar
-      if (e.ctrlKey && e.shiftKey && e.key === 'X') {
+      if (mod && e.shiftKey && e.key === 'X') {
         e.preventDefault();
         showToolsPanel.update(v => v === 'cookies' ? false : 'cookies');
         return;
       }
 
       // Ctrl+Shift+N — Network Diagnostics
-      if (e.ctrlKey && e.shiftKey && e.key === 'N') {
+      if (mod && e.shiftKey && e.key === 'N') {
         e.preventDefault();
         showToolsPanel.update(v => v === 'diagnostics' ? false : 'diagnostics');
         return;
       }
 
+      // Ctrl+Tab / Ctrl+Shift+Tab — cycle through the Tools modal tabs
+      // (only when the tools panel is open). Wraps around at both ends.
+      if (e.ctrlKey && e.key === 'Tab') {
+        if ($showToolsPanel) {
+          e.preventDefault();
+          const tabs = toolsNavTabs;
+          const currentIndex = tabs.findIndex((t) => t.key === $showToolsPanel);
+          if (currentIndex !== -1 && tabs.length > 0) {
+            const delta = e.shiftKey ? -1 : 1;
+            const nextIndex = (currentIndex + delta + tabs.length) % tabs.length;
+            showToolsPanel.set(tabs[nextIndex].key as Exclude<typeof $showToolsPanel, false>);
+          }
+        }
+        return;
+      }
+
       // Ctrl+Shift+Enter — toggle Tools panel fullscreen (only when the
       // tools panel is open).
-      if (e.ctrlKey && e.shiftKey && e.key === 'Enter') {
+      if (mod && e.shiftKey && e.key === 'Enter') {
         if ($showToolsPanel) {
           e.preventDefault();
           toolsFullscreen.update((v) => !v);
@@ -444,13 +599,13 @@
         return;
       }
 
-      // Ctrl+Shift+M — AI Chatbot: toggle the panel. The model itself is
-      // loaded in the background at app start (see initChatbotFeature), so
-      // the shortcut is purely a UI toggle now.
-      if (e.ctrlKey && e.shiftKey && (e.key === 'M' || e.key === 'm')) {
+      // Ctrl+Shift+M — Son of Anton: toggle its full-screen surface. The
+      // model itself is loaded in the background at app start (see
+      // initChatbotFeature), so the shortcut is purely a UI toggle now.
+      if (mod && e.shiftKey && (e.key === 'M' || e.key === 'm')) {
         if ($chatbotSupported && $settings.chatbotEnabled) {
           e.preventDefault();
-          showToolsPanel.update((v) => (v === 'chatbot' ? false : 'chatbot'));
+          showChatbot.update((v) => !v);
           // If somehow the background load didn't fire (e.g. user installed
           // a model after launch), kick it now.
           if (!get(chatbotStatus).engineLoaded) {
@@ -467,7 +622,7 @@
       }
 
       // Ctrl+Shift+B — Diff Tool (standalone modal)
-      if (e.ctrlKey && e.shiftKey && e.key === 'B') {
+      if (mod && e.shiftKey && e.key === 'B') {
         e.preventDefault();
         showDiffTool.update(v => !v);
         return;
@@ -475,21 +630,21 @@
 
       // Ctrl+Shift+T — Load Test Lab (standalone full-screen surface).
       // T = "load Test"; Ctrl+Shift+L was already taken by toggleResponseLayout.
-      if (e.ctrlKey && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+      if (mod && e.shiftKey && (e.key === 'T' || e.key === 't')) {
         e.preventDefault();
         showLoadTest.update(v => v ? false : { collectionId: null });
         return;
       }
 
       // Ctrl+, — Settings
-      if (e.ctrlKey && e.key === ',') {
+      if (mod && e.key === ',') {
         e.preventDefault();
         showToolsPanel.update(v => v === 'settings' ? false : 'settings');
         return;
       }
 
       // Ctrl+Shift+O — Import OpenAPI Spec
-      if (e.ctrlKey && e.shiftKey && e.key === 'O') {
+      if (mod && e.shiftKey && e.key === 'O') {
         e.preventDefault();
         importOpenApi();
         return;
@@ -516,6 +671,11 @@
           showLoadTest.set(false);
           return;
         }
+        if ($showChatbot) {
+          e.preventDefault();
+          showChatbot.set(false);
+          return;
+        }
         if ($showToolsPanel) {
           e.preventDefault();
           showToolsPanel.set(false);
@@ -530,10 +690,10 @@
 
       // When tools panel, shortcuts modal, search picker, or load-test
       // screen is open, don't intercept request-specific keys.
-      if ($showToolsPanel || $showShortcuts || showSearchPicker || $showLoadTest) return;
+      if ($showToolsPanel || $showShortcuts || showSearchPicker || $showLoadTest || $showChatbot) return;
 
       // Ctrl+F — open search picker
-      if (e.ctrlKey && !e.shiftKey && e.key === 'f') {
+      if (mod && !e.shiftKey && e.key === 'f') {
         e.preventDefault();
         showSearchPicker = true;
         return;
@@ -547,164 +707,111 @@
       }
 
       // Ctrl+T — new tab
-      if (e.ctrlKey && !e.shiftKey && e.key === 't') {
+      if (mod && !e.shiftKey && e.key === 't') {
         e.preventDefault();
         storeAddTab();
         return;
       }
 
       // Ctrl+W — close current tab
-      if (e.ctrlKey && !e.shiftKey && e.key === 'w') {
+      if (mod && !e.shiftKey && e.key === 'w') {
         e.preventDefault();
         removeTab($activeTabId);
         return;
       }
 
       // Ctrl+M — open method/request type dropdown
-      if (e.ctrlKey && !e.shiftKey && e.key === 'm') {
+      if (mod && !e.shiftKey && e.key === 'm') {
         e.preventDefault();
-        const trigger = document.querySelector('.method-trigger') as HTMLButtonElement | null;
-        if (trigger) {
-          trigger.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
-        }
+        openMethodDropdown();
         return;
       }
 
-      if (e.ctrlKey && e.key === 'Enter') {
+      if (mod && e.key === 'Enter') {
         e.preventDefault();
+        triggerSendOrConnect();
+      } else if (mod && !e.shiftKey && e.key === 'l') {
         const tab = $activeTab;
-        if (tab.method === 'WS' || tab.method === 'WSS') {
-          if (tab.wsStatus === 'connected') {
-            wsDisconnect(tab.id);
-          } else if (tab.wsStatus !== 'connecting') {
-            const hdrs: Record<string, string> = {};
-            for (const h of (tab.headers || [])) {
-              if (h.key && h.value) hdrs[h.key] = h.value;
-            }
-            wsConnect(tab.id, tab.url, Object.keys(hdrs).length > 0 ? hdrs : undefined);
-          }
-        } else if (tab.method === 'SSE') {
-          if (tab.sseStatus === 'connected' || tab.sseStatus === 'reconnecting') {
-            sseDisconnect(tab.id);
-          } else if (tab.sseStatus !== 'connecting') {
-            const hdrs: Record<string, string> = {};
-            for (const h of (tab.headers || [])) {
-              if (h.key && h.value) hdrs[h.key] = h.value;
-            }
-            sseConnect(tab.id, tab.url, Object.keys(hdrs).length > 0 ? hdrs : undefined);
-          }
-        } else {
-          document.getElementById('send-btn')?.click();
-        }
-      } else if (e.ctrlKey && !e.shiftKey && e.key === 'l') {
-        const tab = $activeTab;
-        if (tab.method === 'WS' || tab.method === 'WSS') {
+        if (tab.method === 'WS' || tab.method === 'WSS' || tab.method === 'SSE') {
           e.preventDefault();
-          clearWsMessages(tab.id);
-        } else if (tab.method === 'SSE') {
-          e.preventDefault();
-          clearSseMessages(tab.id);
+          clearStreamMessages();
         }
-      } else if (e.ctrlKey && !e.shiftKey && e.key === 'i') {
+      } else if (mod && !e.shiftKey && e.key === 'i') {
         e.preventDefault();
-        const urlInput = document.getElementById('url-input') as HTMLInputElement | null;
-        if (urlInput) {
-          urlInput.focus();
-          urlInput.select();
-        }
-      } else if (e.ctrlKey && e.key === 's') {
+        focusUrlInput();
+      } else if (mod && e.key === 's') {
         e.preventDefault();
         saveRequest();
-      } else if (e.ctrlKey && !e.shiftKey && e.key === 'h') {
+      } else if (mod && !e.shiftKey && e.key === 'h') {
         e.preventDefault();
-        activeRequestTab.set('headers');
-        setTimeout(() => {
-          const firstHeaderInput = document.querySelector('#headers-container .key-input') as HTMLInputElement | null;
-          firstHeaderInput?.focus();
-        }, 50);
-      } else if (e.ctrlKey && !e.shiftKey && e.key === 'd') {
+        openRequestTab('headers');
+      } else if (mod && !e.shiftKey && e.key === 'd') {
         e.preventDefault();
-        activeRequestTab.set('docs');
-      } else if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+        openRequestTab('docs');
+      } else if (mod && e.shiftKey && e.key === 'D') {
         e.preventDefault();
-        if (get(activeRequestTab) !== 'docs') activeRequestTab.set('docs');
-        requestBuilderRef?.toggleDocsMode();
-      } else if (e.ctrlKey && e.key === 'b') {
+        toggleDocsEditPreview();
+      } else if (mod && e.key === 'b') {
         e.preventDefault();
-        activeRequestTab.set('body');
+        openRequestTab('body');
         bodyTypeShortcutsEnabled = true;
         if (bodyTypeTimeout) clearTimeout(bodyTypeTimeout);
         bodyTypeTimeout = setTimeout(() => { bodyTypeShortcutsEnabled = false; }, 2000);
-        setTimeout(() => {
-          const activeBodyInput = document.querySelector('.tab-pane.active .body-input, .tab-pane.active .cm-content') as HTMLElement | null;
-          activeBodyInput?.focus();
-        }, 50);
-      } else if (e.ctrlKey && e.key === 'p') {
+      } else if (mod && e.key === 'p') {
         e.preventDefault();
-        activeRequestTab.set('params');
-        setTimeout(() => {
-          const firstParamInput = document.querySelector('#params-container .key-input') as HTMLInputElement | null;
-          firstParamInput?.focus();
-        }, 50);
-      } else if (e.ctrlKey && e.shiftKey && e.key === 'A') {
+        openRequestTab('params');
+      } else if (mod && e.shiftKey && e.key === 'A') {
         e.preventDefault();
-        activeRequestTab.set('auth');
-        setTimeout(() => {
-          const firstAuthInput = document.querySelector('#auth-tab input, #auth-tab select') as HTMLElement | null;
-          firstAuthInput?.focus();
-        }, 50);
-      } else if (e.ctrlKey && e.shiftKey && e.key === 'C') {
+        openRequestTab('auth');
+      } else if (mod && e.shiftKey && e.key === 'C') {
         e.preventDefault();
         activeSidebarTab.set('collections');
-      } else if (e.ctrlKey && e.shiftKey && e.key === 'H') {
+      } else if (mod && e.shiftKey && e.key === 'H') {
         e.preventDefault();
         activeSidebarTab.set('history');
-      } else if (e.ctrlKey && e.shiftKey && e.key === 'F') {
+      } else if (mod && e.shiftKey && e.key === 'F') {
         e.preventDefault();
         requestBuilderRef?.formatBody();
-      } else if (e.ctrlKey && e.shiftKey && e.key === 'K') {
+      } else if (mod && e.shiftKey && e.key === 'K') {
         e.preventDefault();
         requestBuilderRef?.copyAsCurl();
-      } else if (e.ctrlKey && e.shiftKey && e.key === 'G') {
+      } else if (mod && e.shiftKey && e.key === 'G') {
         e.preventDefault();
         requestBuilderRef?.openCodeGen();
-      } else if (e.ctrlKey && e.shiftKey && e.key === 'S') {
+      } else if (mod && e.shiftKey && e.key === 'S') {
         e.preventDefault();
         responsePanelRef?.exportSnapshot();
-      } else if (e.ctrlKey && e.shiftKey && e.key === 'L') {
+      } else if (mod && e.shiftKey && e.key === 'L') {
         e.preventDefault();
         toggleResponseLayout();
-      } else if (e.ctrlKey && (e.key === '{' || (e.shiftKey && e.key === '['))) {
+      } else if (mod && (e.key === '{' || (e.shiftKey && e.key === '['))) {
         e.preventDefault();
         leftSidebarCollapsed.update(v => !v);
-      } else if (e.ctrlKey && (e.key === '}' || (e.shiftKey && e.key === ']'))) {
+      } else if (mod && (e.key === '}' || (e.shiftKey && e.key === ']'))) {
         e.preventDefault();
         rightSidebarCollapsed.update(v => !v);
-      } else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.key === '1') {
+      } else if (e.altKey && !mod && !e.shiftKey && e.code === 'Digit1') {
         e.preventDefault();
         activeResponseTab.set('preview');
-      } else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.key === '2') {
+      } else if (e.altKey && !mod && !e.shiftKey && e.code === 'Digit2') {
         e.preventDefault();
         activeResponseTab.set('headers');
-      } else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.key === '3') {
+      } else if (e.altKey && !mod && !e.shiftKey && e.code === 'Digit3') {
         e.preventDefault();
         activeResponseTab.set('console');
-      } else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.key === '4') {
+      } else if (e.altKey && !mod && !e.shiftKey && e.code === 'Digit4') {
         e.preventDefault();
         activeResponseTab.set('diff');
-      } else if (e.altKey && !e.ctrlKey && !e.shiftKey && (e.key === 't' || e.key === 'T')) {
+      } else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyT') {
         e.preventDefault();
-        activeResponseTab.set('preview');
-        window.dispatchEvent(new CustomEvent('set-preview-mode', { detail: 'tree' }));
-      } else if (e.altKey && !e.ctrlKey && !e.shiftKey && (e.key === 'r' || e.key === 'R')) {
+        setPreviewMode('tree');
+      } else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyR') {
         e.preventDefault();
-        activeResponseTab.set('preview');
-        window.dispatchEvent(new CustomEvent('set-preview-mode', { detail: 'raw' }));
-      } else if (e.altKey && !e.ctrlKey && !e.shiftKey && (e.key === 'g' || e.key === 'G')) {
+        setPreviewMode('raw');
+      } else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyG') {
         e.preventDefault();
-        activeResponseTab.set('preview');
-        window.dispatchEvent(new CustomEvent('set-preview-mode', { detail: 'graph' }));
-      } else if (bodyTypeShortcutsEnabled && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+        setPreviewMode('graph');
+      } else if (bodyTypeShortcutsEnabled && !mod && !e.shiftKey && !e.altKey) {
         const key = e.key.toLowerCase();
         const bodyTypes: Record<string, string> = {
           'j': 'json', 'x': 'xml', 'y': 'yaml', 'h': 'html', 't': 'text',
@@ -714,16 +821,12 @@
           e.preventDefault();
           bodyTypeShortcutsEnabled = false;
           if (bodyTypeTimeout) clearTimeout(bodyTypeTimeout);
-          updateActiveTabBatch({ bodyType: bodyTypes[key] });
-          setTimeout(() => {
-            const activeBodyInput = document.querySelector('.tab-pane.active .body-input, .tab-pane.active .cm-content') as HTMLElement | null;
-            activeBodyInput?.focus();
-          }, 50);
+          setActiveBodyType(bodyTypes[key]);
         }
       }
 
       // PPPP help sequence — type "P" four times (unmodified) to open shortcuts
-      if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key && e.key.length === 1) {
+      if (!mod && !e.altKey && !e.metaKey && e.key && e.key.length === 1) {
         if (helpTimeout) clearTimeout(helpTimeout);
         helpSequence += e.key.toUpperCase();
         if (helpSequence.length > 10) helpSequence = helpSequence.slice(-10);
@@ -1382,9 +1485,7 @@
               {/snippet}
       </ToolsNavBar>
       <div class="tools-body">
-        {#if $showToolsPanel === 'chatbot' && $chatbotSupported && $settings.chatbotEnabled}
-          <ChatbotPanel />
-        {:else if $showToolsPanel === 'jwt'}
+        {#if $showToolsPanel === 'jwt'}
           <JwtDecoderPanel />
         {:else if $showToolsPanel === 'encoder'}
           <EncoderPanel />
@@ -1394,6 +1495,8 @@
           <DiagnosticsPanel />
         {:else if $showToolsPanel === 'cookies'}
           <CookieJarPanel />
+        {:else if $showToolsPanel === 'mcp' && mcpTabAvailable}
+          <McpServersPanel />
         {:else if $showToolsPanel === 'settings'}
           <SettingsPanel />
         {/if}
@@ -1404,6 +1507,10 @@
 
 {#if $showLoadTest}
   <LoadTestScreen />
+{/if}
+
+{#if $showChatbot && $chatbotSupported && $settings.chatbotEnabled}
+  <ChatbotScreen />
 {/if}
 
 {#if $showDiffTool}

@@ -30,6 +30,8 @@
   import { addLog } from '$lib/stores/consoleStore';
   import { toolsFullscreen } from '$lib/stores/uiStore';
 
+  let { onClose, fullscreen = false }: { onClose?: () => void; fullscreen?: boolean } = $props();
+
   type SubTab = 'chat' | 'log' | 'history' | 'models';
   let subTab: SubTab = $state('chat');
 
@@ -801,7 +803,7 @@
   }
 </script>
 
-<div class="chatbot-panel" class:fullscreen={$toolsFullscreen}>
+<div class="chatbot-panel" class:fullscreen={fullscreen || $toolsFullscreen}>
   <div class="cb-toolbar">
     <div class="cb-tabs">
       <button class="cb-tab" class:active={subTab === 'chat'} onclick={() => (subTab = 'chat')}>
@@ -841,6 +843,11 @@
           <span class="status-text">No model</span>
         {/if}
       </div>
+      {#if onClose}
+        <button class="cb-close-btn" onclick={onClose} title="Close (Esc)">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>
+        </button>
+      {/if}
     </div>
   </div>
 
@@ -1328,6 +1335,24 @@
     display: flex;
     align-items: center;
     gap: 10px;
+  }
+
+  .cb-close-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    background: none;
+    border: none;
+    border-radius: 6px;
+    color: var(--text-secondary, #b5bac1);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .cb-close-btn:hover {
+    background: #1a1a1a;
+    color: #fff;
   }
 
   .cb-toolbar-btn {

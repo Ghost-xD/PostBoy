@@ -257,9 +257,9 @@
   }
 
   function handleGlobalKey(e: KeyboardEvent) {
-    if (e.ctrlKey && !e.shiftKey && e.key === 'j') { e.preventDefault(); toggleFormatJson(); }
-    if (e.altKey && !e.ctrlKey && e.key === 'n') { e.preventDefault(); goNext(); }
-    if (e.altKey && !e.ctrlKey && e.key === 'p') { e.preventDefault(); goPrev(); }
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'j') { e.preventDefault(); toggleFormatJson(); }
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyN') { e.preventDefault(); goNext(); }
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyP') { e.preventDefault(); goPrev(); }
   }
   onMount(() => window.addEventListener('keydown', handleGlobalKey));
   onDestroy(() => { window.removeEventListener('keydown', handleGlobalKey); if (debounceTimer) clearTimeout(debounceTimer); });

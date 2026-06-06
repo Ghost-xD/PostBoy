@@ -15,14 +15,14 @@
   let copied = $state(false);
 
   function handlePanelKeydown(e: KeyboardEvent) {
-    // Ctrl+D — toggle encode/decode direction
-    if (e.ctrlKey && !e.shiftKey && e.key === 'd') {
+    // Ctrl/Cmd+D — toggle encode/decode direction
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'd') {
       e.preventDefault();
       direction = direction === 'encode' ? 'decode' : 'encode';
       return;
     }
-    // Ctrl+M — toggle Base64/URL mode
-    if (e.ctrlKey && !e.shiftKey && e.key === 'm') {
+    // Ctrl/Cmd+M — toggle Base64/URL mode
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'm') {
       e.preventDefault();
       mode = mode === 'base64' ? 'url' : 'base64';
       return;

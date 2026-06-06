@@ -319,7 +319,14 @@ async fn chat_loop(
     max_tokens: u32,
     cancel_flag: Arc<AtomicBool>,
 ) -> Result<String, String> {
-    let tools_json = tools::tools_schema_json();
+    // Read the configured tool cap (default 40). Failures fall back to the
+    // default; treating a setting-read error as fatal here would lock the
+    // user out of chatting just because their `settings` row is corrupt.
+    let tool_cap = super::mcp::commands::read_tool_cap(&app).unwrap_or(super::mcp::DEFAULT_TOOL_CAP);
+    let mcp_handle = state.mcp.clone();
+    let tool_set = tools::tool_set_with_mcp(&mcp_handle, tool_cap).await;
+    let tools_json = tool_set.schema_json;
+    let tool_names = Arc::new(tool_set.names);
 
     // ------------------------------------------------------------------
     // Deterministic intercept: explicit "VERB NAME" run-request commands
@@ -439,6 +446,7 @@ async fn chat_loop(
         let app_for_thread = app.clone();
         let cancel_for_thread = cancel_flag.clone();
         let prompt_for_thread = prompt.clone();
+        let tool_names_for_thread = tool_names.clone();
 
         // Tracks how many bytes of the model's output we've already streamed to
         // the UI. The streaming closure holds back any tail bytes that could be
@@ -451,9 +459,10 @@ async fn chat_loop(
         let full = tokio::task::spawn_blocking(move || {
             const TAG: &str = "<tool_call>";
             let mut buffer = String::new();
-            engine.complete(
+            engine.complete_with_tools(
                 &prompt_for_thread,
                 max_tokens,
+                &tool_names_for_thread,
                 cancel_for_thread.clone(),
                 |delta| {
                     buffer.push_str(delta);
@@ -540,7 +549,13 @@ async fn chat_loop(
             Some(call) => {
                 let arguments = call.arguments.clone();
                 let tool_name = call.name.clone();
-                let result = tools::dispatch(app.clone(), &tool_name, arguments.clone()).await;
+                let result = tools::dispatch_with_mcp(
+                    app.clone(),
+                    mcp_handle.clone(),
+                    &tool_name,
+                    arguments.clone(),
+                )
+                .await;
 
                 let entry = ActionLogEntry {
                     timestamp: chrono::Utc::now().to_rfc3339(),

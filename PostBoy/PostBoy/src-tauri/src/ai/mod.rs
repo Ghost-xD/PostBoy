@@ -8,6 +8,7 @@
 
 pub mod commands;
 pub mod engine;
+pub mod mcp;
 pub mod model;
 pub mod tool_parser;
 pub mod tools;
@@ -47,6 +48,10 @@ pub struct AiState {
     pub download_controls: Mutex<HashMap<String, DownloadControl>>,
     /// Paused downloads waiting to be resumed.
     pub paused_downloads: Mutex<HashMap<String, PausedDownload>>,
+    /// MCP server registry + live connection state. Held as `Arc` so
+    /// background tasks (e.g. periodic refreshes) can share it without
+    /// holding `tauri::State`.
+    pub mcp: Arc<mcp::McpManager>,
 }
 
 impl AiState {
@@ -57,6 +62,7 @@ impl AiState {
             chat_cancel: Mutex::new(false),
             download_controls: Mutex::new(HashMap::new()),
             paused_downloads: Mutex::new(HashMap::new()),
+            mcp: Arc::new(mcp::McpManager::new()),
         })
     }
 }

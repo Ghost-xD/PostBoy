@@ -26,17 +26,45 @@ use llama_cpp_2::sampling::LlamaSampler;
 
 static BACKEND: OnceLock<&'static LlamaBackend> = OnceLock::new();
 
-/// GBNF grammar that constrains what the model can emit BETWEEN
-/// `<tool_call>` and `</tool_call>`. It accepts any well-formed
-/// `{"name": <one of our tools>, "arguments": <any valid JSON object>}`
-/// followed by the closing tag. Applied lazily via `grammar_lazy` — text
-/// emitted BEFORE the `<tool_call>` trigger is completely unconstrained,
-/// so the model is still free to write prose for normal chat replies.
+/// Hardcoded fallback list of built-in tool names — used when a caller
+/// doesn't pass a runtime allow-list (e.g. `ai_complete_text`). The
+/// chat-loop path always passes a merged list including any active MCP
+/// tools so the grammar accepts namespaced names.
+const BUILTIN_TOOL_NAMES: &[&str] = &[
+    "list_collections",
+    "list_requests",
+    "inspect_request",
+    "get_request",
+    "run_request",
+    "get_variables",
+    "set_variable",
+    "get_history",
+    "get_last_response",
+];
+
+/// Build the runtime tool-call GBNF grammar from a list of tool names.
+///
+/// Until MCP shipped, this lived as a `const` string with the eight
+/// built-in tools hard-coded. The chat loop now mixes those with however
+/// many enabled MCP tools the user has, so we generate the
+/// `tool-name ::= ...` alternation on every turn. The rest of the grammar
+/// (JSON value/object/etc. productions) is identical to the original
+/// hand-tuned version.
+///
+/// `names` may be empty; in that case we fall back to the built-in list
+/// rather than generating an unparseable empty alternation.
+///
+/// Why GBNF and not a regex / structured-output API? llama-cpp-2's
+/// `LlamaSampler::grammar_lazy` is the only knob we have for "constrain
+/// the next N tokens but only after a trigger string". Without it, small
+/// models occasionally emit malformed JSON inside `<tool_call>` (extra
+/// trailing commas, missing quotes), which the parser then drops on the
+/// floor and the user sees no answer.
 ///
 /// What this fixes:
-/// - Malformed JSON inside `<tool_call>` (extra trailing commas, missing
-///   quotes, etc.) — the grammar mask makes those tokens unreachable.
-/// - Hallucinated tool names — only the eight enumerated names are valid.
+/// - Malformed JSON inside `<tool_call>` — the grammar mask makes those
+///   tokens unreachable.
+/// - Hallucinated tool names — only the supplied names are reachable.
 /// - Truncation right after the JSON — the model has to emit
 ///   `</tool_call>` before EOS is allowed.
 ///
@@ -51,11 +79,35 @@ static BACKEND: OnceLock<&'static LlamaBackend> = OnceLock::new();
 // llama.cpp follows the same convention. Multi-line `|` continuations
 // produce `expecting name at | ...` parse errors and the entire grammar is
 // silently rejected, which is what was killing tool-call sampling here.
-const TOOL_CALL_GRAMMAR: &str = r#"
-root         ::= ws "{" ws "\"name\"" ws ":" ws tool-name ws "," ws "\"arguments\"" ws ":" ws json-object ws "}" ws "</tool_call>"
-tool-name    ::= "\"list_collections\"" | "\"list_requests\"" | "\"inspect_request\"" | "\"get_request\"" | "\"run_request\"" | "\"get_variables\"" | "\"set_variable\"" | "\"get_history\"" | "\"get_last_response\""
+fn build_tool_call_grammar(names: &[String]) -> String {
+    // Filter out anything that isn't a valid GBNF terminal payload (control
+    // chars, embedded backslashes/quotes), and dedupe while preserving
+    // input order. Most servers ship safe ASCII names, but a hostile MCP
+    // server could break the whole grammar by advertising a tool with a
+    // raw `"` in it; cheaper to skip those than to escape them.
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut alternatives: Vec<String> = Vec::new();
+    for n in names {
+        if !is_safe_grammar_name(n) {
+            continue;
+        }
+        if seen.insert(n.as_str()) {
+            alternatives.push(format!("\"\\\"{}\\\"\"", n));
+        }
+    }
+    if alternatives.is_empty() {
+        for n in BUILTIN_TOOL_NAMES {
+            alternatives.push(format!("\"\\\"{}\\\"\"", n));
+        }
+    }
+    let tool_name_rule = alternatives.join(" | ");
+
+    format!(
+        r#"
+root         ::= ws "{{" ws "\"name\"" ws ":" ws tool-name ws "," ws "\"arguments\"" ws ":" ws json-object ws "}}" ws "</tool_call>"
+tool-name    ::= {tool_name_rule}
 json-value   ::= json-string | json-number | json-boolean | "null" | json-object | json-array
-json-object  ::= "{" ws ( json-pair (ws "," ws json-pair)* )? ws "}"
+json-object  ::= "{{" ws ( json-pair (ws "," ws json-pair)* )? ws "}}"
 json-pair    ::= json-string ws ":" ws json-value
 json-array   ::= "[" ws ( json-value (ws "," ws json-value)* )? ws "]"
 json-string  ::= "\"" json-char* "\""
@@ -68,7 +120,20 @@ json-int     ::= "0" | [1-9] [0-9]*
 json-frac    ::= "." [0-9]+
 json-exp     ::= [eE] ("-" | "+")? [0-9]+
 ws           ::= [ \t\n\r]*
-"#;
+"#
+    )
+}
+
+/// Reject names that would corrupt the GBNF grammar literal. A safe name
+/// is printable ASCII without quote/backslash/control characters and short
+/// enough that we don't blow the parser's stack.
+fn is_safe_grammar_name(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 128
+        && s.chars().all(|c| {
+            !c.is_control() && c != '"' && c != '\\' && c.is_ascii()
+        })
+}
 
 fn backend() -> Result<&'static LlamaBackend, String> {
     if let Some(b) = BACKEND.get() {
@@ -121,10 +186,35 @@ impl Engine {
     /// Generate a completion from `prompt`, calling `on_delta` for each
     /// detokenized chunk. Returning `false` from `on_delta` cancels generation.
     /// `cancel` provides an external cancel signal (e.g. from a UI button).
+    ///
+    /// Uses the built-in tool-name list for the lazy GBNF grammar. The
+    /// chat loop's MCP-aware path goes through [`Engine::complete_with_tools`]
+    /// to inject MCP tool names into the grammar at runtime; everything
+    /// else (raw text completion, plan drafting, etc.) keeps using this
+    /// thin wrapper.
     pub fn complete<F>(
         &self,
         prompt: &str,
         max_tokens: u32,
+        cancel: Arc<AtomicBool>,
+        on_delta: F,
+    ) -> Result<String, String>
+    where
+        F: FnMut(&str) -> bool,
+    {
+        self.complete_with_tools(prompt, max_tokens, &[], cancel, on_delta)
+    }
+
+    /// Same as [`Engine::complete`] but accepts a runtime allow-list of
+    /// tool names that the lazy GBNF grammar will permit inside
+    /// `<tool_call>...</tool_call>`. An empty `tool_names` list is treated
+    /// as "use the built-in defaults" so non-chat callers don't have to
+    /// know about this dimension.
+    pub fn complete_with_tools<F>(
+        &self,
+        prompt: &str,
+        max_tokens: u32,
+        tool_names: &[String],
         cancel: Arc<AtomicBool>,
         mut on_delta: F,
     ) -> Result<String, String>
@@ -207,9 +297,10 @@ impl Engine {
         // construction failures (e.g. an llama-cpp-2 version that doesn't
         // accept some grammar feature) by simply omitting the sampler — the
         // engine keeps working, just without that extra guarantee.
+        let grammar_src = build_tool_call_grammar(tool_names);
         let grammar_sampler = LlamaSampler::grammar_lazy(
             &self.model,
-            TOOL_CALL_GRAMMAR,
+            &grammar_src,
             "root",
             ["<tool_call>"],
             &[],
