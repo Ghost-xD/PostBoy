@@ -3,6 +3,7 @@
 Follow existing code patterns. When in doubt, look at how a similar feature was built and mirror that approach.
 
 ---
+TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/postboy.key)" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="" yarn tauri build
 
 ## Adding a New Feature
 

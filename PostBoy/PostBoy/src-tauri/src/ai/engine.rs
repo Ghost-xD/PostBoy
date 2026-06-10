@@ -290,28 +290,27 @@ impl Engine {
         // temperature + top-k/top-p keeps tool-call JSON deterministic enough
         // while still allowing the model to recover from a stuck token.
         //
-        // A lazy grammar sampler is also attached: until the model emits
-        // `<tool_call>`, the grammar is inert; once it has, the grammar
-        // forces the JSON body to be well-formed and to use one of our real
-        // tool names, terminated by `</tool_call>`. We tolerate grammar
-        // construction failures (e.g. an llama-cpp-2 version that doesn't
-        // accept some grammar feature) by simply omitting the sampler — the
-        // engine keeps working, just without that extra guarantee.
-        let grammar_src = build_tool_call_grammar(tool_names);
-        let grammar_sampler = LlamaSampler::grammar_lazy(
-            &self.model,
-            &grammar_src,
-            "root",
-            ["<tool_call>"],
-            &[],
-        )
-        .ok();
+        // The lazy GBNF grammar sampler is intentionally NOT attached.
+        // llama.cpp's grammar accept path throws a C++ exception ("Unexpected
+        // empty grammar stack after accepting piece: ...") on certain compound
+        // tokens. That exception unwinds across the FFI boundary into Rust,
+        // which cannot catch a foreign exception and instead aborts the whole
+        // process (SIGABRT via `__rust_foreign_exception`). Whether it fires is
+        // data-dependent — it hinges on which token the model samples — so with
+        // identical code/model it crashed reliably under the macOS Metal
+        // backend yet stayed latent under Vulkan on Windows. Attaching it would
+        // therefore make behaviour diverge per platform. Skipping it on every
+        // platform keeps the sampler chain identical across Windows/macOS and
+        // removes the crash. Tool calls still work via the lenient
+        // `<tool_call>` parser in `tool_parser`; we only lose the hard grammar
+        // guarantee on the JSON body. `tool_names` and the grammar builder are
+        // kept wired up so this can be re-enabled once inference is isolated
+        // from the host process (e.g. run in a subprocess that can crash
+        // without taking the app down).
+        let _grammar_src = build_tool_call_grammar(tool_names);
 
-        let mut samplers: Vec<LlamaSampler> = Vec::with_capacity(6);
+        let mut samplers: Vec<LlamaSampler> = Vec::with_capacity(5);
         samplers.push(LlamaSampler::penalties(64, 1.15, 0.0, 0.0));
-        if let Some(g) = grammar_sampler {
-            samplers.push(g);
-        }
         samplers.push(LlamaSampler::top_k(40));
         samplers.push(LlamaSampler::top_p(0.95, 1));
         samplers.push(LlamaSampler::temp(0.6));

@@ -79,6 +79,7 @@
     ]},
     { title: 'Tools', items: [
       { keys: 'Ctrl + Shift + M', label: 'Son of Anton' },
+      { keys: 'Ctrl + Shift + P', label: 'MCP Servers' },
       { keys: 'Ctrl + Shift + Enter', label: 'Toggle Tools panel fullscreen', sub: true },
       { keys: 'Ctrl + Shift + J', label: 'JWT Decoder' },
       { keys: 'Ctrl + Shift + E', label: 'Base64 / URL Encoder' },
@@ -123,7 +124,7 @@
 
   let filteredSections = $derived(sections
     .map(s => ({ ...s, items: s.items.filter(item => {
-      if (!antonAvailable && item.label === 'Son of Anton') return false;
+      if (!antonAvailable && (item.label === 'Son of Anton' || item.label === 'MCP Servers')) return false;
       if (!lowerQuery) return true;
       return item.label.toLowerCase().includes(lowerQuery) || item.keys.toLowerCase().includes(lowerQuery);
     })}))

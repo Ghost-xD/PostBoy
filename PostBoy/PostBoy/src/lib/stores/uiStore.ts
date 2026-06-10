@@ -8,8 +8,8 @@ export const leftSidebarWidth = writable<number>(280);
 export const rightSidebarWidth = writable<number>(450);
 
 // Response panel layout
-export const responseLayout = writable<'right' | 'bottom'>('right');
-export const responsePanelHeight = writable<number>(300);
+export const responseLayout = writable<'right' | 'bottom'>('bottom');
+export const responsePanelHeight = writable<number>(560);
 
 // Request/Response tabs within the main area
 export const activeRequestTab = writable<'params' | 'body' | 'auth' | 'headers' | 'docs'>('body');

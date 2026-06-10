@@ -295,6 +295,7 @@
       if ($chatbotSupported && $settings.chatbotEnabled) {
         toolsItems.unshift(
           await MenuItem.new({ id: 'ai-chatbot', text: 'Son of Anton', accelerator: 'CmdOrCtrl+Shift+M', action: () => showChatbot.update(v => !v) }),
+          await MenuItem.new({ id: 'mcp-servers', text: 'MCP Servers', accelerator: 'CmdOrCtrl+Shift+P', action: () => showToolsPanel.update(v => v === 'mcp' ? false : 'mcp') }),
           await PredefinedMenuItem.new({ item: 'Separator' }),
         );
       }
@@ -570,6 +571,17 @@
       if (mod && e.shiftKey && e.key === 'N') {
         e.preventDefault();
         showToolsPanel.update(v => v === 'diagnostics' ? false : 'diagnostics');
+        return;
+      }
+
+      // Ctrl+Shift+P — MCP Servers. Gated behind the chatbot feature being
+      // compiled in AND enabled, since MCP tools only feed the chat loop —
+      // opening the panel otherwise would show an empty modal.
+      if (mod && e.shiftKey && (e.key === 'P' || e.key === 'p')) {
+        if ($chatbotSupported && $settings.chatbotEnabled) {
+          e.preventDefault();
+          showToolsPanel.update(v => v === 'mcp' ? false : 'mcp');
+        }
         return;
       }
 
@@ -1359,7 +1371,7 @@
       } else if (isDraggingRight) {
         rightSidebarWidth.set(Math.max(300, Math.min(800, window.innerWidth - e.clientX)));
       } else if (isDraggingBottom) {
-        responsePanelHeight.set(Math.max(150, Math.min(600, window.innerHeight - e.clientY - 40)));
+        responsePanelHeight.set(Math.max(150, Math.min(window.innerHeight * 0.9, window.innerHeight - e.clientY - 40)));
       }
     });
   }

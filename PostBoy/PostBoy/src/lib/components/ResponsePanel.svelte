@@ -313,26 +313,10 @@
           </div>
         </div>
       </div>
-    {:else if responseStatus !== null}
-      <div class="resp-status-bar">
-        <div class="resp-status-left">
-          <span class="resp-status-pill {getStatusClass(responseStatus)}">
-            {responseStatus} {responseStatusText}
-          </span>
-          <span class="resp-meta">
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 3.5a.5.5 0 0 0-1 0V8a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 7.71V3.5z"/><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z"/></svg>
-            {responseTime}ms
-          </span>
-          <span class="resp-meta">
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 0a.5.5 0 0 1 .5.5v4A1.5 1.5 0 0 1 4.5 6h-4a.5.5 0 0 1 0-1h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 1 .5-.5zm5 0a.5.5 0 0 1 .5.5v4a.5.5 0 0 0 .5.5h4a.5.5 0 0 1 0 1h-4A1.5 1.5 0 0 1 10 4.5v-4a.5.5 0 0 1 .5-.5zM0 10.5a.5.5 0 0 1 .5-.5h4A1.5 1.5 0 0 1 6 11.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 1-.5-.5zm10 0a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 0-.5.5v4a.5.5 0 0 1-1 0v-4z"/></svg>
-            {responseSize}
-          </span>
-        </div>
-        <span class="resp-timestamp">{responseTimestamp}</span>
-      </div>
     {/if}
 
-    <div class="resp-tabs">
+    <div class="resp-header">
+      <div class="resp-tabs">
       <button
         class="resp-tab {$activeResponseTab === 'preview' ? 'active' : ''}"
         onclick={() => activeResponseTab.set('preview')}
@@ -371,6 +355,24 @@
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
         Diff
       </button>
+      </div>
+
+      {#if responseStatus !== null && !isActiveTabSending}
+        <div class="resp-status-inline">
+          <span class="resp-status-pill {getStatusClass(responseStatus)}">
+            {responseStatus} {responseStatusText}
+          </span>
+          <span class="resp-meta">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 3.5a.5.5 0 0 0-1 0V8a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 7.71V3.5z"/><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z"/></svg>
+            {responseTime}ms
+          </span>
+          <span class="resp-meta">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 0a.5.5 0 0 1 .5.5v4A1.5 1.5 0 0 1 4.5 6h-4a.5.5 0 0 1 0-1h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 1 .5-.5zm5 0a.5.5 0 0 1 .5.5v4a.5.5 0 0 0 .5.5h4a.5.5 0 0 1 0 1h-4A1.5 1.5 0 0 1 10 4.5v-4a.5.5 0 0 1 .5-.5zM0 10.5a.5.5 0 0 1 .5-.5h4A1.5 1.5 0 0 1 6 11.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 1-.5-.5zm10 0a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 0-.5.5v4a.5.5 0 0 1-1 0v-4z"/></svg>
+            {responseSize}
+          </span>
+          <span class="resp-timestamp">{responseTimestamp}</span>
+        </div>
+      {/if}
     </div>
 
     <div class="resp-body">
@@ -665,7 +667,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 6px 10px;
+    padding: 8px 14px;
     background: var(--bg-secondary, #2b2d31);
     border-bottom: 1px solid var(--border-color, var(--border-color));
   }
