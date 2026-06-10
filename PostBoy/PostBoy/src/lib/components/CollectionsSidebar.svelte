@@ -8,7 +8,7 @@
   import { addLog } from '$lib/stores/consoleStore';
   import { showLoadTest } from '$lib/stores/uiStore';
   import RequestChainPanel from './RequestChainPanel.svelte';
-  import { loadChains as loadChainsFromDb, executeChain, type Chain } from '$lib/utils/chainRunner';
+  import { loadChains as loadChainsFromDb, executeChain, resolveRequest, type Chain } from '$lib/utils/chainRunner';
 
   function openLoadTest(collectionId: number) {
     showLoadTest.set({ collectionId });
@@ -395,54 +395,16 @@
         return;
       }
 
-      let headers = request.headers || '[]';
-      if (typeof headers === 'string') {
-        try { headers = JSON.parse(headers); } catch { headers = []; }
-      }
-
-      let params = request.params || '[]';
-      if (typeof params === 'string') {
-        try { params = JSON.parse(params); } catch { params = []; }
-      }
-
-      const resolvedParams = interpolateKeyValues(params, configModalCollectionId);
-      const validParams = resolvedParams.filter((p: any) => p.key && p.value);
-      
-      let requestUrl = interpolate(request.url, configModalCollectionId);
-      if (validParams.length > 0) {
-        // Params tab is the source of truth: strip any existing query string
-        // from the URL to avoid sending duplicates (server would see arrays).
-        const qIdx = requestUrl.indexOf('?');
-        if (qIdx >= 0) requestUrl = requestUrl.slice(0, qIdx);
-        const urlParams = new URLSearchParams();
-        validParams.forEach((p: any) => urlParams.append(p.key, p.value));
-        requestUrl += '?' + urlParams.toString();
-      }
-
-      const resolvedHeaders = interpolateKeyValues(headers, configModalCollectionId);
-      const headersObj: Record<string, string> = {};
-      resolvedHeaders.filter((h: any) => h.key && h.value).forEach((h: any) => {
-        headersObj[h.key] = h.value;
-      });
-
-      let requestBody: string | undefined;
-      const bodyType = request.body_type || 'none';
-      const bodyContent = request.body_content || '';
-      
-      if (request.method !== 'GET' && request.method !== 'HEAD' && bodyType !== 'none' && bodyContent) {
-        requestBody = interpolate(bodyContent, configModalCollectionId);
-        if (!headersObj['Content-Type']) {
-          if (bodyType === 'json') headersObj['Content-Type'] = 'application/json';
-          else if (bodyType === 'xml') headersObj['Content-Type'] = 'application/xml';
-          else if (bodyType === 'form-urlencoded') headersObj['Content-Type'] = 'application/x-www-form-urlencoded';
-        }
-      }
+      // Reuse the same builder as normal sends/chains so the Test button
+      // applies auth and encodes the body identically (avoids false 400s on
+      // form-urlencoded token endpoints or those using the Authorization tab).
+      const resolved = await resolveRequest(request, configModalCollectionId);
 
       const response: any = await http.executeRequest(
-        request.method,
-        requestUrl,
-        Object.keys(headersObj).length > 0 ? headersObj : undefined,
-        requestBody
+        resolved.method,
+        resolved.url,
+        Object.keys(resolved.headers).length > 0 ? resolved.headers : undefined,
+        resolved.body
       );
 
       if (response.status >= 400) {
@@ -615,89 +577,19 @@
         return;
       }
 
-      let headers = request.headers || '[]';
-      if (typeof headers === 'string') {
-        try { headers = JSON.parse(headers); } catch { headers = []; }
-      }
+      // Reuse the same builder as normal sends/chains so auth and every body
+      // type (form-urlencoded, form-data, binary, graphql, json, xml) are
+      // handled identically to a real send — no divergence between paths.
+      const resolved = await resolveRequest(request, collectionId);
 
-      let params = request.params || '[]';
-      if (typeof params === 'string') {
-        try { params = JSON.parse(params); } catch { params = []; }
-      }
-
-      const resolvedParams = interpolateKeyValues(params, collectionId);
-      const validParams = resolvedParams.filter((p: any) => p.key && p.value);
-      
-      let requestUrl = interpolate(request.url, collectionId);
-      if (validParams.length > 0) {
-        // Params tab is the source of truth: strip any existing query string
-        // from the URL to avoid sending duplicates (server would see arrays).
-        const qIdx = requestUrl.indexOf('?');
-        if (qIdx >= 0) requestUrl = requestUrl.slice(0, qIdx);
-        const urlParams = new URLSearchParams();
-        validParams.forEach((p: any) => urlParams.append(p.key, p.value));
-        requestUrl += '?' + urlParams.toString();
-      }
-
-      const resolvedHeaders = interpolateKeyValues(headers, collectionId);
-      const headersObj: Record<string, string> = {};
-      resolvedHeaders.filter((h: any) => h.key && h.value).forEach((h: any) => {
-        headersObj[h.key] = h.value;
-      });
-
-      // Apply auth data from the saved request
-      const authType = request.auth_type || 'none';
-      let authDataRaw: any = request.auth_data || '{}';
-      if (typeof authDataRaw === 'string') {
-        try { authDataRaw = JSON.parse(authDataRaw); } catch { authDataRaw = {}; }
-      }
-      if (authType === 'bearer') {
-        const token = interpolate(authDataRaw.token || '', collectionId);
-        if (token) headersObj['Authorization'] = `Bearer ${token}`;
-      } else if (authType === 'basic') {
-        const username = interpolate(authDataRaw.username || '', collectionId);
-        const password = interpolate(authDataRaw.password || '', collectionId);
-        if (username) headersObj['Authorization'] = `Basic ${btoa(`${username}:${password}`)}`;
-      } else if (authType === 'api-key') {
-        const key = interpolate(authDataRaw.key || '', collectionId);
-        const value = interpolate(authDataRaw.value || '', collectionId);
-        if (key) headersObj[key] = value;
-      }
-
-      let requestBody: string | undefined;
-      const bodyType = request.body_type || 'none';
-      const bodyContent = request.body_content || '';
-      
-      if (request.method !== 'GET' && request.method !== 'HEAD' && bodyType !== 'none' && bodyContent) {
-        if (bodyType === 'form-urlencoded') {
-          let formPairs: any[] = [];
-          try { formPairs = JSON.parse(bodyContent); } catch { formPairs = []; }
-          if (Array.isArray(formPairs) && formPairs.length > 0) {
-            const resolvedPairs = interpolateKeyValues(formPairs, collectionId);
-            const urlParams = new URLSearchParams();
-            resolvedPairs.filter((p: any) => p.key).forEach((p: any) => urlParams.append(p.key, p.value));
-            requestBody = urlParams.toString();
-          } else {
-            requestBody = interpolate(bodyContent, collectionId);
-          }
-        } else {
-          requestBody = interpolate(bodyContent, collectionId);
-        }
-        if (!headersObj['Content-Type']) {
-          if (bodyType === 'json') headersObj['Content-Type'] = 'application/json';
-          else if (bodyType === 'xml') headersObj['Content-Type'] = 'application/xml';
-          else if (bodyType === 'form-urlencoded') headersObj['Content-Type'] = 'application/x-www-form-urlencoded';
-        }
-      }
-
-      addLog(`⏳ Refreshing tokens: ${request.method} ${requestUrl}`, 'info');
-      addLog(`  Auth: ${authType}, Headers: ${Object.keys(headersObj).join(', ') || 'none'}`, 'info');
+      addLog(`⏳ Refreshing tokens: ${resolved.method} ${resolved.url}`, 'info');
+      addLog(`  Auth: ${request.auth_type || 'none'}, Headers: ${Object.keys(resolved.headers).join(', ') || 'none'}`, 'info');
 
       const response: any = await http.executeRequest(
-        request.method,
-        requestUrl,
-        Object.keys(headersObj).length > 0 ? headersObj : undefined,
-        requestBody
+        resolved.method,
+        resolved.url,
+        Object.keys(resolved.headers).length > 0 ? resolved.headers : undefined,
+        resolved.body
       );
 
       addLog(`  Response: ${response.status} ${response.statusText || ''}`, 'info');

@@ -12,7 +12,7 @@
   import { parseCurlCommand, generateCurlCommand } from '$lib/utils/curlParser';
   import { renderMarkdown } from '$lib/utils/markdownRenderer';
   import { generators, type CodeGenOptions } from '$lib/utils/codeGenerator';
-  import { variables, interpolate, interpolateKeyValues, getAllUnresolvedVariables } from '$lib/stores/variableStore';
+  import { variables, interpolate, interpolateJson, interpolateKeyValues, getAllUnresolvedVariables } from '$lib/stores/variableStore';
   import JsonEditor from './JsonEditor.svelte';
   import WebSocketPanel from './WebSocketPanel.svelte';
   import SsePanel from './SsePanel.svelte';
@@ -88,7 +88,9 @@
     const collectionId = $activeTab.collectionId;
     const resolvedUrl = interpolate(url, collectionId);
     const resolvedHeaders = interpolateKeyValues(headers, collectionId);
-    const resolvedBody = interpolate(bodyContent, collectionId);
+    const resolvedBody = bodyType === 'json'
+      ? interpolateJson(bodyContent, collectionId)
+      : interpolate(bodyContent, collectionId);
     const resolvedAuthToken = interpolate(authToken, collectionId);
     const resolvedAuthUsername = interpolate(authUsername, collectionId);
     const resolvedAuthPassword = interpolate(authPassword, collectionId);
@@ -510,7 +512,11 @@
             addLog(`Failed to read binary file: ${e.message || e}`, 'error');
           }
         } else if (bodyType !== 'none' && bodyType !== 'binary' && bodyContent) {
-          requestBody = interpolate(bodyContent, collectionId);
+          // JSON bodies escape interpolated values so a value containing quotes,
+          // backslashes or newlines can't produce malformed JSON.
+          requestBody = bodyType === 'json'
+            ? interpolateJson(bodyContent, collectionId)
+            : interpolate(bodyContent, collectionId);
         }
       }
 

@@ -101,6 +101,28 @@ export function interpolate(text: string, collectionId: number | undefined): str
   });
 }
 
+// Like interpolate(), but escapes each substituted value so it is safe inside a
+// JSON string literal (handles ", \, and control chars like newlines). Use for
+// JSON request bodies so a variable value containing quotes can't break the
+// body. Plain numbers/booleans pass through unchanged, so `"n": {{count}}` with
+// count=5 still yields valid JSON. Note: injecting a raw JSON object/array via a
+// variable in an unquoted position (e.g. `"data": {{obj}}`) is not supported —
+// wrap such payloads in quotes or build them as part of the template.
+export function interpolateJson(text: string, collectionId: number | undefined): string {
+  if (!text || !collectionId) return text;
+
+  const vars = variables.getForCollection(collectionId);
+  const varMap = new Map(vars.map(v => [v.key, v.value]));
+
+  return text.replace(VARIABLE_REGEX, (match, varName) => {
+    const trimmed = varName.trim();
+    if (!varMap.has(trimmed)) return match;
+    // JSON.stringify produces a quoted, fully-escaped string; strip the
+    // surrounding quotes since the template already supplies them.
+    return JSON.stringify(varMap.get(trimmed)!).slice(1, -1);
+  });
+}
+
 export function interpolateKeyValues(
   pairs: Array<{ key: string; value: string }>,
   collectionId: number | undefined

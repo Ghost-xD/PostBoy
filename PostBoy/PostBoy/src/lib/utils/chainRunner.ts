@@ -1,5 +1,5 @@
 import { db, http, fileOps } from '$lib/api/tauri';
-import { variables, interpolate, interpolateKeyValues, getValueAtPath, flattenJsonPaths } from '$lib/stores/variableStore';
+import { variables, interpolate, interpolateJson, interpolateKeyValues, getValueAtPath, flattenJsonPaths } from '$lib/stores/variableStore';
 
 export interface ChainExtraction {
   jsonPath: string;
@@ -167,7 +167,11 @@ export async function resolveRequest(request: any, collectionId: number): Promis
       if (!headersObj['Content-Type']) headersObj['Content-Type'] = 'application/json';
 
     } else if (bodyContent) {
-      requestBody = interpolate(bodyContent, collectionId);
+      // JSON bodies escape interpolated values so a value containing quotes,
+      // backslashes or newlines can't produce malformed JSON.
+      requestBody = bodyType === 'json'
+        ? interpolateJson(bodyContent, collectionId)
+        : interpolate(bodyContent, collectionId);
       if (!headersObj['Content-Type']) {
         if (bodyType === 'json') headersObj['Content-Type'] = 'application/json';
         else if (bodyType === 'xml') headersObj['Content-Type'] = 'application/xml';
