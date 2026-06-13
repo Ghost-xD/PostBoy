@@ -1,8 +1,11 @@
 import { listen } from '@tauri-apps/api/event';
+import { get } from 'svelte/store';
 import { sse } from '$lib/api/tauri';
 import { tabs, type SseMessage } from '$lib/stores/tabStore';
 import { addLog } from '$lib/stores/consoleStore';
 import { recordStreamConnectHistory } from '$lib/utils/streamHistory';
+import { runStreamPreConnectScript, runStreamOnMessageScript } from '$lib/utils/streamScriptRunner';
+import { createScriptVariableApi } from '$lib/utils/scriptVariables';
 
 const MAX_MESSAGES = 1000;
 
@@ -34,6 +37,38 @@ function pushMessage(tabId: string, msg: SseMessage) {
   );
 }
 
+function runOnMessageScript(tabId: string, message: SseMessage) {
+  const tab = get(tabs).find((t) => t.id === tabId);
+  if (!tab?.sseOnMessageScript?.trim()) return;
+
+  const headers: Record<string, string> = {};
+  for (const h of tab.headers || []) {
+    if (h.key && h.value) headers[h.key] = h.value;
+  }
+
+  const variableApi = createScriptVariableApi(tab.collectionId);
+  const result = runStreamOnMessageScript(
+    tab.sseOnMessageScript,
+    { method: tab.method, url: tab.url, headers, collectionId: tab.collectionId },
+    {
+      data: message.data,
+      eventType: message.eventType,
+      lastEventId: message.lastEventId,
+      timestamp: message.timestamp,
+    },
+    variableApi
+  );
+
+  for (const line of result.logs) addLog(line, 'info');
+  for (const line of result.errors) addLog(`SSE script: ${line}`, 'error');
+  for (const test of result.testResults) {
+    addLog(
+      test.passed ? `✓ ${test.name}` : `✗ ${test.name}${test.error ? `: ${test.error}` : ''}`,
+      test.passed ? 'info' : 'error'
+    );
+  }
+}
+
 export function initSseListeners() {
   if (listenersInitialized) return;
   listenersInitialized = true;
@@ -54,17 +89,22 @@ export function initSseListeners() {
     }
   });
 
-  listen<{ id: string; data: string; eventType: string; lastEventId: string; timestamp: number }>('sse-message', (event) => {
-    const { id, data, eventType, lastEventId, timestamp } = event.payload;
-    pushMessage(id, {
-      id: generateMsgId(),
-      eventType,
-      data,
-      lastEventId,
-      timestamp,
-      size: new Blob([data]).size,
-    });
-  });
+  listen<{ id: string; data: string; eventType: string; lastEventId: string; timestamp: number }>(
+    'sse-message',
+    (event) => {
+      const { id, data, eventType, lastEventId, timestamp } = event.payload;
+      const msg: SseMessage = {
+        id: generateMsgId(),
+        eventType,
+        data,
+        lastEventId,
+        timestamp,
+        size: new Blob([data]).size,
+      };
+      pushMessage(id, msg);
+      runOnMessageScript(id, msg);
+    }
+  );
 
   listen<{ id: string; reason: string }>('sse-disconnected', (event) => {
     const { id, reason } = event.payload;
@@ -87,13 +127,40 @@ export function initSseListeners() {
   });
 }
 
-export async function sseConnect(tabId: string, url: string, headers?: Record<string, string>, autoReconnect?: boolean) {
+export async function sseConnect(
+  tabId: string,
+  url: string,
+  headers?: Record<string, string>,
+  autoReconnect?: boolean
+) {
   const started = Date.now();
+  const tab = get(tabs).find((t) => t.id === tabId);
+  if (!tab) return;
+
+  let connectUrl = url;
+  let connectHeaders = { ...(headers || {}) };
+  const useAutoReconnect = autoReconnect ?? tab.sseAutoReconnect ?? true;
+
+  if (tab.preRequestScript?.trim()) {
+    const variableApi = createScriptVariableApi(tab.collectionId);
+    const pre = runStreamPreConnectScript(
+      tab.preRequestScript,
+      { method: tab.method, url: connectUrl, headers: connectHeaders, collectionId: tab.collectionId },
+      variableApi
+    );
+    connectUrl = pre.request.url;
+    connectHeaders = pre.request.headers;
+    for (const line of pre.logs) addLog(line, 'info');
+    for (const line of pre.errors) addLog(`SSE pre-script: ${line}`, 'error');
+  }
+
+  if (tab.sseLastEventId?.trim()) {
+    connectHeaders['Last-Event-ID'] = tab.sseLastEventId.trim();
+  }
+
   updateTabSse(tabId, { sseStatus: 'connecting' });
   try {
-    await sse.connect(tabId, url, headers, autoReconnect);
-    // First `sse-connected` event arrives asynchronously; history is recorded
-    // once the stream is established (see initSseListeners).
+    await sse.connect(tabId, connectUrl, connectHeaders, useAutoReconnect);
     pendingSseHistory.set(tabId, { started });
   } catch (err: any) {
     updateTabSse(tabId, { sseStatus: 'error' });

@@ -44,6 +44,15 @@ export const db = {
   clearHistory: async () => {
     return await invoke('db_clear_history');
   },
+  createRequestExample: async (requestId: number, exampleData: any) => {
+    return await invoke('db_create_request_example', { requestId, exampleData });
+  },
+  getRequestExamples: async (requestId: number) => {
+    return await invoke('db_get_request_examples', { requestId });
+  },
+  deleteRequestExample: async (id: number) => {
+    return await invoke('db_delete_request_example', { id });
+  },
   setSetting: async (key: string, value: any) => {
     return await invoke('db_set_setting', { key, value });
   },
@@ -546,6 +555,9 @@ export const ws = {
   },
   send: async (id: string, message: string) => {
     return await invoke('ws_send', { id, message });
+  },
+  sendBinary: async (id: string, dataBase64: string) => {
+    return await invoke('ws_send_binary', { id, dataBase64 });
   },
   disconnect: async (id: string) => {
     return await invoke('ws_disconnect', { id });

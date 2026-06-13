@@ -1,15 +1,15 @@
 <script lang="ts">
-  import { activeTab } from '$lib/stores/tabStore';
+  import { activeTab, updateActiveTab } from '$lib/stores/tabStore';
   import { sseConnect, sseDisconnect, clearSseMessages } from '$lib/stores/sseStore';
 
   let autoScroll = $state(true);
-  let autoReconnect = $state(true);
-  let filterEventType = $state('');
   let messageLog: HTMLDivElement | undefined = $state();
 
   const tabId = $derived($activeTab.id);
   const sseStatus = $derived($activeTab.sseStatus);
   const sseMessages = $derived($activeTab.sseMessages || []);
+  const autoReconnect = $derived($activeTab.sseAutoReconnect ?? true);
+  const filterEventType = $derived($activeTab.sseEventFilter || '');
   const url = $derived($activeTab.url);
   const headers = $derived(($activeTab.headers || []).filter((h: any) => h.key && h.value));
 
@@ -44,6 +44,14 @@
       }
       sseConnect(tabId, url, Object.keys(hdrs).length > 0 ? hdrs : undefined, autoReconnect);
     }
+  }
+
+  function setAutoReconnect(checked: boolean) {
+    updateActiveTab('sseAutoReconnect', checked);
+  }
+
+  function setEventFilter(value: string) {
+    updateActiveTab('sseEventFilter', value);
   }
 
   function formatTimestamp(ts: number): string {
@@ -91,7 +99,12 @@
     </div>
     <div class="sse-controls">
       <label class="reconnect-toggle" title="Auto-reconnect on connection loss">
-        <input type="checkbox" bind:checked={autoReconnect} disabled={isActive} />
+        <input
+          type="checkbox"
+          checked={autoReconnect}
+          onchange={(e) => setAutoReconnect(e.currentTarget.checked)}
+          disabled={isActive}
+        />
         Auto-reconnect
       </label>
       <button
@@ -127,7 +140,12 @@
     </div>
     <div class="sse-actions">
       {#if eventTypes.length > 1}
-        <select class="event-filter" bind:value={filterEventType} title="Filter by event type">
+        <select
+          class="event-filter"
+          value={filterEventType}
+          onchange={(e) => setEventFilter(e.currentTarget.value)}
+          title="Filter by event type"
+        >
           <option value="">All events</option>
           {#each eventTypes as et}
             <option value={et}>{et}</option>

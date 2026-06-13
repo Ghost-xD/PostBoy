@@ -88,6 +88,31 @@ pub struct KeyValue {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct RequestExample {
+    pub id: i64,
+    pub request_id: i64,
+    pub name: String,
+    pub status_code: Option<i64>,
+    pub response_time: Option<i64>,
+    pub response_headers: Option<String>,
+    pub response_body: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RequestExampleData {
+    pub name: String,
+    #[serde(rename = "statusCode")]
+    pub status_code: Option<i64>,
+    #[serde(rename = "responseTime")]
+    pub response_time: Option<i64>,
+    #[serde(rename = "responseHeaders")]
+    pub response_headers: Option<String>,
+    #[serde(rename = "responseBody")]
+    pub response_body: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct HistoryItem {
     pub id: i64,
     pub method: String,
@@ -701,6 +726,79 @@ pub async fn db_clear_history(app: AppHandle) -> Result<bool, String> {
     conn.execute("DELETE FROM history", [])
         .map_err(|e| e.to_string())?;
     
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn db_create_request_example(
+    app: AppHandle,
+    request_id: i64,
+    example_data: RequestExampleData,
+) -> Result<i64, String> {
+    let db_path = get_db_path(&app)?;
+    let conn = rusqlite::Connection::open(db_path)
+        .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT INTO request_examples (request_id, name, status_code, response_time, response_headers, response_body) VALUES (?, ?, ?, ?, ?, ?)",
+        rusqlite::params![
+            request_id,
+            example_data.name,
+            example_data.status_code,
+            example_data.response_time,
+            example_data.response_headers,
+            example_data.response_body,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(conn.last_insert_rowid())
+}
+
+#[tauri::command]
+pub async fn db_get_request_examples(
+    app: AppHandle,
+    request_id: i64,
+) -> Result<Vec<RequestExample>, String> {
+    let db_path = get_db_path(&app)?;
+    let conn = rusqlite::Connection::open(db_path)
+        .map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, request_id, name, status_code, response_time, response_headers, response_body, created_at FROM request_examples WHERE request_id = ? ORDER BY created_at DESC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let examples = stmt
+        .query_map([request_id], |row| {
+            Ok(RequestExample {
+                id: row.get(0)?,
+                request_id: row.get(1)?,
+                name: row.get(2)?,
+                status_code: row.get(3)?,
+                response_time: row.get(4)?,
+                response_headers: row.get(5)?,
+                response_body: row.get(6)?,
+                created_at: row_text(row, 7, "")?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    Ok(examples)
+}
+
+#[tauri::command]
+pub async fn db_delete_request_example(app: AppHandle, id: i64) -> Result<bool, String> {
+    let db_path = get_db_path(&app)?;
+    let conn = rusqlite::Connection::open(db_path)
+        .map_err(|e| e.to_string())?;
+
+    conn.execute("DELETE FROM request_examples WHERE id = ?1", [id])
+        .map_err(|e| e.to_string())?;
+
     Ok(true)
 }
 

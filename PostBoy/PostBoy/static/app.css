@@ -704,6 +704,7 @@ body {
 .footer-logo {
   width: 14px;
   height: 14px;
+  flex-shrink: 0;
 }
 
 .footer-app-name {
@@ -1730,6 +1731,13 @@ body {
 
 .auth-file-row :global(.variable-input-wrap) {
   flex: 1;
+}
+
+/* ── Unified sensitive-value masking (native inputs only) ── */
+.variable-input-wrap.masked-value:not(.revealed) :global(input:not([type='password'])),
+.variable-input-wrap.masked-value:not(.revealed) :global(textarea) {
+  -webkit-text-security: disc;
+  text-security: disc;
 }
 
 /* ── Response Status Bar ── */

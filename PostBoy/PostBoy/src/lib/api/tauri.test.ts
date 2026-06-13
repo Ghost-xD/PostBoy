@@ -139,6 +139,54 @@ describe('Tauri API Wrapper', () => {
       expect(invoke).toHaveBeenCalledWith('db_clear_history');
     });
 
+    it('should create request example', async () => {
+      const exampleData = {
+        name: 'Success 200',
+        statusCode: 200,
+        responseTime: 42,
+        responseHeaders: '{"Content-Type":"application/json"}',
+        responseBody: '{"ok":true}',
+      };
+      vi.mocked(invoke).mockResolvedValue(7);
+
+      const id = await db.createRequestExample(3, exampleData);
+
+      expect(invoke).toHaveBeenCalledWith('db_create_request_example', {
+        requestId: 3,
+        exampleData,
+      });
+      expect(id).toBe(7);
+    });
+
+    it('should get request examples', async () => {
+      const mockExamples = [
+        {
+          id: 1,
+          request_id: 3,
+          name: 'Success 200',
+          status_code: 200,
+          response_time: 42,
+          response_headers: '{}',
+          response_body: '{}',
+          created_at: '2026-01-01',
+        },
+      ];
+      vi.mocked(invoke).mockResolvedValue(mockExamples);
+
+      const result = await db.getRequestExamples(3);
+
+      expect(invoke).toHaveBeenCalledWith('db_get_request_examples', { requestId: 3 });
+      expect(result).toEqual(mockExamples);
+    });
+
+    it('should delete request example', async () => {
+      vi.mocked(invoke).mockResolvedValue(true);
+
+      await db.deleteRequestExample(1);
+
+      expect(invoke).toHaveBeenCalledWith('db_delete_request_example', { id: 1 });
+    });
+
     it('should get setting', async () => {
       vi.mocked(invoke).mockResolvedValue('dark');
 
@@ -223,14 +271,15 @@ describe('Tauri API Wrapper', () => {
     });
 
     it('should read file', async () => {
-      vi.mocked(invoke).mockResolvedValue('file contents');
+      const mockResponse = { success: true, data: 'file contents' };
+      vi.mocked(invoke).mockResolvedValue(mockResponse);
 
       const result = await fileOps.readFile('/path/to/file.txt');
       
       expect(invoke).toHaveBeenCalledWith('read_file', {
         filePath: '/path/to/file.txt'
       });
-      expect(result).toBe('file contents');
+      expect(result).toEqual(mockResponse);
     });
   });
 

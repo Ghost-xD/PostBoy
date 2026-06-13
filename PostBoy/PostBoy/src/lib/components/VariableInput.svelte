@@ -7,6 +7,14 @@
     applyVariableSelection,
     maskVariableValue,
   } from '$lib/utils/variableAutocomplete';
+  import {
+    getCompleteVariableTokenAt,
+    getInputIndexFromMouseEvent,
+    resolveVariableValue,
+  } from '$lib/utils/variableHoverPreview';
+  import { shouldMaskFieldValue } from '$lib/utils/sensitiveData';
+  import SensitiveFieldActions from './SensitiveFieldActions.svelte';
+  import SensitiveValuePopover from './SensitiveValuePopover.svelte';
 
   interface Props {
     value: string;
@@ -15,11 +23,15 @@
     inputClass?: string;
     id?: string;
     type?: 'text' | 'password';
+    /** Show eye/copy on the field itself (defaults true for password inputs). */
+    sensitive?: boolean;
     placeholder?: string;
     multiline?: boolean;
     rows?: number;
     list?: string;
     debounceMs?: number;
+    /** Associated field name (header/param/json key) for auto-masking. */
+    fieldKey?: string;
     onpaste?: (e: ClipboardEvent) => void;
     onkeypress?: (e: KeyboardEvent) => void;
   }
@@ -31,11 +43,13 @@
     inputClass = '',
     id,
     type = 'text',
+    sensitive = undefined,
     placeholder = '',
     multiline = false,
     rows = 5,
     list,
     debounceMs = 150,
+    fieldKey = '',
     onpaste,
     onkeypress,
   }: Props = $props();
@@ -47,6 +61,25 @@
   let activeContext: ReturnType<typeof getVariableContext> = $state(null);
   let variablesRev = $state(0);
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  let hoverTokenName = $state<string | null>(null);
+  let hoverTokenValue = $state<string | null>(null);
+  let hoverUnresolved = $state(false);
+  let fieldRevealed = $state(false);
+  let fieldCopied = $state(false);
+  let fieldCopyTimeout: ReturnType<typeof setTimeout> | null = null;
+  let previewPinned = $state(false);
+  let hidePreviewTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const isSensitiveField = $derived(
+    shouldMaskFieldValue({ value, fieldKey, type, sensitive })
+  );
+  const showFieldEye = $derived(type === 'password' || isSensitiveField);
+  const maskFieldDisplay = $derived(isSensitiveField && !fieldRevealed && type !== 'password');
+  const effectiveInputType = $derived(
+    type === 'password' && fieldRevealed ? 'text' : type
+  );
+  const showVariablePreview = $derived(hoverTokenName !== null);
 
   const collectionVars = $derived.by(() => {
     variablesRev;
@@ -67,7 +100,37 @@
 
   onDestroy(() => {
     if (debounceTimer) clearTimeout(debounceTimer);
+    if (fieldCopyTimeout) clearTimeout(fieldCopyTimeout);
+    if (hidePreviewTimer) clearTimeout(hidePreviewTimer);
   });
+
+  function cancelScheduledPreviewHide() {
+    if (hidePreviewTimer) clearTimeout(hidePreviewTimer);
+    hidePreviewTimer = null;
+  }
+
+  function schedulePreviewHide() {
+    cancelScheduledPreviewHide();
+    hidePreviewTimer = setTimeout(() => {
+      if (!previewPinned) clearVariablePreview();
+    }, 180);
+  }
+
+  function handleWrapMouseLeave() {
+    previewPinned = false;
+    cancelScheduledPreviewHide();
+    clearVariablePreview();
+  }
+
+  function handlePreviewMouseEnter() {
+    previewPinned = true;
+    cancelScheduledPreviewHide();
+  }
+
+  function handlePreviewMouseLeave() {
+    previewPinned = false;
+    clearVariablePreview();
+  }
 
   function updateSuggestions(text: string, cursor: number, immediate = false) {
     const ctx = getVariableContext(text, cursor);
@@ -96,6 +159,38 @@
     debounceTimer = setTimeout(run, debounceMs);
   }
 
+  function clearVariablePreview() {
+    hoverTokenName = null;
+    hoverTokenValue = null;
+    hoverUnresolved = false;
+  }
+
+  function updateVariablePreview(e: MouseEvent) {
+    if (!inputEl || !collectionId) {
+      clearVariablePreview();
+      return;
+    }
+
+    const index = getInputIndexFromMouseEvent(inputEl, e.clientX, e.clientY);
+    const token = getCompleteVariableTokenAt(value, index);
+    if (!token) {
+      schedulePreviewHide();
+      return;
+    }
+
+    cancelScheduledPreviewHide();
+
+    hoverTokenName = token.name;
+    const resolved = resolveVariableValue(token.name, collectionVars);
+    if (resolved === null) {
+      hoverUnresolved = true;
+      hoverTokenValue = null;
+    } else {
+      hoverUnresolved = false;
+      hoverTokenValue = resolved;
+    }
+  }
+
   function handleInput(e: Event) {
     const el = e.currentTarget as HTMLInputElement | HTMLTextAreaElement;
     oninput(el.value);
@@ -105,6 +200,7 @@
   function handleClick(e: MouseEvent) {
     const el = e.currentTarget as HTMLInputElement | HTMLTextAreaElement;
     updateSuggestions(el.value, el.selectionStart ?? el.value.length, true);
+    updateVariablePreview(e);
   }
 
   function handleKeyUp(e: KeyboardEvent) {
@@ -159,9 +255,27 @@
 
     onkeypress?.(e);
   }
+
+  async function copyFieldValue() {
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
+    fieldCopied = true;
+    if (fieldCopyTimeout) clearTimeout(fieldCopyTimeout);
+    fieldCopyTimeout = setTimeout(() => {
+      fieldCopied = false;
+    }, 1500);
+  }
 </script>
 
-<div class="variable-input-wrap" class:flex-grow={inputClass.includes('url-input')}>
+<div
+  class="variable-input-wrap"
+  class:flex-grow={inputClass.includes('url-input')}
+  class:has-field-actions={isSensitiveField}
+  class:has-var-preview={showVariablePreview}
+  class:masked-value={maskFieldDisplay}
+  class:revealed={fieldRevealed}
+  onmouseleave={handleWrapMouseLeave}
+>
   {#if multiline}
     <textarea
       bind:this={inputEl}
@@ -174,13 +288,14 @@
       onclick={handleClick}
       onkeyup={handleKeyUp}
       onkeydown={handleKeyDown}
+      onmousemove={updateVariablePreview}
       onpaste={onpaste}
     ></textarea>
   {:else}
     <input
       bind:this={inputEl}
       {id}
-      {type}
+      type={effectiveInputType}
       {placeholder}
       class={inputClass}
       {list}
@@ -189,9 +304,35 @@
       onclick={handleClick}
       onkeyup={handleKeyUp}
       onkeydown={handleKeyDown}
+      onmousemove={updateVariablePreview}
       onpaste={onpaste}
       onkeypress={onkeypress}
     />
+  {/if}
+
+  {#if isSensitiveField}
+    <div class="field-inline-actions">
+      <SensitiveFieldActions
+        revealed={fieldRevealed}
+        copied={fieldCopied}
+        showReveal={showFieldEye}
+        onToggleReveal={() => (fieldRevealed = !fieldRevealed)}
+        onCopy={copyFieldValue}
+      />
+    </div>
+  {/if}
+
+  {#if showVariablePreview}
+    {#key hoverTokenName}
+      <SensitiveValuePopover
+        label={`{{${hoverTokenName}}}`}
+        value={hoverTokenValue ?? ''}
+        unresolved={hoverUnresolved}
+        showReveal={!hoverUnresolved}
+        onmouseenter={handlePreviewMouseEnter}
+        onmouseleave={handlePreviewMouseLeave}
+      />
+    {/key}
   {/if}
 
   {#if showSuggestions}
@@ -221,6 +362,7 @@
     display: flex;
     flex: 1;
     min-width: 0;
+    align-items: stretch;
   }
 
   .variable-input-wrap.flex-grow {
@@ -231,6 +373,26 @@
   .variable-input-wrap :global(textarea) {
     width: 100%;
     box-sizing: border-box;
+  }
+
+  .variable-input-wrap.has-field-actions :global(input),
+  .variable-input-wrap.has-field-actions :global(textarea) {
+    padding-right: 56px;
+  }
+
+  .field-inline-actions {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+    display: flex;
+    align-items: center;
+  }
+
+  .variable-input-wrap.has-field-actions:has(textarea) .field-inline-actions {
+    top: 6px;
+    transform: none;
   }
 
   .variable-input-wrap :global(.auth-input),
@@ -276,6 +438,10 @@
     z-index: 200;
     max-height: 220px;
     overflow-y: auto;
+  }
+
+  .variable-input-wrap.has-var-preview .var-suggestions {
+    top: calc(100% + 96px);
   }
 
   .var-suggestions li {

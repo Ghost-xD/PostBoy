@@ -1,3 +1,4 @@
+use base64::Engine;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -30,6 +31,8 @@ struct WsMessageEvent {
     id: String,
     data: String,
     binary: bool,
+    #[serde(rename = "base64")]
+    base64_data: Option<String>,
     timestamp: u64,
 }
 
@@ -111,17 +114,20 @@ pub async fn ws_connect(
                                 id: id_clone.clone(),
                                 data,
                                 binary: false,
+                                base64_data: None,
                                 timestamp: now_ms(),
                             },
                         );
                     }
                     Message::Binary(bin) => {
+                        let b64 = base64::engine::general_purpose::STANDARD.encode(&bin);
                         let _ = app_clone.emit(
                             "ws-message",
                             WsMessageEvent {
                                 id: id_clone.clone(),
                                 data: format!("[binary {} bytes]", bin.len()),
                                 binary: true,
+                                base64_data: Some(b64),
                                 timestamp: now_ms(),
                             },
                         );
@@ -172,6 +178,22 @@ pub async fn ws_send(id: String, message: String) -> Result<(), String> {
     sink.send(Message::Text(message.into()))
         .await
         .map_err(|e| format!("Failed to send message: {}", e))
+}
+
+#[tauri::command]
+pub async fn ws_send_binary(id: String, data_base64: String) -> Result<(), String> {
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_base64.trim())
+        .map_err(|e| format!("Invalid base64 payload: {e}"))?;
+
+    let mut conns = get_connections().lock().await;
+    let sink = conns
+        .get_mut(&id)
+        .ok_or_else(|| format!("No active connection for id: {}", id))?;
+
+    sink.send(Message::Binary(bytes))
+        .await
+        .map_err(|e| format!("Failed to send binary message: {e}"))
 }
 
 #[tauri::command]

@@ -188,6 +188,7 @@
 
     {:else if authType === 'bearer'}
       <VariableInput
+        fieldKey="token"
         value={authToken}
         {collectionId}
         oninput={(v) => { updateActiveTab('authToken', v); setAuthField('token', v); }}
@@ -205,6 +206,8 @@
           placeholder="Key"
         />
         <VariableInput
+          fieldKey="value"
+          sensitive
           value={authApiValue}
           {collectionId}
           oninput={(v) => { updateActiveTab('authApiValue', v); setAuthField('value', v); }}
@@ -257,9 +260,9 @@
           <VariableInput type="password" value={strField('password')} {collectionId} oninput={(v) => setAuthField('password', v)} inputClass="auth-input" placeholder="Password" />
         {/if}
         {#if strField('grantType') === 'authorization_code'}
-          <VariableInput value={strField('authCode')} {collectionId} oninput={(v) => setAuthField('authCode', v)} inputClass="auth-input" placeholder="Authorization Code" />
+          <VariableInput sensitive value={strField('authCode')} {collectionId} oninput={(v) => setAuthField('authCode', v)} inputClass="auth-input" placeholder="Authorization Code" />
         {/if}
-        <VariableInput value={strField('accessToken')} {collectionId} oninput={(v) => setAuthField('accessToken', v)} inputClass="auth-input" placeholder="Access Token (current)" />
+        <VariableInput sensitive value={strField('accessToken')} {collectionId} oninput={(v) => setAuthField('accessToken', v)} inputClass="auth-input" placeholder="Access Token (current)" />
         <VariableInput type="password" value={strField('refreshToken')} {collectionId} oninput={(v) => setAuthField('refreshToken', v)} inputClass="auth-input" placeholder="Refresh Token" />
         <div class="auth-field">
           <label for="oauth-add-to">Add token to</label>
@@ -289,7 +292,7 @@
       <div class="auth-fields">
         <VariableInput value={strField('accessKey')} {collectionId} oninput={(v) => setAuthField('accessKey', v)} inputClass="auth-input" placeholder="Access Key ID" />
         <VariableInput type="password" value={strField('secretKey')} {collectionId} oninput={(v) => setAuthField('secretKey', v)} inputClass="auth-input" placeholder="Secret Access Key" />
-        <VariableInput value={strField('sessionToken')} {collectionId} oninput={(v) => setAuthField('sessionToken', v)} inputClass="auth-input" placeholder="Session Token (optional)" />
+        <VariableInput sensitive value={strField('sessionToken')} {collectionId} oninput={(v) => setAuthField('sessionToken', v)} inputClass="auth-input" placeholder="Session Token (optional)" />
         <VariableInput value={strField('region') || 'us-east-1'} {collectionId} oninput={(v) => setAuthField('region', v)} inputClass="auth-input" placeholder="AWS Region" />
         <VariableInput value={strField('service') || 'execute-api'} {collectionId} oninput={(v) => setAuthField('service', v)} inputClass="auth-input" placeholder="Service name" />
       </div>

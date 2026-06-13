@@ -9,6 +9,18 @@
   import { autocompletion, type CompletionContext } from '@codemirror/autocomplete';
   import { variables } from '$lib/stores/variableStore';
   import { filterVariableSuggestions, maskVariableValue } from '$lib/utils/variableAutocomplete';
+  import {
+    formatJsonBody,
+    maskSensitiveJsonText,
+    unmaskSensitiveJsonText,
+    findSensitiveJsonMatches,
+    type SensitiveJsonMatch,
+  } from '$lib/utils/sensitiveData';
+  import {
+    jsonSensitiveValueHoverExtension,
+    defaultMaskedSecretResolver,
+    hideSensitiveValuePopover,
+  } from '$lib/utils/codemirrorSensitiveJson';
 
   interface Props {
     value?: string;
@@ -27,6 +39,13 @@
   let editorDiv: HTMLDivElement | undefined = $state();
   let view: EditorView | undefined = $state();
   let activeCollectionId = $state<number | null>(null);
+
+  let secretsByKey = new Map<string, string>();
+  let sensitiveMatches: SensitiveJsonMatch[] = [];
+
+  function syncSensitiveMatches(doc: string) {
+    sensitiveMatches = findSensitiveJsonMatches(doc);
+  }
 
   $effect(() => {
     activeCollectionId = collectionId ?? null;
@@ -52,38 +71,66 @@
     };
   }
 
-  onMount(() => {
-    let initialValue = value;
-    try {
-      if (value && value.trim()) {
-        const parsed = JSON.parse(value);
-        initialValue = JSON.stringify(parsed, null, 2);
-      }
-    } catch {
-      // Not valid JSON, use as-is
+  function prepareDisplayDoc(raw: string): string {
+    const formatted = formatJsonBody(raw);
+    const { text, matches } = maskSensitiveJsonText(formatted);
+    secretsByKey = new Map(matches.map((item) => [item.key, item.value]));
+    syncSensitiveMatches(text);
+    return text;
+  }
+
+  function remaskDisplay(editorView: EditorView) {
+    const { text: unmasked, secretsByKey: nextSecrets } = unmaskSensitiveJsonText(
+      editorView.state.doc.toString(),
+      secretsByKey
+    );
+    secretsByKey = nextSecrets;
+    const { text: masked } = maskSensitiveJsonText(unmasked);
+    syncSensitiveMatches(masked);
+    if (masked !== editorView.state.doc.toString()) {
+      editorView.dispatch({
+        changes: { from: 0, to: editorView.state.doc.length, insert: masked },
+      });
     }
+  }
+
+  onMount(() => {
+    const displayDoc = prepareDisplayDoc(value);
 
     const extensions = [
       basicSetup,
       json(),
       oneDark,
       autocompletion({ override: [variableCompletionSource] }),
+      jsonSensitiveValueHoverExtension(() => sensitiveMatches, {
+        resolveSecret: (match) => defaultMaskedSecretResolver(match, secretsByKey),
+      }),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
-          value = update.state.doc.toString();
+          const { text: unmasked, secretsByKey: nextSecrets } = unmaskSensitiveJsonText(
+            update.state.doc.toString(),
+            secretsByKey
+          );
+          secretsByKey = nextSecrets;
+          syncSensitiveMatches(update.state.doc.toString());
+          value = unmasked;
         }
       }),
       EditorView.domEventHandlers({
-        paste(event, view) {
+        blur(_event, editorView) {
+          remaskDisplay(editorView);
+          return false;
+        },
+        paste(event, editorView) {
           const pastedText = event.clipboardData?.getData('text');
           if (pastedText) {
             try {
               const parsed = JSON.parse(pastedText);
               const formatted = JSON.stringify(parsed, null, 2);
-              view.dispatch({
+              editorView.dispatch({
                 changes: {
-                  from: view.state.selection.main.from,
-                  to: view.state.selection.main.to,
+                  from: editorView.state.selection.main.from,
+                  to: editorView.state.selection.main.to,
                   insert: formatted,
                 },
               });
@@ -111,7 +158,6 @@
           backgroundColor: '#000000',
         },
         '.cm-content': {
-          backgroundColor: '#000000',
           caretColor: '#4d8df6',
         },
         '.cm-gutters': {
@@ -139,8 +185,8 @@
         '&.cm-focused .cm-cursor': {
           borderLeftColor: '#4d8df6',
         },
-        '&.cm-focused .cm-selectionBackground, ::selection': {
-          backgroundColor: 'rgba(77, 141, 246, 0.25)',
+        '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground': {
+          backgroundColor: '#3584e4 !important',
         },
       }),
     ];
@@ -150,7 +196,7 @@
     }
 
     const startState = EditorState.create({
-      doc: initialValue,
+      doc: displayDoc,
       extensions,
     });
 
@@ -161,6 +207,7 @@
   });
 
   onDestroy(() => {
+    hideSensitiveValuePopover();
     if (view) {
       view.destroy();
     }
@@ -168,24 +215,20 @@
 
   let lastExternalValue = $state('');
   run(() => {
-    if (view && value !== view.state.doc.toString() && value !== lastExternalValue) {
-      lastExternalValue = value;
-
-      let formattedValue = value;
-      try {
-        if (value && value.trim()) {
-          const parsed = JSON.parse(value);
-          formattedValue = JSON.stringify(parsed, null, 2);
-        }
-      } catch {
-        formattedValue = value;
+    if (view && value !== lastExternalValue) {
+      const { text: unmasked } = unmaskSensitiveJsonText(view.state.doc.toString(), secretsByKey);
+      if (value === unmasked) {
+        lastExternalValue = value;
+        return;
       }
 
+      lastExternalValue = value;
+      const displayDoc = prepareDisplayDoc(value);
       view.dispatch({
         changes: {
           from: 0,
           to: view.state.doc.length,
-          insert: formattedValue,
+          insert: displayDoc,
         },
       });
     }
@@ -201,7 +244,19 @@
     min-height: 300px;
   }
 
-  :global(.cm-editor) {
+  :global(.json-editor-container .cm-editor) {
     height: 100%;
+  }
+
+  :global(.json-editor-container .cm-content) {
+    background-color: transparent !important;
+  }
+
+  :global(.json-editor-container .cm-editor.cm-focused .cm-selectionLayer .cm-selectionBackground) {
+    background-color: #3584e4 !important;
+  }
+
+  :global(.json-editor-container .cm-selectionLayer .cm-selectionBackground) {
+    background-color: #264f78 !important;
   }
 </style>

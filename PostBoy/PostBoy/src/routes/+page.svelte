@@ -5,7 +5,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
   import { db, fileOps, app } from '$lib/api/tauri';
-  import { tabs, activeTabId, activeTab, updateActiveTabBatch, updateTab, restoreTabs, saveTabs, saveTabsImmediate, enableAutoSave, findOpenTab, setActiveTab, addTab as storeAddTab, removeTab, nextTab, prevTab } from '$lib/stores/tabStore';
+  import { tabs, activeTabId, activeTab, updateActiveTabBatch, updateTab, restoreTabs, saveTabs, saveTabsImmediate, flushTabSave, pauseIpcTabSave, isIpcTabSavePaused, enableAutoSave, findOpenTab, setActiveTab, addTab as storeAddTab, removeTab, nextTab, prevTab } from '$lib/stores/tabStore';
   import type { Tab } from '$lib/stores/tabStore';
   import {
     responseLayout, responsePanelHeight, leftSidebarWidth, rightSidebarWidth,
@@ -21,6 +21,7 @@
   import { parseOpenApiSpec } from '$lib/utils/openApiParser';
   import { importCollection } from '$lib/utils/collectionImporter';
   import { serializeAuthFromTab, authFieldsFromStored } from '$lib/auth/tabAuth';
+  import { isStreamMethod, serializeStreamConfig, parseStreamConfig, applyStreamConfigToTab } from '$lib/utils/streamConfig';
   
   import TabBar from '$lib/components/TabBar.svelte';
   import RequestBuilder from '$lib/components/RequestBuilder.svelte';
@@ -417,11 +418,12 @@
   });
 
   function handleBeforeUnload() {
-    saveTabsImmediate(getUIState());
+    pauseIpcTabSave();
+    saveTabsImmediate(getUIState(), { skipIpc: true });
   }
 
   function handleVisibilityChange() {
-    if (document.visibilityState === 'hidden') {
+    if (document.visibilityState === 'hidden' && !isIpcTabSavePaused()) {
       saveTabsImmediate(getUIState());
     }
   }
@@ -464,7 +466,13 @@
   // stay in lockstep. Anything wired to a menu accelerator should go through one
   // of these rather than duplicating the logic inline.
 
-  function reloadApp() {
+  async function reloadApp() {
+    try {
+      await flushTabSave(getUIState());
+    } catch (err) {
+      console.warn('Failed to save tabs before reload:', err);
+    }
+    pauseIpcTabSave();
     window.location.reload();
   }
 
@@ -892,6 +900,9 @@
 
   // Modal-heavy flows
   function getSerializableBodyContent(tab: Tab): string {
+    if (isStreamMethod(tab.method)) {
+      return serializeStreamConfig(tab);
+    }
     if (tab.bodyType === 'form-data') {
       const pairs = tab.formDataPairs?.filter((p: any) => p.key);
       return pairs && pairs.length > 0 ? JSON.stringify(pairs) : '';
@@ -908,6 +919,13 @@
       }
     }
     return tab.bodyContent;
+  }
+
+  function getSaveBodyFields(tab: Tab): { bodyType: string; bodyContent: string } {
+    if (isStreamMethod(tab.method)) {
+      return { bodyType: 'stream', bodyContent: serializeStreamConfig(tab) };
+    }
+    return { bodyType: tab.bodyType, bodyContent: getSerializableBodyContent(tab) };
   }
 
   // Builds the response snapshot fields for a saveRequest payload. Returns an
@@ -948,14 +966,14 @@
       if (choice === 2 || choice === -1) return;
       if (choice === 0) {
         const { authType: updateAuthType, authData: updateAuthData } = serializeAuthFromTab(tab);
+        const saveBody = getSaveBodyFields(tab);
         const requestData = {
           name: tab.name,
           method: tab.method,
           url: tab.url,
           headers: tab.headers.filter(h => h.key),
           params: tab.params.filter(p => p.key),
-          bodyContent: getSerializableBodyContent(tab),
-          bodyType: tab.bodyType,
+          ...saveBody,
           authType: updateAuthType,
           authData: updateAuthData,
           description: tab.description,
@@ -992,6 +1010,7 @@
     const collectionId = parseInt(result.collection);
 
     const { authType: saveAuthType, authData } = serializeAuthFromTab(tab);
+    const saveBody = getSaveBodyFields(tab);
 
     const requestData = {
       name: requestName,
@@ -999,8 +1018,7 @@
       url: tab.url,
       headers: tab.headers.filter(h => h.key),
       params: tab.params.filter(p => p.key),
-      bodyContent: getSerializableBodyContent(tab),
-      bodyType: tab.bodyType,
+      ...saveBody,
       authType: saveAuthType,
       authData,
       description: tab.description,
@@ -1271,6 +1289,9 @@
         tabUpdate.graphqlVariables = JSON.stringify(gql.variables || {}, null, 2);
         tabUpdate.bodyContent = '';
       } catch { /* not JSON, leave as-is */ }
+    } else if (loadedBodyType === 'stream' || isStreamMethod(request.method)) {
+      const config = parseStreamConfig(loadedBodyContent, request.method);
+      applyStreamConfigToTab(tabUpdate, config, request.method);
     }
 
     const newTab = storeAddTab();

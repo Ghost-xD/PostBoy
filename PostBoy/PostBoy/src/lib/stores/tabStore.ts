@@ -30,6 +30,14 @@ export interface Tab {
   grpcMethod: string;
   preRequestScript: string;
   testScript: string;
+  wsSendMode: 'text' | 'binary';
+  wsInitialMessage: string;
+  wsOnMessageScript: string;
+  sseOnMessageScript: string;
+  sseAutoReconnect: boolean;
+  sseEventFilter: string;
+  sseLastEventId: string;
+  streamChainTimeoutMs: number;
   responseStatus: number | null;
   responseStatusText: string;
   responseTime: number | null;
@@ -92,6 +100,14 @@ export function createDefaultTab(id?: string): Tab {
     grpcMethod: '',
     preRequestScript: '',
     testScript: '',
+    wsSendMode: 'text',
+    wsInitialMessage: '',
+    wsOnMessageScript: '',
+    sseOnMessageScript: '',
+    sseAutoReconnect: true,
+    sseEventFilter: '',
+    sseLastEventId: '',
+    streamChainTimeoutMs: 10000,
     responseStatus: null,
     responseStatusText: '',
     responseTime: null,
@@ -228,6 +244,50 @@ export function findOpenTab(url: string, method: string): Tab | undefined {
 
 // Persistence: save tabs + UI state to database
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+/** When true, debounced/immediate IPC saves are suppressed (page is reloading/closing). */
+let ipcTabSavePaused = false;
+
+const SAVED_TABS_LOCAL_KEY = 'postboy_saved_tabs_backup';
+
+function buildSavedTabsData(uiState?: Partial<SavedTabsData>): SavedTabsData {
+  return {
+    tabs: get(tabs),
+    activeTabId: get(activeTabId),
+    ...uiState,
+  };
+}
+
+function writeSavedTabsLocalBackup(data: SavedTabsData) {
+  try {
+    localStorage.setItem(SAVED_TABS_LOCAL_KEY, JSON.stringify(data));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+/** Block IPC tab saves during webview teardown (reload/close). */
+export function pauseIpcTabSave() {
+  ipcTabSavePaused = true;
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+    saveTimeout = null;
+  }
+}
+
+export function isIpcTabSavePaused(): boolean {
+  return ipcTabSavePaused;
+}
+
+/** Await a durable save — call before `location.reload()`. */
+export async function flushTabSave(uiState?: Partial<SavedTabsData>): Promise<void> {
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+    saveTimeout = null;
+  }
+  const data = buildSavedTabsData(uiState);
+  await db.setSetting('saved_tabs', JSON.stringify(data));
+  writeSavedTabsLocalBackup(data);
+}
 
 export interface SavedTabsData {
   tabs: Tab[];
@@ -241,46 +301,60 @@ export interface SavedTabsData {
 }
 
 export async function saveTabs(uiState?: Partial<SavedTabsData>) {
+  if (ipcTabSavePaused) return;
   if (saveTimeout) clearTimeout(saveTimeout);
   
   saveTimeout = setTimeout(async () => {
+    saveTimeout = null;
+    if (ipcTabSavePaused) return;
     try {
-      const currentTabs = get(tabs);
-      const currentActiveId = get(activeTabId);
-      
-      const data: SavedTabsData = {
-        tabs: currentTabs,
-        activeTabId: currentActiveId,
-        ...uiState
-      };
-      
+      const data = buildSavedTabsData(uiState);
       await db.setSetting('saved_tabs', JSON.stringify(data));
+      writeSavedTabsLocalBackup(data);
     } catch (err) {
       console.error('Failed to save tabs:', err);
     }
   }, 500);
 }
 
-export function saveTabsImmediate(uiState?: Partial<SavedTabsData>) {
-  if (saveTimeout) clearTimeout(saveTimeout);
+export function saveTabsImmediate(
+  uiState?: Partial<SavedTabsData>,
+  options?: { skipIpc?: boolean }
+) {
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+    saveTimeout = null;
+  }
+
+  const data = buildSavedTabsData(uiState);
+
+  // During reload/close the webview rejects Tauri IPC (ipc://localhost) with
+  // "access control checks". Callers pass skipIpc and write a local backup instead.
+  if (options?.skipIpc || ipcTabSavePaused) {
+    writeSavedTabsLocalBackup(data);
+    return;
+  }
   
-  const currentTabs = get(tabs);
-  const currentActiveId = get(activeTabId);
-  
-  const data: SavedTabsData = {
-    tabs: currentTabs,
-    activeTabId: currentActiveId,
-    ...uiState
-  };
-  
-  db.setSetting('saved_tabs', JSON.stringify(data)).catch(err => {
-    console.error('Failed to save tabs:', err);
-  });
+  db.setSetting('saved_tabs', JSON.stringify(data))
+    .then(() => writeSavedTabsLocalBackup(data))
+    .catch(err => {
+      console.error('Failed to save tabs:', err);
+    });
 }
 
 export async function restoreTabs(): Promise<SavedTabsData | null> {
   try {
-    const saved = await db.getSetting('saved_tabs', null);
+    let saved = await db.getSetting('saved_tabs', null);
+
+    if (!saved) {
+      try {
+        const backup = localStorage.getItem(SAVED_TABS_LOCAL_KEY);
+        if (backup) saved = backup;
+      } catch {
+        /* ignore */
+      }
+    }
+
     if (!saved) return null;
     
     const data: SavedTabsData = typeof saved === 'string' ? JSON.parse(saved) : saved;

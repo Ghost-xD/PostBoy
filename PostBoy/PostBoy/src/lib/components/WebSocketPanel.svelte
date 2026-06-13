@@ -1,14 +1,19 @@
 <script lang="ts">
-  import { activeTab, type WsMessage } from '$lib/stores/tabStore';
-  import { wsConnect, wsSend, wsDisconnect, clearWsMessages } from '$lib/stores/wsStore';
+  import { activeTab, updateActiveTab, type WsMessage } from '$lib/stores/tabStore';
+  import { wsConnect, wsSend, wsSendBinary, wsDisconnect, clearWsMessages } from '$lib/stores/wsStore';
+  import { fileOps } from '$lib/api/tauri';
+  import { addLog } from '$lib/stores/consoleStore';
 
   let messageInput = $state('');
+  let binaryFileName = $state('');
   let autoScroll = $state(true);
   let messageLog: HTMLDivElement | undefined = $state();
 
   const tabId = $derived($activeTab.id);
   const wsStatus = $derived($activeTab.wsStatus);
   const wsMessages = $derived($activeTab.wsMessages || []);
+  const wsSendMode = $derived($activeTab.wsSendMode || 'text');
+  const wsInitialMessage = $derived($activeTab.wsInitialMessage || '');
   const url = $derived($activeTab.url);
   const headers = $derived(($activeTab.headers || []).filter((h: { key: string; value: string }) => h.key && h.value));
   const sentCount = $derived(wsMessages.filter((m: WsMessage) => m.direction === 'sent').length);
@@ -40,9 +45,37 @@
   }
 
   function handleSend() {
-    if (!messageInput.trim() || !isConnected) return;
+    if (!isConnected) return;
+    if (wsSendMode === 'binary') {
+      if (!messageInput.trim()) return;
+      wsSendBinary(tabId, messageInput.trim(), binaryFileName || undefined);
+      messageInput = '';
+      binaryFileName = '';
+      return;
+    }
+    if (!messageInput.trim()) return;
     wsSend(tabId, messageInput);
     messageInput = '';
+  }
+
+  async function pickBinaryFile() {
+    try {
+      const result = await fileOps.showOpenDialog({ title: 'Select binary file to send' });
+      const filePath = Array.isArray(result) ? result[0] : result;
+      if (!filePath) return;
+      const fileData = await fileOps.readFileBase64(filePath);
+      messageInput = fileData.base64;
+      binaryFileName = fileData.name;
+      addLog(`Selected binary file: ${fileData.name} (${fileData.size} bytes)`, 'system');
+    } catch (err: any) {
+      addLog(`File selection failed: ${err}`, 'error');
+    }
+  }
+
+  function setSendMode(mode: 'text' | 'binary') {
+    updateActiveTab('wsSendMode', mode);
+    messageInput = '';
+    binaryFileName = '';
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -169,10 +202,49 @@
   </div>
 
   <div class="ws-composer" class:disabled={!isConnected}>
+    <div class="ws-composer-toolbar">
+      <div class="send-mode-toggle">
+        <button
+          type="button"
+          class="mode-btn {wsSendMode === 'text' ? 'active' : ''}"
+          onclick={() => setSendMode('text')}
+          disabled={!isConnected}
+        >Text</button>
+        <button
+          type="button"
+          class="mode-btn {wsSendMode === 'binary' ? 'active' : ''}"
+          onclick={() => setSendMode('binary')}
+          disabled={!isConnected}
+        >Binary</button>
+        {#if wsSendMode === 'binary'}
+          <button type="button" class="pick-file-btn" onclick={pickBinaryFile} disabled={!isConnected}>
+            Pick file
+          </button>
+          {#if binaryFileName}
+            <span class="binary-file-label">{binaryFileName}</span>
+          {/if}
+        {/if}
+      </div>
+      <label class="chain-initial-label" title="Optional message sent automatically in collection chains after connect">
+        Chain initial:
+        <input
+          type="text"
+          value={wsInitialMessage}
+          oninput={(e) => updateActiveTab('wsInitialMessage', e.currentTarget.value)}
+          placeholder="Optional initial send for chains"
+          class="chain-initial-input"
+        />
+      </label>
+    </div>
+    <div class="ws-composer-row">
     <textarea
       bind:value={messageInput}
       onkeydown={handleKeydown}
-      placeholder={isConnected ? 'Type a message... (Enter to send, Shift+Enter for newline)' : 'Connect to send messages'}
+      placeholder={isConnected
+        ? (wsSendMode === 'binary'
+          ? 'Base64 payload or use Pick file... (Enter to send)'
+          : 'Type a message... (Enter to send, Shift+Enter for newline)')
+        : 'Connect to send messages'}
       disabled={!isConnected}
       rows="3"
     ></textarea>
@@ -184,6 +256,7 @@
     >
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.315.037a.5.5 0 0 1 .539.11Z"/></svg>
     </button>
+    </div>
   </div>
 </div>
 
@@ -440,11 +513,88 @@
 
   .ws-composer {
     display: flex;
+    flex-direction: column;
     gap: 8px;
     padding: 10px 12px;
     background: var(--bg-tertiary);
     border-top: 1px solid var(--border-color);
     flex-shrink: 0;
+  }
+
+  .ws-composer-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    justify-content: space-between;
+  }
+
+  .send-mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .mode-btn,
+  .pick-file-btn {
+    padding: 4px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    color: #dbdee1;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .mode-btn.active {
+    border-color: #5865f2;
+    color: #fff;
+    background: #5865f244;
+  }
+
+  .pick-file-btn:disabled,
+  .mode-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .binary-file-label {
+    font-size: 12px;
+    color: #b5bac1;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .chain-initial-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #b5bac1;
+    flex: 1;
+    min-width: 200px;
+  }
+
+  .chain-initial-input {
+    flex: 1;
+    min-width: 120px;
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    color: #dbdee1;
+    font-size: 12px;
+  }
+
+  .ws-composer-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .ws-composer-row textarea {
+    flex: 1;
   }
 
   .ws-composer.disabled {

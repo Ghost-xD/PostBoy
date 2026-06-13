@@ -952,6 +952,7 @@
             />
             <VariableInput
               value={param.value}
+              fieldKey={param.key}
               {collectionId}
               oninput={(v) => updateParam(i, 'value', v)}
               inputClass="value-input"
@@ -1026,6 +1027,7 @@
                 {#if pair.type === 'text'}
                   <VariableInput
                     value={pair.value}
+                    fieldKey={pair.key}
                     {collectionId}
                     oninput={(v) => updateFormDataPair(i, 'value', v)}
                     inputClass="value-input"
@@ -1056,6 +1058,7 @@
                 />
                 <VariableInput
                   value={pair.value}
+                  fieldKey={pair.key}
                   {collectionId}
                   oninput={(v) => updateFormUrlencodedPair(i, 'value', v)}
                   inputClass="value-input"
@@ -1184,6 +1187,7 @@
             />
             <VariableInput
               value={header.value}
+              fieldKey={header.key}
               {collectionId}
               oninput={(v) => updateHeader(i, 'value', v)}
               inputClass="value-input"

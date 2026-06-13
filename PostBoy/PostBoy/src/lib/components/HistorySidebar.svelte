@@ -1,6 +1,16 @@
 <script lang="ts">
-  import { db } from '$lib/api/tauri';
-  import { isHistorySuccessStatus } from '$lib/utils/streamHistory';
+  import { db, fileOps } from '$lib/api/tauri';
+  import { addLog } from '$lib/stores/consoleStore';
+  import { isHistorySuccessStatus, HISTORY_UPDATED_EVENT } from '$lib/utils/streamHistory';
+  import {
+    filterHistoryItems,
+    historyFiltersActive,
+    METHOD_FILTER_OPTIONS,
+    STATUS_FILTER_OPTIONS,
+    type MethodFilter,
+    type StatusFilter,
+  } from '$lib/utils/historyFilters';
+  import { importHarEntriesFromReadResult } from '$lib/utils/harImportWorkflow';
 
   interface Props {
     history?: any[];
@@ -17,20 +27,27 @@
   }: Props = $props();
 
   let searchQuery = $state('');
-  let methodFilter = $state('ALL');
+  let methodFilter = $state<MethodFilter>('ALL');
+  let statusFilter = $state<StatusFilter>('ALL');
   let searchInputEl: HTMLInputElement | undefined = $state();
+  let importingHar = $state(false);
 
   export function focusSearch() {
     searchInputEl?.focus();
     searchInputEl?.select();
   }
 
-  let filteredHistory = $derived(history.filter((item) => {
-    const matchesSearch =
-      !searchQuery || item.url.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesMethod = methodFilter === 'ALL' || item.method === methodFilter;
-    return matchesSearch && matchesMethod;
-  }));
+  let filteredHistory = $derived(
+    filterHistoryItems(history, {
+      query: searchQuery,
+      method: methodFilter,
+      status: statusFilter,
+    })
+  );
+
+  let filtersActive = $derived(
+    historyFiltersActive({ query: searchQuery, method: methodFilter, status: statusFilter })
+  );
 
   async function deleteHistoryItem(e: MouseEvent, item: any) {
     e.stopPropagation();
@@ -39,6 +56,39 @@
       await onReload();
     } catch (error) {
       console.error('Failed to delete history item:', error);
+    }
+  }
+
+  async function importHar() {
+    if (importingHar) return;
+    try {
+      importingHar = true;
+      const result = await fileOps.showOpenDialog({
+        title: 'Import HAR into history',
+        filters: [{ name: 'HTTP Archive', extensions: ['har', 'json'] }],
+      });
+      const path = Array.isArray(result) ? result[0] : result;
+      if (!path) return;
+
+      const readResult = await fileOps.readFile(path);
+      const importResult = await importHarEntriesFromReadResult(readResult, db.addHistory);
+
+      if (!importResult.ok) {
+        addLog(`HAR import: ${importResult.message}`, 'error');
+        return;
+      }
+
+      await onReload();
+      window.dispatchEvent(new CustomEvent(HISTORY_UPDATED_EVENT));
+
+      const skippedNote = importResult.skipped > 0 ? `, ${importResult.skipped} skipped` : '';
+      const errorNote = importResult.warningCount > 0 ? ` (${importResult.warningCount} warnings)` : '';
+      addLog(`✓ Imported ${importResult.imported} HAR entries into history${skippedNote}${errorNote}`, 'system');
+    } catch (error) {
+      console.error('HAR import failed:', error);
+      addLog(`HAR import failed: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    } finally {
+      importingHar = false;
     }
   }
 
@@ -73,12 +123,22 @@
 
 <div class="history-toolbar">
   <span class="history-count">
-    {searchQuery || methodFilter !== 'ALL'
+    {filtersActive
       ? `${filteredHistory.length}/${history.length}`
       : history.length}
     requests
   </span>
-  <button onclick={onClearHistory} class="clear-btn" title="Clear all history">Clear All</button>
+  <div class="history-toolbar-actions">
+    <button
+      class="import-btn"
+      onclick={importHar}
+      disabled={importingHar}
+      title="Import browser or proxy HAR file into history"
+    >
+      {importingHar ? 'Importing…' : 'Import HAR'}
+    </button>
+    <button onclick={onClearHistory} class="clear-btn" title="Clear all history">Clear All</button>
+  </div>
 </div>
 <div class="history-filter">
   <input
@@ -89,16 +149,15 @@
     bind:this={searchInputEl}
     onkeydown={(e) => { if (e.key === 'Escape') { searchQuery = ''; searchInputEl?.blur(); } }}
   />
-  <select class="method-filter" bind:value={methodFilter}>
-    <option value="ALL">All</option>
-    <option value="GET">GET</option>
-    <option value="POST">POST</option>
-    <option value="PUT">PUT</option>
-    <option value="DELETE">DEL</option>
-    <option value="PATCH">PATCH</option>
-    <option value="WS">WS</option>
-    <option value="WSS">WSS</option>
-    <option value="SSE">SSE</option>
+  <select class="method-filter" bind:value={methodFilter} title="Filter by method">
+    {#each METHOD_FILTER_OPTIONS as method}
+      <option value={method}>{method === 'ALL' ? 'Method' : method === 'DELETE' ? 'DEL' : method}</option>
+    {/each}
+  </select>
+  <select class="status-filter" bind:value={statusFilter} title="Filter by status">
+    {#each STATUS_FILTER_OPTIONS as option}
+      <option value={option.value}>{option.label}</option>
+    {/each}
   </select>
 </div>
 <div class="history-list">
@@ -106,6 +165,12 @@
     <div class="empty-history">
       <p>No history yet</p>
       <p>Requests you send will appear here</p>
+      <p class="empty-hint">Or import a HAR file from DevTools or Charles</p>
+    </div>
+  {:else if filteredHistory.length === 0}
+    <div class="empty-history">
+      <p>No matching history</p>
+      <p>Try adjusting search or filters</p>
     </div>
   {:else}
     {#each filteredHistory as item}
@@ -137,14 +202,23 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 0.5rem;
+  }
+
+  .history-toolbar-actions {
+    display: flex;
+    gap: 0.35rem;
+    flex-shrink: 0;
   }
 
   .history-count {
     font-size: 0.75rem;
     color: var(--text-secondary);
     font-weight: 500;
+    min-width: 0;
   }
 
+  .import-btn,
   .clear-btn {
     background: none;
     border: 1px solid var(--border-color);
@@ -155,6 +229,17 @@
     color: var(--text-secondary);
     background-color: var(--bg-primary);
     transition: all 0.2s ease;
+    white-space: nowrap;
+  }
+
+  .import-btn:hover:not(:disabled) {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+  }
+
+  .import-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
   }
 
   .clear-btn:hover {
@@ -172,6 +257,7 @@
 
   .search-input {
     flex: 1;
+    min-width: 0;
     padding: 5px 8px;
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
@@ -185,7 +271,8 @@
     border-color: var(--accent-color, #5865f2);
   }
 
-  .method-filter {
+  .method-filter,
+  .status-filter {
     padding: 5px 4px;
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
@@ -193,6 +280,11 @@
     color: var(--text-primary, #dbdee1);
     font-size: 0.7rem;
     min-width: 55px;
+    max-width: 88px;
+  }
+
+  .status-filter {
+    max-width: 96px;
   }
 
   .history-list {
@@ -212,6 +304,11 @@
   .empty-history p {
     margin-bottom: 0.5rem;
     font-size: 0.85rem;
+  }
+
+  .empty-hint {
+    font-size: 0.75rem !important;
+    opacity: 0.75;
   }
 
   .history-item {

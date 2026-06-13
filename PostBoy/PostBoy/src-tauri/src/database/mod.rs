@@ -241,6 +241,27 @@ pub fn get_migrations() -> Vec<Migration> {
             ",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 12,
+            description: "create_request_examples_table",
+            sql: "
+                CREATE TABLE IF NOT EXISTS request_examples (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    request_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    status_code INTEGER,
+                    response_time INTEGER,
+                    response_headers TEXT,
+                    response_body TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (request_id) REFERENCES requests(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_request_examples_request
+                    ON request_examples(request_id, created_at DESC);
+            ",
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
@@ -453,6 +474,22 @@ pub fn initialize_database(db_path: PathBuf) -> Result<(), String> {
                 'Request Test Collection',
                 'Timestamp Test'
             );
+        "),
+        (12, "create_request_examples_table", "
+            CREATE TABLE IF NOT EXISTS request_examples (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                request_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                status_code INTEGER,
+                response_time INTEGER,
+                response_headers TEXT,
+                response_body TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (request_id) REFERENCES requests(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_request_examples_request
+                ON request_examples(request_id, created_at DESC);
         "),
     ];
 

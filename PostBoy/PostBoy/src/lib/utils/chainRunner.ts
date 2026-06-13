@@ -2,6 +2,8 @@ import { db, http, fileOps } from '$lib/api/tauri';
 import { variables, interpolate, interpolateJson, interpolateKeyValues, getValueAtPath, flattenJsonPaths } from '$lib/stores/variableStore';
 import { applyRequestAuth } from '$lib/auth/authResolver';
 import { normalizeAuthType } from '$lib/auth/tabAuth';
+import { isStreamMethod } from './streamConfig';
+import { executeStreamChainStep } from './streamChainRunner';
 
 export interface ChainExtraction {
   jsonPath: string;
@@ -152,6 +154,9 @@ export async function resolveRequest(request: any, collectionId: number): Promis
         } catch { /* file read failed */ }
       }
 
+    } else if (bodyType === 'stream' && bodyContent) {
+      requestBody = interpolateJson(bodyContent, collectionId);
+
     } else if (bodyType === 'graphql' && bodyContent) {
       requestBody = bodyContent;
       if (!headersObj['Content-Type']) headersObj['Content-Type'] = 'application/json';
@@ -211,6 +216,21 @@ export async function executeStep(
   }
 
   const resolved = await resolveRequest(request, collectionId);
+
+  if (isStreamMethod(resolved.method)) {
+    const streamResult = await executeStreamChainStep(
+      {
+        method: resolved.method,
+        url: resolved.url,
+        headers: resolved.headers,
+        body: resolved.body,
+        requestName: request.name || 'Untitled',
+      },
+      collectionId,
+      extractions
+    );
+    return streamResult;
+  }
 
   const response: any = await http.executeRequest(
     resolved.method,

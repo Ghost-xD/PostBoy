@@ -94,7 +94,18 @@
 
 <div class="app-footer">
   <div class="footer-left">
-    <img src="/assets/icons/png/32x32.png" alt="Ripple" class="footer-logo" />
+    <svg class="footer-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true">
+      <defs>
+        <linearGradient id="footer-logo-grad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#ffffff"/>
+          <stop offset="1" stop-color="#4d8df6"/>
+        </linearGradient>
+      </defs>
+      <rect width="32" height="32" rx="7" fill="#000000"/>
+      <circle cx="16" cy="16" r="3.5" fill="url(#footer-logo-grad)"/>
+      <circle cx="16" cy="16" r="8" stroke="url(#footer-logo-grad)" stroke-opacity="0.55" stroke-width="1.5" fill="none"/>
+      <circle cx="16" cy="16" r="13" stroke="url(#footer-logo-grad)" stroke-opacity="0.22" stroke-width="1.5" fill="none"/>
+    </svg>
     <span class="footer-app-name">Ripple</span>
     <span class="footer-version">v{version}</span>
   </div>

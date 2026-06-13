@@ -203,6 +203,20 @@ describe('WebSocket Support', () => {
       });
     });
 
+    it('should invoke ws_send_binary with base64 payload', async () => {
+      vi.mocked(invoke).mockResolvedValue(undefined);
+
+      await invoke('ws_send_binary', {
+        id: 'tab-1',
+        dataBase64: 'aGVsbG8='
+      });
+
+      expect(invoke).toHaveBeenCalledWith('ws_send_binary', {
+        id: 'tab-1',
+        dataBase64: 'aGVsbG8='
+      });
+    });
+
     it('should invoke ws_disconnect', async () => {
       vi.mocked(invoke).mockResolvedValue(undefined);
 

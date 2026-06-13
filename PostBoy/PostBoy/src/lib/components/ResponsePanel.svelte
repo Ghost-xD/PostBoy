@@ -3,7 +3,7 @@
 
   const bubble = createBubbler();
   import { onMount, onDestroy } from 'svelte';
-  import { activeTab } from '$lib/stores/tabStore';
+  import { activeTab, updateActiveTabBatch } from '$lib/stores/tabStore';
   import { responseLayout, rightSidebarCollapsed, rightSidebarWidth, responsePanelHeight, activeResponseTab, sendingTabIds } from '$lib/stores/uiStore';
   import { logs, clearLogs, formatLogLine } from '$lib/stores/consoleStore';
   import { variables, flattenJsonPaths } from '$lib/stores/variableStore';
@@ -17,8 +17,13 @@
   import { generateSnapshotHtml } from '$lib/utils/snapshotExporter';
   import { detectResponseType } from '$lib/utils/responseUtils';
   import type { ResponseTypeInfo } from '$lib/utils/responseUtils';
-  import { fileOps } from '$lib/api/tauri';
+  import { fileOps, db } from '$lib/api/tauri';
+  import * as modalManager from '$lib/utils/modalManager.svelte';
   import { shortcutTitle } from '$lib/utils/platform';
+  import {
+    buildExamplePayloadFromResponse,
+    exampleToTabUpdates,
+  } from '$lib/utils/requestExamples';
 
   interface Props {
     onDragBottom?: (e: MouseEvent) => void;
@@ -50,12 +55,25 @@
   let targetCollectionId: number | null = $state(null);
   let searchFilter = $state('');
   let previewMode: 'tree' | 'raw' | 'graph' = $state('raw');
+  let rawFullView = $state(false);
   let graphFullscreen = $state(false);
   let graphFullscreenVisible = $state(false);
   let responseCopied = $state(false);
   let responseCopyTimeout: ReturnType<typeof setTimeout> | null = null;
   let snapshotExported = $state(false);
   let snapshotExportTimeout: ReturnType<typeof setTimeout> | null = null;
+  let examples: Array<{
+    id: number;
+    name: string;
+    status_code?: number | null;
+    response_time?: number | null;
+    response_headers?: string | null;
+    response_body?: string | null;
+  }> = $state([]);
+  let selectedExampleId = $state('');
+  let examplesLoading = $state(false);
+  let exampleSaved = $state(false);
+  let exampleSavedTimeout: ReturnType<typeof setTimeout> | null = null;
 
   let showSearch = $state(false);
   let searchQuery = $state('');
@@ -171,6 +189,94 @@
     snapshotExportTimeout = setTimeout(() => { snapshotExported = false; }, 1500);
   }
 
+  async function loadExamples(requestId: number) {
+    examplesLoading = true;
+    try {
+      examples = (await db.getRequestExamples(requestId)) as typeof examples;
+    } catch (error) {
+      console.error('Failed to load examples:', error);
+      examples = [];
+    } finally {
+      examplesLoading = false;
+    }
+  }
+
+  $effect(() => {
+    const requestId = $activeTab.requestId;
+    selectedExampleId = '';
+    if (requestId) {
+      void loadExamples(requestId);
+    } else {
+      examples = [];
+    }
+  });
+
+  function buildExamplePayload() {
+    return buildExamplePayloadFromResponse({
+      responseStatus,
+      responseTime,
+      responseHeaders,
+      responseBody,
+    });
+  }
+
+  async function saveAsExample() {
+    const requestId = $activeTab.requestId;
+    const payload = buildExamplePayload();
+    if (!requestId || !payload) return;
+
+    const result = await modalManager.showForm('Save as Example', 'Name this saved response:', [
+      { id: 'name', label: 'Example name', type: 'text', value: `Example ${examples.length + 1}` },
+    ]);
+    if (!result?.name?.trim()) return;
+
+    await db.createRequestExample(requestId, {
+      name: result.name.trim(),
+      ...buildExamplePayload(),
+    });
+    await loadExamples(requestId);
+    addLog(`✓ Saved response example "${result.name.trim()}"`, 'system');
+    exampleSaved = true;
+    if (exampleSavedTimeout) clearTimeout(exampleSavedTimeout);
+    exampleSavedTimeout = setTimeout(() => { exampleSaved = false; }, 1500);
+  }
+
+  async function loadSelectedExample() {
+    const id = Number(selectedExampleId);
+    if (!id) return;
+    const example = examples.find((item) => item.id === id);
+    if (!example) return;
+
+    updateActiveTabBatch({
+      ...exampleToTabUpdates(example),
+      responseTimestamp: new Date().toLocaleString(),
+    });
+    addLog(`✓ Loaded example "${example.name}"`, 'system');
+  }
+
+  async function deleteSelectedExample() {
+    const id = Number(selectedExampleId);
+    if (!id) return;
+    const example = examples.find((item) => item.id === id);
+    if (!example) return;
+
+    const confirmed = await modalManager.showModal({
+      type: 'warning',
+      title: 'Delete Example',
+      message: `Delete example <strong>"${example.name}"</strong>?`,
+      buttons: ['Delete', 'Cancel'],
+      defaultButton: 1,
+    });
+    if (confirmed !== 0) return;
+
+    await db.deleteRequestExample(id);
+    selectedExampleId = '';
+    if ($activeTab.requestId) {
+      await loadExamples($activeTab.requestId);
+    }
+    addLog(`✓ Deleted example "${example.name}"`, 'system');
+  }
+
   let parsedJson = $derived((() => {
     if (!responseBody) return null;
     try { return JSON.parse(responseBody); } catch { return null; }
@@ -271,6 +377,7 @@
     window.removeEventListener('set-preview-mode', handlePreviewMode);
     window.removeEventListener('keydown', handleGraphEsc, true);
     window.removeEventListener('open-response-search', handleOpenSearch);
+    if (exampleSavedTimeout) clearTimeout(exampleSavedTimeout);
   });
 </script>
 
@@ -372,6 +479,40 @@
             {responseSize}
           </span>
           <span class="resp-timestamp">{responseTimestamp}</span>
+          {#if $activeTab.requestId}
+            <div class="examples-controls">
+              <select
+                class="examples-select"
+                bind:value={selectedExampleId}
+                onchange={loadSelectedExample}
+                disabled={examplesLoading || examples.length === 0}
+              >
+                <option value="">
+                  {examplesLoading ? 'Loading examples…' : examples.length === 0 ? 'No examples' : 'Examples'}
+                </option>
+                {#each examples as example}
+                  <option value={String(example.id)}>
+                    {example.name}{example.status_code != null ? ` (${example.status_code})` : ''}
+                  </option>
+                {/each}
+              </select>
+              <button
+                class="examples-btn {exampleSaved ? 'success' : ''}"
+                onclick={saveAsExample}
+                disabled={responseStatus == null}
+                title="Save current response as a named example"
+              >
+                {exampleSaved ? 'Saved' : 'Save example'}
+              </button>
+              {#if selectedExampleId}
+                <button
+                  class="examples-btn danger"
+                  onclick={deleteSelectedExample}
+                  title="Delete selected example"
+                >×</button>
+              {/if}
+            </div>
+          {/if}
         </div>
       {/if}
     </div>
@@ -386,10 +527,27 @@
               <BinaryPreview body={responseBody} typeInfo={responseTypeInfo} contentType={responseContentType} />
             {:else}
               <div class="resp-preview-toolbar">
-                <div class="view-toggle">
-                  <button class="view-toggle-btn {previewMode === 'tree' ? 'active' : ''}" onclick={() => previewMode = 'tree'} disabled={!parsedJson} title={shortcutTitle('Tree view', 'Alt+T')}>Tree</button>
-                  <button class="view-toggle-btn {previewMode === 'raw' ? 'active' : ''}" onclick={() => previewMode = 'raw'} title={shortcutTitle('Raw view', 'Alt+R')}>Raw</button>
-                  <button class="view-toggle-btn {graphFullscreen ? 'active' : ''}" onclick={openGraphFullscreen} disabled={!parsedJson} title={shortcutTitle('Graph view', 'Alt+G')}>Graph</button>
+                <div class="toolbar-left">
+                  <div class="view-toggle">
+                    <button class="view-toggle-btn {previewMode === 'tree' ? 'active' : ''}" onclick={() => previewMode = 'tree'} disabled={!parsedJson} title={shortcutTitle('Tree view', 'Alt+T')}>Tree</button>
+                    <button class="view-toggle-btn {previewMode === 'raw' ? 'active' : ''}" onclick={() => previewMode = 'raw'} title={shortcutTitle('Raw view', 'Alt+R')}>Raw</button>
+                    <button class="view-toggle-btn {graphFullscreen ? 'active' : ''}" onclick={openGraphFullscreen} disabled={!parsedJson} title={shortcutTitle('Graph view', 'Alt+G')}>Graph</button>
+                  </div>
+                  {#if previewMode === 'raw'}
+                    <div class="raw-full-toggle" title={rawFullView ? 'Switch to compact raw view' : 'Switch to full editor view'}>
+                      <button
+                        type="button"
+                        class="mac-toggle"
+                        class:on={rawFullView}
+                        role="switch"
+                        aria-checked={rawFullView}
+                        aria-label="Full raw editor view"
+                        onclick={() => { rawFullView = !rawFullView; }}
+                      >
+                        <span class="mac-toggle-knob"></span>
+                      </button>
+                    </div>
+                  {/if}
                 </div>
                 <div class="toolbar-actions">
                   {#if responseContentType}
@@ -452,7 +610,15 @@
                   <JsonTreeViewer data={parsedJson} lineCounter={{ current: 1 }} {searchQuery} />
                 </div>
               {:else}
-                <ResponseViewer bind:this={responseViewerRef} value={responseBody} language="json" {searchQuery} />
+                {#key `${rawFullView}-${responseBody}`}
+                  <ResponseViewer
+                    bind:this={responseViewerRef}
+                    value={responseBody}
+                    language="json"
+                    {searchQuery}
+                    fieldMode={previewMode === 'raw' && !rawFullView && !!parsedJson}
+                  />
+                {/key}
               {/if}
             {/if}
           {:else}
@@ -673,6 +839,12 @@
     border-bottom: 1px solid var(--border-color, var(--border-color));
   }
 
+  .toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
   .toolbar-actions {
     display: flex;
     align-items: center;
@@ -706,6 +878,53 @@
   .view-toggle-btn:disabled {
     opacity: 0.4;
     cursor: default;
+  }
+
+  .raw-full-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 12px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .raw-full-toggle-label {
+    font-size: 11px;
+    color: #949ba4;
+  }
+
+  .mac-toggle {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    background: #3a3a3c;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+  }
+
+  .mac-toggle.on {
+    background: #34c759;
+  }
+
+  .mac-toggle-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+    transition: transform 0.2s ease;
+  }
+
+  .mac-toggle.on .mac-toggle-knob {
+    transform: translateX(16px);
   }
 
   .tree-view-container {
@@ -1070,6 +1289,60 @@
   }
   
   .save-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .examples-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-left: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .examples-select {
+    max-width: 150px;
+    padding: 3px 6px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-primary, #dbdee1);
+    font-size: 0.72rem;
+  }
+
+  .examples-btn {
+    padding: 3px 8px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .examples-btn:hover:not(:disabled) {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+  }
+
+  .examples-btn.success {
+    border-color: var(--success-color);
+    color: var(--success-color);
+  }
+
+  .examples-btn.danger {
+    padding-inline: 6px;
+    min-width: 24px;
+  }
+
+  .examples-btn.danger:hover {
+    border-color: var(--error-color);
+    color: var(--error-color);
+  }
+
+  .examples-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
