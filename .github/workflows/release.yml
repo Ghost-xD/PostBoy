@@ -50,6 +50,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           UPDATE_TOKEN: ${{ secrets.UPDATE_TOKEN }}
+          # Belt-and-suspenders: tauri-env skips Vulkan/llama when this is set.
+          RIPPLE_NO_CHATBOT: '1'
         with:
           projectPath: PostBoy/PostBoy
           tagName: ${{ github.ref_name }}
@@ -60,8 +62,8 @@ jobs:
             **Note:** This Windows build excludes the on-device chatbot (no llama.cpp / Vulkan).
           releaseDraft: false
           prerelease: false
-          # Skip llama-cpp-2 / Vulkan on Windows — see Cargo.toml `chatbot` feature.
-          args: -- --no-default-features
+          # tauri-action + yarn drops the `--` separator; tauri-env.cjs re-inserts it for cargo.
+          args: --no-default-features
 
   # build-macos:
   #   strategy:

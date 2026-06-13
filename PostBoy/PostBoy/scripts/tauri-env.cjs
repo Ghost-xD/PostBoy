@@ -24,8 +24,36 @@ const { spawn, execSync } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
 
-const args = process.argv.slice(2);
+const rawArgs = process.argv.slice(2);
 const isWin = process.platform === 'win32';
+
+/** Cargo flags that must follow `tauri build --` in Tauri v2. */
+const CARGO_PASSTHROUGH = new Set([
+  '--no-default-features',
+  '--all-features',
+  '--bin',
+  '--example',
+  '--test',
+  '--bench',
+  '--profile',
+]);
+
+/** Insert `--` before cargo passthrough flags when missing (tauri-action + yarn omits it). */
+function normalizeTauriArgs(argv) {
+  if (argv.includes('--')) return argv;
+  const idx = argv.findIndex(
+    (a) =>
+      CARGO_PASSTHROUGH.has(a) ||
+      a === '--features' ||
+      a.startsWith('--features='),
+  );
+  if (idx < 0) return argv;
+  const normalized = [...argv.slice(0, idx), '--', ...argv.slice(idx)];
+  console.log(`[tauri-env] normalized args: ${JSON.stringify(normalized)}`);
+  return normalized;
+}
+
+const args = normalizeTauriArgs(rawArgs);
 
 /** Cargo args passed after `tauri … --`. */
 function cargoArgsFromArgv(argv) {
@@ -60,7 +88,8 @@ function isChatbotBuild(argv) {
   return true;
 }
 
-const chatbotBuild = isChatbotBuild(args);
+const chatbotBuild =
+  process.env.RIPPLE_NO_CHATBOT === '1' ? false : isChatbotBuild(args);
 
 function findTauriBin() {
   const bin = path.resolve(
