@@ -33,20 +33,27 @@ function cargoArgsFromArgv(argv) {
   return sep >= 0 ? argv.slice(sep + 1) : [];
 }
 
+/** Cargo/feature flags — after `tauri … --`, or anywhere in argv when the separator is omitted (tauri-action). */
+function featureFlagsFromArgv(argv) {
+  const afterSep = cargoArgsFromArgv(argv);
+  if (afterSep.length > 0) return afterSep;
+  return argv.filter((a) => a.startsWith('-'));
+}
+
 /** Whether the build will compile the `chatbot` feature (llama-cpp-2 / Vulkan). */
 function isChatbotBuild(argv) {
-  const cargoArgs = cargoArgsFromArgv(argv);
-  if (cargoArgs.includes('--no-default-features')) {
-    const featuresIdx = cargoArgs.indexOf('--features');
+  const flags = featureFlagsFromArgv(argv);
+  if (flags.includes('--no-default-features')) {
+    const featuresIdx = flags.indexOf('--features');
     if (featuresIdx >= 0) {
-      const features = cargoArgs[featuresIdx + 1] || '';
+      const features = flags[featuresIdx + 1] || '';
       return features.split(',').map((f) => f.trim()).includes('chatbot');
     }
     return false;
   }
-  const featuresIdx = cargoArgs.indexOf('--features');
+  const featuresIdx = flags.indexOf('--features');
   if (featuresIdx >= 0) {
-    const features = cargoArgs[featuresIdx + 1] || '';
+    const features = flags[featuresIdx + 1] || '';
     return features.split(',').map((f) => f.trim()).includes('chatbot');
   }
   // Default Cargo features include `chatbot`.
