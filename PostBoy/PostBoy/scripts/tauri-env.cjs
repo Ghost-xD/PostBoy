@@ -27,6 +27,34 @@ const fs = require('node:fs');
 const args = process.argv.slice(2);
 const isWin = process.platform === 'win32';
 
+/** Cargo args passed after `tauri … --`. */
+function cargoArgsFromArgv(argv) {
+  const sep = argv.indexOf('--');
+  return sep >= 0 ? argv.slice(sep + 1) : [];
+}
+
+/** Whether the build will compile the `chatbot` feature (llama-cpp-2 / Vulkan). */
+function isChatbotBuild(argv) {
+  const cargoArgs = cargoArgsFromArgv(argv);
+  if (cargoArgs.includes('--no-default-features')) {
+    const featuresIdx = cargoArgs.indexOf('--features');
+    if (featuresIdx >= 0) {
+      const features = cargoArgs[featuresIdx + 1] || '';
+      return features.split(',').map((f) => f.trim()).includes('chatbot');
+    }
+    return false;
+  }
+  const featuresIdx = cargoArgs.indexOf('--features');
+  if (featuresIdx >= 0) {
+    const features = cargoArgs[featuresIdx + 1] || '';
+    return features.split(',').map((f) => f.trim()).includes('chatbot');
+  }
+  // Default Cargo features include `chatbot`.
+  return true;
+}
+
+const chatbotBuild = isChatbotBuild(args);
+
 function findTauriBin() {
   const bin = path.resolve(
     __dirname,
@@ -103,7 +131,7 @@ function resolveVulkanSdk() {
   return null;
 }
 
-function setupWindowsEnv() {
+function setupWindowsEnv(includeChatbot) {
   const vswhere = path.join(
     process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
     'Microsoft Visual Studio',
@@ -153,6 +181,11 @@ function setupWindowsEnv() {
     }
   }
 
+  if (!includeChatbot) {
+    console.log('[tauri-env] chatbot disabled — skipping Vulkan SDK / llama env setup');
+    return;
+  }
+
   if (!process.env.VULKAN_SDK) {
     const resolved = resolveVulkanSdk();
     if (resolved) {
@@ -180,7 +213,7 @@ function setupWindowsEnv() {
 }
 
 if (isWin) {
-  setupWindowsEnv();
+  setupWindowsEnv(chatbotBuild);
 }
 
 const tauri = findTauriBin();
@@ -245,7 +278,7 @@ function runTauri() {
   // are now in place. We retry up to 2 times only when this exact failure
   // signature shows up, so genuine errors aren't masked.
   const FLAKY_RE = /MSB8066: Custom build for .*vulkan-shaders-gen/;
-  const MAX_ATTEMPTS = isWin ? 3 : 1;
+  const MAX_ATTEMPTS = isWin && chatbotBuild ? 3 : 1;
 
   for (let attempt = 1; ; attempt++) {
     const { code, tail } = await runTauri();

@@ -10,6 +10,7 @@
   --bg-tertiary: #0c1626;
   --text-primary: #e6ecf5;
   --text-secondary: #8a94a6;
+  --text-muted: #72767d;
   --border-color: #1c2638;
   --accent-color: #4d8df6;
   --accent-hover: #6ba0fa;
@@ -43,6 +44,7 @@
   --bg-tertiary: #eef2ff;
   --text-primary: #1a2332;
   --text-secondary: #64748b;
+  --text-muted: #94a3b8;
   --border-color: #e2e8f0;
   --accent-color: #4d8df6;
   --accent-hover: #3b7ae8;
@@ -1040,7 +1042,7 @@ body {
   overflow-y: auto;
   z-index: 99999;
   display: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow);
   border-radius: 4px;
   margin-top: 2px;
 }

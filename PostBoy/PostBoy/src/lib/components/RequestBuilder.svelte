@@ -47,6 +47,27 @@
     { name: 'Bearer Auth', headers: [{ key: 'Authorization', value: 'Bearer {{accessToken}}' }] },
   ];
 
+  const COMMON_HEADERS = [
+    'Accept',
+    'Accept-Encoding',
+    'Accept-Language',
+    'Authorization',
+    'Cache-Control',
+    'Content-Type',
+    'Cookie',
+    'Host',
+    'If-Modified-Since',
+    'If-None-Match',
+    'Origin',
+    'Pragma',
+    'Referer',
+    'User-Agent',
+    'X-API-Key',
+    'X-Requested-With',
+    'X-Correlation-ID',
+    'X-Forwarded-For',
+  ];
+
   let customTemplates: HeaderTemplate[] = $state([]);
   let showTemplateDropdown = $state(false);
   let docsMode: 'edit' | 'preview' = $state('edit');
@@ -1183,7 +1204,7 @@
               oninput={(v) => updateHeader(i, 'key', v)}
               inputClass="key-input"
               placeholder="Header name"
-              list="common-headers"
+              staticOptions={COMMON_HEADERS}
             />
             <VariableInput
               value={header.value}
@@ -1198,26 +1219,6 @@
         {/each}
       </div>
       <button class="add-btn" onclick={addHeader}>+ Add Header</button>
-      <datalist id="common-headers">
-        <option value="Accept"></option>
-        <option value="Accept-Encoding"></option>
-        <option value="Accept-Language"></option>
-        <option value="Authorization"></option>
-        <option value="Cache-Control"></option>
-        <option value="Content-Type"></option>
-        <option value="Cookie"></option>
-        <option value="Host"></option>
-        <option value="If-Modified-Since"></option>
-        <option value="If-None-Match"></option>
-        <option value="Origin"></option>
-        <option value="Pragma"></option>
-        <option value="Referer"></option>
-        <option value="User-Agent"></option>
-        <option value="X-API-Key"></option>
-        <option value="X-Requested-With"></option>
-        <option value="X-Correlation-ID"></option>
-        <option value="X-Forwarded-For"></option>
-      </datalist>
     </div>
 
     <div id="docs-tab" class="tab-pane {$activeRequestTab === 'docs' ? 'active' : ''}">
@@ -1335,10 +1336,10 @@
     right: 0;
     top: 100%;
     width: 220px;
-    background: var(--bg-secondary, #2b2d31);
+    background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    box-shadow: var(--shadow);
     z-index: 100;
     padding: 4px 0;
   }
@@ -1346,7 +1347,7 @@
     padding: 6px 12px 2px;
     font-size: 0.65rem;
     text-transform: uppercase;
-    color: var(--text-muted, #72767d);
+    color: var(--text-muted);
     letter-spacing: 0.5px;
   }
   .template-item {
@@ -1360,7 +1361,7 @@
     font-size: 0.78rem;
     cursor: pointer;
   }
-  .template-item:hover { background: var(--bg-tertiary, #3a3d44); }
+  .template-item:hover { background: var(--bg-tertiary); }
   .template-item-row {
     display: flex;
     align-items: center;

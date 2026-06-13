@@ -32,6 +32,8 @@
     debounceMs?: number;
     /** Associated field name (header/param/json key) for auto-masking. */
     fieldKey?: string;
+    /** Static autocomplete options (e.g. common HTTP header names). */
+    staticOptions?: string[];
     onpaste?: (e: ClipboardEvent) => void;
     onkeypress?: (e: KeyboardEvent) => void;
   }
@@ -50,6 +52,7 @@
     list,
     debounceMs = 150,
     fieldKey = '',
+    staticOptions = undefined,
     onpaste,
     onkeypress,
   }: Props = $props();
@@ -58,6 +61,9 @@
   let showSuggestions = $state(false);
   let suggestions: Variable[] = $state([]);
   let suggestionIndex = $state(-1);
+  let showStaticSuggestions = $state(false);
+  let staticSuggestions: string[] = $state([]);
+  let staticSuggestionIndex = $state(-1);
   let activeContext: ReturnType<typeof getVariableContext> = $state(null);
   let variablesRev = $state(0);
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -132,6 +138,31 @@
     clearVariablePreview();
   }
 
+  function updateStaticSuggestions(text: string, cursor: number) {
+    if (!staticOptions?.length) {
+      showStaticSuggestions = false;
+      staticSuggestions = [];
+      staticSuggestionIndex = -1;
+      return;
+    }
+    if (getVariableContext(text, cursor)) {
+      showStaticSuggestions = false;
+      staticSuggestions = [];
+      staticSuggestionIndex = -1;
+      return;
+    }
+    const q = text.trim().toLowerCase();
+    if (!q) {
+      showStaticSuggestions = false;
+      staticSuggestions = [];
+      staticSuggestionIndex = -1;
+      return;
+    }
+    staticSuggestions = staticOptions.filter((option) => option.toLowerCase().includes(q));
+    showStaticSuggestions = staticSuggestions.length > 0;
+    staticSuggestionIndex = showStaticSuggestions ? 0 : -1;
+  }
+
   function updateSuggestions(text: string, cursor: number, immediate = false) {
     const ctx = getVariableContext(text, cursor);
     activeContext = ctx;
@@ -147,6 +178,11 @@
       suggestions = filterVariableSuggestions(collectionVars, activeContext.query);
       showSuggestions = suggestions.length > 0;
       suggestionIndex = showSuggestions ? 0 : -1;
+      if (showSuggestions) {
+        showStaticSuggestions = false;
+        staticSuggestions = [];
+        staticSuggestionIndex = -1;
+      }
     };
 
     if (immediate || !ctx.query) {
@@ -193,20 +229,37 @@
 
   function handleInput(e: Event) {
     const el = e.currentTarget as HTMLInputElement | HTMLTextAreaElement;
+    const cursor = el.selectionStart ?? el.value.length;
     oninput(el.value);
-    updateSuggestions(el.value, el.selectionStart ?? el.value.length);
+    updateSuggestions(el.value, cursor);
+    updateStaticSuggestions(el.value, cursor);
   }
 
   function handleClick(e: MouseEvent) {
     const el = e.currentTarget as HTMLInputElement | HTMLTextAreaElement;
-    updateSuggestions(el.value, el.selectionStart ?? el.value.length, true);
+    const cursor = el.selectionStart ?? el.value.length;
+    updateSuggestions(el.value, cursor, true);
+    updateStaticSuggestions(el.value, cursor);
     updateVariablePreview(e);
   }
 
   function handleKeyUp(e: KeyboardEvent) {
     if (['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(e.key)) return;
     const el = e.currentTarget as HTMLInputElement | HTMLTextAreaElement;
-    updateSuggestions(el.value, el.selectionStart ?? el.value.length);
+    const cursor = el.selectionStart ?? el.value.length;
+    updateSuggestions(el.value, cursor);
+    updateStaticSuggestions(el.value, cursor);
+  }
+
+  async function pickStaticOption(option: string) {
+    if (!inputEl) return;
+    oninput(option);
+    showStaticSuggestions = false;
+    staticSuggestions = [];
+    staticSuggestionIndex = -1;
+    await tick();
+    inputEl.focus();
+    inputEl.setSelectionRange(option.length, option.length);
   }
 
   async function pickSuggestion(variable: Variable) {
@@ -244,12 +297,31 @@
         void pickSuggestion(suggestions[suggestionIndex]);
         return;
       }
+    } else if (showStaticSuggestions && staticSuggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        staticSuggestionIndex = (staticSuggestionIndex + 1) % staticSuggestions.length;
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        staticSuggestionIndex =
+          staticSuggestionIndex <= 0 ? staticSuggestions.length - 1 : staticSuggestionIndex - 1;
+        return;
+      }
+      if ((e.key === 'Enter' || e.key === 'Tab') && staticSuggestionIndex >= 0) {
+        e.preventDefault();
+        void pickStaticOption(staticSuggestions[staticSuggestionIndex]);
+        return;
+      }
     }
 
-    if (e.key === 'Escape' && showSuggestions) {
+    if (e.key === 'Escape' && (showSuggestions || showStaticSuggestions)) {
       e.preventDefault();
       showSuggestions = false;
       suggestionIndex = -1;
+      showStaticSuggestions = false;
+      staticSuggestionIndex = -1;
       return;
     }
 
@@ -298,7 +370,7 @@
       type={effectiveInputType}
       {placeholder}
       class={inputClass}
-      {list}
+      list={staticOptions?.length ? undefined : list}
       {value}
       oninput={handleInput}
       onclick={handleClick}
@@ -333,6 +405,25 @@
         onmouseleave={handlePreviewMouseLeave}
       />
     {/key}
+  {/if}
+
+  {#if showStaticSuggestions && !showSuggestions}
+    <ul class="var-suggestions" role="listbox" aria-label="Suggestions">
+      {#each staticSuggestions as option, i (option)}
+        <li
+          role="option"
+          aria-selected={staticSuggestionIndex === i}
+          class:active={staticSuggestionIndex === i}
+          onmousedown={(e) => {
+            e.preventDefault();
+            void pickStaticOption(option);
+          }}
+          onmouseenter={() => (staticSuggestionIndex = i)}
+        >
+          <span class="static-option-label">{option}</span>
+        </li>
+      {/each}
+    </ul>
   {/if}
 
   {#if showSuggestions}
@@ -431,10 +522,10 @@
     margin: 0;
     padding: 4px 0;
     list-style: none;
-    background: var(--bg-secondary, #2b2d31);
+    background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: 6px;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+    box-shadow: var(--shadow);
     z-index: 200;
     max-height: 220px;
     overflow-y: auto;
@@ -452,11 +543,16 @@
     padding: 6px 10px;
     cursor: pointer;
     font-size: 0.78rem;
+    color: var(--text-primary);
   }
 
   .var-suggestions li:hover,
   .var-suggestions li.active {
-    background: var(--bg-tertiary, #3a3d44);
+    background: var(--bg-tertiary);
+  }
+
+  .static-option-label {
+    color: var(--text-primary);
   }
 
   .var-suggestion-key {
