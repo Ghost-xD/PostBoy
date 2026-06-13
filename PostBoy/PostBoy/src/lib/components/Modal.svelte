@@ -346,7 +346,8 @@
   }
 
   .btn-primary:hover {
-    filter: brightness(1.1);
+    background: var(--accent-hover);
+    color: #fff;
     box-shadow: 0 4px 12px var(--accent-glow);
   }
 

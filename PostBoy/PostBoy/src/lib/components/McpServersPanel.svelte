@@ -748,14 +748,14 @@
     cursor: pointer;
     transition: background 0.15s;
   }
-  .mcp-btn:hover { background: var(--bg-secondary, #333); }
+  .mcp-btn:hover:not(.primary) { background: var(--bg-secondary, #333); }
   .mcp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .mcp-btn.primary {
     background: #4d8df6;
     color: #fff;
     border-color: #4d8df6;
   }
-  .mcp-btn.primary:hover { background: #3a7be0; }
+  .mcp-btn.primary:hover { background: var(--accent-hover, #3a7be0); color: #fff; border-color: var(--accent-hover, #3a7be0); }
   .mcp-btn.small { padding: 3px 8px; font-size: 11px; }
   .mcp-btn.danger { color: #ff8080; border-color: #5a3030; }
   .mcp-btn.danger:hover { background: #3a1a1a; }

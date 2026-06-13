@@ -1448,7 +1448,7 @@
   .lt-btn-primary {
     background: var(--accent-color, #5865f2); color: #fff; border-color: var(--accent-color, #5865f2);
   }
-  .lt-btn-primary:not(:disabled):hover { filter: brightness(1.1); }
+  .lt-btn-primary:not(:disabled):hover { background: var(--accent-hover, #3b7ae8); color: #fff; border-color: var(--accent-hover, #3b7ae8); }
   .lt-btn-ghost {
     background: var(--bg-tertiary, #3f4147); color: var(--text-primary, #e4e6eb);
     border-color: var(--border-color, #3e4045);

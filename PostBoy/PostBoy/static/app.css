@@ -55,6 +55,35 @@
   --shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
 }
 
+/* Filled accent buttons: keep white label text on hover in every theme.
+   Generic :hover rules on shared button classes were overriding background
+   while leaving color: #fff, producing invisible white-on-light hovers. */
+.send-btn, .send-btn:hover,
+.select-file-btn, .select-file-btn:hover,
+.copy-btn, .copy-btn:hover,
+.create-btn, .create-btn:hover,
+.btn-primary, .btn-primary:hover,
+.action-btn.primary, .action-btn.primary:hover:not(:disabled),
+.mcp-btn.primary, .mcp-btn.primary:hover,
+.cm-btn.primary, .cm-btn.primary:hover,
+.cm-btn.run, .cm-btn.run:hover,
+.cb-btn.primary, .cb-btn.primary:hover:not(:disabled),
+.cb-icon-btn.primary, .cb-icon-btn.primary:hover:not(:disabled),
+.lt-btn-primary, .lt-btn-primary:not(:disabled):hover,
+.update-toast-btn.primary, .update-toast-btn.primary:hover,
+.mode-tab.active, .mode-tab.active:hover,
+.docs-mode-btn.active, .docs-mode-btn.active:hover,
+.theme-option.active, .theme-option.active:hover,
+.add-variable-btn, .add-variable-btn:hover,
+.add-chain-btn, .add-chain-btn:hover,
+.add-mapping-btn, .add-mapping-btn:hover,
+.save-btn, .save-btn:hover:not(:disabled),
+.test-request-btn, .test-request-btn:hover,
+.grpc-btn.primary, .grpc-btn.primary:hover,
+.modal-button.primary, .modal-button.primary:hover {
+  color: #fff;
+}
+
 * {
   margin: 0;
   padding: 0;

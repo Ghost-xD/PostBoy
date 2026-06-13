@@ -1,5 +1,10 @@
 import { writable, get } from 'svelte/store';
 import { db } from '$lib/api/tauri';
+import {
+  activeEnvironmentId,
+  envVariables,
+  environmentsRev,
+} from './environmentStore';
 
 export interface Variable {
   key: string;
@@ -106,6 +111,42 @@ export const variables = {
   }
 };
 
+/**
+ * Persist a value extracted from a chain step (or token refresh).
+ * Updates collection variables and, when an environment is active, the
+ * environment too — otherwise getResolvedVariables() keeps the stale env value.
+ */
+export async function persistExtractedVariable(
+  collectionId: number,
+  key: string,
+  value: string
+): Promise<boolean> {
+  const ok = await variables.set(collectionId, key, value);
+  const envId = get(activeEnvironmentId);
+  if (envId) {
+    await envVariables.set(envId, key, value);
+  }
+  return ok;
+}
+
+/** Merge collection + active environment variables. Environment wins on key conflicts. */
+export function getResolvedVariables(collectionId: number | undefined): Variable[] {
+  get(environmentsRev);
+  const collVars = variables.getForCollection(collectionId);
+  const envId = get(activeEnvironmentId);
+  const envVars = envVariables.getForEnvironment(envId).filter((v) => v.enabled);
+
+  const merged = new Map<string, Variable>();
+  for (const v of collVars) {
+    merged.set(v.key, { key: v.key, value: v.value });
+  }
+  for (const v of envVars) {
+    merged.set(v.key, { key: v.key, value: v.value });
+  }
+
+  return [...merged.values()].sort((a, b) => a.key.localeCompare(b.key));
+}
+
 export interface TokenRefreshMapping {
   jsonPath: string;
   variableName: string;
@@ -150,7 +191,7 @@ export async function materializeMappingsFromResponse(
   for (const m of mappings) {
     const resolved = resolveMappingEntry(responseJson, m.jsonPath, m.variableName);
     if (!resolved) continue;
-    const ok = await variables.set(collectionId, resolved.variableName, resolved.value);
+    const ok = await persistExtractedVariable(collectionId, resolved.variableName, resolved.value);
     if (ok) written++;
   }
   if (written > 0) {
@@ -161,12 +202,68 @@ export async function materializeMappingsFromResponse(
 
 const VARIABLE_REGEX = /\{\{([^}]+)\}\}/g;
 
-export function interpolate(text: string, collectionId: number | undefined): string {
-  if (!text || !collectionId) return text;
-  
-  const vars = variables.getForCollection(collectionId);
-  const varMap = new Map(vars.map(v => [v.key, v.value]));
-  
+const CHAIN_TOKEN_ALIASES = [
+  'accessToken',
+  'access_token',
+  'apiToken',
+  'api_token',
+  'token',
+  'authToken',
+  'idToken',
+] as const;
+
+function isTokenVariableName(key: string): boolean {
+  const norm = key.replace(/[-_]/g, '').toLowerCase();
+  return norm.includes('token');
+}
+
+/** Mirror a chain-extracted token under common auth variable names for this run only. */
+export function expandChainTokenVars(vars: Record<string, string>): Record<string, string> {
+  if (Object.keys(vars).length === 0) return vars;
+
+  const expanded = { ...vars };
+  let tokenValue: string | undefined;
+
+  for (const [key, value] of Object.entries(vars)) {
+    if (value && isTokenVariableName(key)) {
+      tokenValue = value;
+      break;
+    }
+  }
+
+  if (!tokenValue) return expanded;
+
+  for (const alias of CHAIN_TOKEN_ALIASES) {
+    if (!expanded[alias]) expanded[alias] = tokenValue;
+  }
+
+  return expanded;
+}
+
+export function buildInterpolationMap(
+  collectionId: number | undefined,
+  overrides?: Record<string, string>
+): Map<string, string> {
+  const vars = getResolvedVariables(collectionId);
+  const varMap = new Map(vars.map((v) => [v.key, v.value]));
+  if (overrides) {
+    for (const [key, value] of Object.entries(overrides)) {
+      varMap.set(key, value);
+    }
+  }
+  return varMap;
+}
+
+export function interpolate(
+  text: string,
+  collectionId: number | undefined,
+  overrides?: Record<string, string>
+): string {
+  if (!text) return text;
+  if (!collectionId && !get(activeEnvironmentId) && !overrides) return text;
+
+  const varMap = buildInterpolationMap(collectionId, overrides);
+
   return text.replace(VARIABLE_REGEX, (match, varName) => {
     const trimmed = varName.trim();
     return varMap.has(trimmed) ? varMap.get(trimmed)! : match;
@@ -180,11 +277,15 @@ export function interpolate(text: string, collectionId: number | undefined): str
 // count=5 still yields valid JSON. Note: injecting a raw JSON object/array via a
 // variable in an unquoted position (e.g. `"data": {{obj}}`) is not supported —
 // wrap such payloads in quotes or build them as part of the template.
-export function interpolateJson(text: string, collectionId: number | undefined): string {
-  if (!text || !collectionId) return text;
+export function interpolateJson(
+  text: string,
+  collectionId: number | undefined,
+  overrides?: Record<string, string>
+): string {
+  if (!text) return text;
+  if (!collectionId && !get(activeEnvironmentId) && !overrides) return text;
 
-  const vars = variables.getForCollection(collectionId);
-  const varMap = new Map(vars.map(v => [v.key, v.value]));
+  const varMap = buildInterpolationMap(collectionId, overrides);
 
   return text.replace(VARIABLE_REGEX, (match, varName) => {
     const trimmed = varName.trim();
@@ -197,18 +298,19 @@ export function interpolateJson(text: string, collectionId: number | undefined):
 
 export function interpolateKeyValues(
   pairs: Array<{ key: string; value: string }>,
-  collectionId: number | undefined
+  collectionId: number | undefined,
+  overrides?: Record<string, string>
 ): Array<{ key: string; value: string }> {
-  return pairs.map(p => ({
-    key: interpolate(p.key, collectionId),
-    value: interpolate(p.value, collectionId)
+  return pairs.map((p) => ({
+    key: interpolate(p.key, collectionId, overrides),
+    value: interpolate(p.value, collectionId, overrides),
   }));
 }
 
 export function getUnresolvedVariables(text: string, collectionId: number | undefined): string[] {
   if (!text) return [];
-  
-  const vars = variables.getForCollection(collectionId);
+
+  const vars = getResolvedVariables(collectionId);
   const varKeys = new Set(vars.map(v => v.key));
   
   const unresolved: string[] = [];

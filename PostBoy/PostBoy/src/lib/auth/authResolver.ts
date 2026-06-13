@@ -21,6 +21,8 @@ export interface ApplyAuthInput {
   headers: Record<string, string>;
   body?: string;
   collectionId?: number;
+  /** Variables extracted by prior chain steps; overrides static bearer/oauth tokens. */
+  chainRuntimeVars?: Record<string, string>;
 }
 
 export interface ApplyAuthResult {
@@ -32,15 +34,45 @@ export interface ApplyAuthResult {
   warning?: string;
 }
 
-function str(value: unknown, collectionId?: number): string {
+function str(value: unknown, collectionId?: number, overrides?: Record<string, string>): string {
   const raw = value == null ? '' : String(value);
-  return collectionId ? interpolate(raw, collectionId) : raw;
+  if (!collectionId && !overrides) return raw;
+  return interpolate(raw, collectionId, overrides);
 }
 
-function resolveAuthData(data: AuthData, collectionId?: number): AuthData {
+function authFieldUsesVariable(raw: unknown): boolean {
+  return typeof raw === 'string' && /\{\{[^}]+\}\}/.test(raw);
+}
+
+function hasAuthorizationHeader(headers: Record<string, string>): boolean {
+  return Object.keys(headers).some(
+    (k) => k.toLowerCase() === 'authorization' && headers[k]
+  );
+}
+
+/** Prefer chain-extracted tokens over a static JWT pasted in the bearer/oauth tab. */
+function pickChainAuthToken(
+  chainRuntimeVars: Record<string, string>,
+  rawToken: unknown
+): string | undefined {
+  if (authFieldUsesVariable(rawToken)) {
+    const name = String(rawToken).match(/\{\{([^}]+)\}\}/)?.[1]?.trim();
+    if (name && chainRuntimeVars[name]) return chainRuntimeVars[name];
+  }
+  for (const key of ['accessToken', 'access_token', 'apiToken', 'api_token', 'token', 'authToken', 'idToken']) {
+    if (chainRuntimeVars[key]) return chainRuntimeVars[key];
+  }
+  return undefined;
+}
+
+function resolveAuthData(
+  data: AuthData,
+  collectionId?: number,
+  overrides?: Record<string, string>
+): AuthData {
   const out: AuthData = {};
   for (const [k, v] of Object.entries(data)) {
-    if (typeof v === 'string') out[k] = str(v, collectionId);
+    if (typeof v === 'string') out[k] = str(v, collectionId, overrides);
     else out[k] = v;
   }
   return out;
@@ -48,7 +80,7 @@ function resolveAuthData(data: AuthData, collectionId?: number): AuthData {
 
 export async function applyRequestAuth(input: ApplyAuthInput): Promise<ApplyAuthResult> {
   const authType = normalizeAuthType(input.authType);
-  const data = resolveAuthData(input.authData, input.collectionId);
+  const data = resolveAuthData(input.authData, input.collectionId, input.chainRuntimeVars);
   let headers = { ...input.headers };
   let url = input.url;
   let body = input.body;
@@ -59,8 +91,8 @@ export async function applyRequestAuth(input: ApplyAuthInput): Promise<ApplyAuth
       break;
 
     case 'basic': {
-      const username = str(data.username, input.collectionId);
-      const password = str(data.password, input.collectionId);
+      const username = str(data.username, input.collectionId, input.chainRuntimeVars);
+      const password = str(data.password, input.collectionId, input.chainRuntimeVars);
       if (username) {
         headers['Authorization'] = `Basic ${btoa(`${username}:${password}`)}`;
       }
@@ -68,14 +100,25 @@ export async function applyRequestAuth(input: ApplyAuthInput): Promise<ApplyAuth
     }
 
     case 'bearer': {
-      const token = str(data.token, input.collectionId);
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const rawToken = input.authData.token;
+      let token = str(rawToken, input.collectionId, input.chainRuntimeVars);
+      if (input.chainRuntimeVars && !authFieldUsesVariable(rawToken)) {
+        const chainToken = pickChainAuthToken(input.chainRuntimeVars, rawToken);
+        if (chainToken) token = chainToken;
+      }
+      if (token) {
+        const usesVariable = authFieldUsesVariable(rawToken);
+        const keepHeaderAuth = hasAuthorizationHeader(input.headers) && !usesVariable;
+        if (!keepHeaderAuth) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+      }
       break;
     }
 
     case 'api-key': {
-      const key = str(data.key, input.collectionId);
-      const value = str(data.value, input.collectionId);
+      const key = str(data.key, input.collectionId, input.chainRuntimeVars);
+      const value = str(data.value, input.collectionId, input.chainRuntimeVars);
       const addTo = (data.addTo as string) || 'header';
       if (key) {
         if (addTo === 'query') {
@@ -105,6 +148,11 @@ export async function applyRequestAuth(input: ApplyAuthInput): Promise<ApplyAuth
 
     case 'oauth2': {
       let oauth = { ...data } as any;
+      const rawAccessToken = input.authData.accessToken;
+      if (input.chainRuntimeVars && !authFieldUsesVariable(rawAccessToken)) {
+        const chainToken = pickChainAuthToken(input.chainRuntimeVars, rawAccessToken);
+        if (chainToken) oauth.accessToken = chainToken;
+      }
       if (!oauth.accessToken || isOAuthTokenExpired(oauth)) {
         try {
           if (oauth.refreshToken && isOAuthTokenExpired(oauth)) {
@@ -132,7 +180,13 @@ export async function applyRequestAuth(input: ApplyAuthInput): Promise<ApplyAuth
         url = applyOAuth2ToQuery(url, oauth);
       } else {
         const auth = buildOAuth2Authorization(oauth);
-        if (auth) headers['Authorization'] = auth;
+        if (auth) {
+          const usesVariable = authFieldUsesVariable(rawAccessToken);
+          const keepHeaderAuth = hasAuthorizationHeader(input.headers) && !usesVariable;
+          if (!keepHeaderAuth) {
+            headers['Authorization'] = auth;
+          }
+        }
       }
       break;
     }

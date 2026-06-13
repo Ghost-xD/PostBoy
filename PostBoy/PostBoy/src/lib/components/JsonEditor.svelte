@@ -2,13 +2,15 @@
   import { run } from 'svelte/legacy';
 
   import { onDestroy, untrack } from 'svelte';
+  import { get } from 'svelte/store';
   import { EditorView, basicSetup } from 'codemirror';
   import { json } from '@codemirror/lang-json';
   import { EditorState } from '@codemirror/state';
   import { autocompletion, type CompletionContext } from '@codemirror/autocomplete';
   import { settings } from '$lib/stores/settingsStore';
   import { buildJsonEditorShellTheme, codeMirrorSyntaxTheme } from '$lib/utils/codemirrorTheme';
-  import { variables } from '$lib/stores/variableStore';
+  import { variables, getResolvedVariables } from '$lib/stores/variableStore';
+  import { environmentsRev } from '$lib/stores/environmentStore';
   import { filterVariableSuggestions, maskVariableValue } from '$lib/utils/variableAutocomplete';
   import {
     formatJsonBody,
@@ -58,7 +60,8 @@
     if (!match || !activeCollectionId) return null;
 
     const query = match.text.slice(2);
-    const vars = variables.getForCollection(activeCollectionId);
+    get(environmentsRev);
+    const vars = getResolvedVariables(activeCollectionId ?? undefined);
     const filtered = filterVariableSuggestions(vars, query);
     if (filtered.length === 0 && query) return null;
 

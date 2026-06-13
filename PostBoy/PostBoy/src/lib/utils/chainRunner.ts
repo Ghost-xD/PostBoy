@@ -1,5 +1,5 @@
 import { db, http, fileOps } from '$lib/api/tauri';
-import { variables, interpolate, interpolateJson, interpolateKeyValues, getValueAtPath, flattenJsonPaths } from '$lib/stores/variableStore';
+import { variables, interpolate, interpolateJson, interpolateKeyValues, getValueAtPath, flattenJsonPaths, persistExtractedVariable, expandChainTokenVars } from '$lib/stores/variableStore';
 import { applyRequestAuth } from '$lib/auth/authResolver';
 import { normalizeAuthType } from '$lib/auth/tabAuth';
 import { isStreamMethod } from './streamConfig';
@@ -53,12 +53,18 @@ export interface ChainCallbacks {
   onLog?: (message: string, level: 'info' | 'error' | 'system') => void;
 }
 
-export async function resolveRequest(request: any, collectionId: number): Promise<{
+export async function resolveRequest(request: any, collectionId: number, chainRuntimeVars?: Record<string, string>): Promise<{
   method: string;
   url: string;
   headers: Record<string, string>;
   body: string | undefined;
+  authType: string;
+  authData: Record<string, unknown>;
 }> {
+  const runtimeVars = chainRuntimeVars && Object.keys(chainRuntimeVars).length > 0
+    ? expandChainTokenVars(chainRuntimeVars)
+    : undefined;
+
   let headers = request.headers || '[]';
   if (typeof headers === 'string') {
     try { headers = JSON.parse(headers); } catch { headers = []; }
@@ -69,10 +75,10 @@ export async function resolveRequest(request: any, collectionId: number): Promis
     try { params = JSON.parse(params); } catch { params = []; }
   }
 
-  const resolvedParams = interpolateKeyValues(params, collectionId);
+  const resolvedParams = interpolateKeyValues(params, collectionId, runtimeVars);
   const validParams = resolvedParams.filter((p: any) => p.key && p.value);
 
-  let requestUrl = interpolate(request.url, collectionId);
+  let requestUrl = interpolate(request.url, collectionId, runtimeVars);
   if (validParams.length > 0) {
     // Params tab is the source of truth: strip any existing query string
     // from the URL to avoid sending duplicates (server would see arrays).
@@ -83,7 +89,7 @@ export async function resolveRequest(request: any, collectionId: number): Promis
     requestUrl += '?' + urlParams.toString();
   }
 
-  const resolvedHeaders = interpolateKeyValues(headers, collectionId);
+  const resolvedHeaders = interpolateKeyValues(headers, collectionId, runtimeVars);
   const headersObj: Record<string, string> = {};
   resolvedHeaders.filter((h: any) => h.key && h.value).forEach((h: any) => {
     headersObj[h.key] = h.value;
@@ -104,12 +110,12 @@ export async function resolveRequest(request: any, collectionId: number): Promis
       let formPairs: any[] = [];
       try { formPairs = JSON.parse(bodyContent); } catch { formPairs = []; }
       if (Array.isArray(formPairs) && formPairs.length > 0) {
-        const resolvedPairs = interpolateKeyValues(formPairs, collectionId);
+        const resolvedPairs = interpolateKeyValues(formPairs, collectionId, runtimeVars);
         const urlParams = new URLSearchParams();
         resolvedPairs.filter((p: any) => p.key).forEach((p: any) => urlParams.append(p.key, p.value));
         requestBody = urlParams.toString();
       } else {
-        requestBody = interpolate(bodyContent, collectionId);
+        requestBody = interpolate(bodyContent, collectionId, runtimeVars);
       }
       if (!headersObj['Content-Type']) headersObj['Content-Type'] = 'application/x-www-form-urlencoded';
 
@@ -121,7 +127,8 @@ export async function resolveRequest(request: any, collectionId: number): Promis
         const filePairs = formPairs.filter(p => p.type === 'file' && p.key && p.value);
         const resolvedTextPairs = interpolateKeyValues(
           textPairs.map(p => ({ key: p.key, value: p.value })),
-          collectionId
+          collectionId,
+          runtimeVars
         );
 
         if (resolvedTextPairs.length > 0 || filePairs.length > 0) {
@@ -155,7 +162,7 @@ export async function resolveRequest(request: any, collectionId: number): Promis
       }
 
     } else if (bodyType === 'stream' && bodyContent) {
-      requestBody = interpolateJson(bodyContent, collectionId);
+      requestBody = interpolateJson(bodyContent, collectionId, runtimeVars);
 
     } else if (bodyType === 'graphql' && bodyContent) {
       requestBody = bodyContent;
@@ -165,8 +172,8 @@ export async function resolveRequest(request: any, collectionId: number): Promis
       // JSON bodies escape interpolated values so a value containing quotes,
       // backslashes or newlines can't produce malformed JSON.
       requestBody = bodyType === 'json'
-        ? interpolateJson(bodyContent, collectionId)
-        : interpolate(bodyContent, collectionId);
+        ? interpolateJson(bodyContent, collectionId, runtimeVars)
+        : interpolate(bodyContent, collectionId, runtimeVars);
       if (!headersObj['Content-Type']) {
         if (bodyType === 'json') headersObj['Content-Type'] = 'application/json';
         else if (bodyType === 'xml') headersObj['Content-Type'] = 'application/xml';
@@ -182,6 +189,7 @@ export async function resolveRequest(request: any, collectionId: number): Promis
     headers: headersObj,
     body: requestBody,
     collectionId,
+    chainRuntimeVars: runtimeVars,
   });
   Object.assign(headersObj, authResult.headers);
   requestUrl = authResult.url;
@@ -200,7 +208,8 @@ export async function resolveRequest(request: any, collectionId: number): Promis
 export async function executeStep(
   requestId: number,
   collectionId: number,
-  extractions: ChainExtraction[]
+  extractions: ChainExtraction[],
+  chainRuntimeVars?: Record<string, string>
 ): Promise<StepResult> {
   const request = await db.getRequest(requestId) as any;
   if (!request) {
@@ -215,7 +224,7 @@ export async function executeStep(
     };
   }
 
-  const resolved = await resolveRequest(request, collectionId);
+  const resolved = await resolveRequest(request, collectionId, chainRuntimeVars);
 
   if (isStreamMethod(resolved.method)) {
     const streamResult = await executeStreamChainStep(
@@ -254,7 +263,7 @@ export async function executeStep(
   const extractedValues = extractValues(response.body || '', extractions);
 
   for (const ev of extractedValues) {
-    await variables.set(collectionId, ev.variableName, ev.value);
+    await persistExtractedVariable(collectionId, ev.variableName, ev.value);
   }
 
   return {
@@ -306,13 +315,15 @@ export async function executeChain(
 
   await variables.load(collectionId);
 
+  const chainRuntimeVars: Record<string, string> = {};
+
   for (let i = 0; i < chain.steps.length; i++) {
     const step = chain.steps[i];
     callbacks?.onStepStart?.(i);
     callbacks?.onLog?.(`Step ${i + 1}: Executing...`, 'info');
 
     try {
-      const result = await executeStep(step.requestId, collectionId, step.extractions);
+      const result = await executeStep(step.requestId, collectionId, step.extractions, chainRuntimeVars);
       result.stepIndex = i;
       results.push(result);
 
@@ -323,6 +334,7 @@ export async function executeChain(
 
       if (result.extractedValues.length > 0) {
         for (const ev of result.extractedValues) {
+          chainRuntimeVars[ev.variableName] = ev.value;
           const masked = ev.value.length > 12 ? ev.value.slice(0, 4) + '...' + ev.value.slice(-4) : ev.value;
           callbacks?.onLog?.(`  Extracted: {{${ev.variableName}}} = ${masked}`, 'system');
         }

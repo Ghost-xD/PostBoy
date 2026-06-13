@@ -1108,6 +1108,223 @@ pub async fn db_clear_variables(app: AppHandle, collection_id: i64) -> Result<bo
     Ok(true)
 }
 
+// --- Environment Commands ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnvironmentRow {
+    pub id: i64,
+    pub name: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnvironmentVariableRow {
+    pub key: String,
+    pub value: String,
+    pub initial_value: String,
+    pub enabled: bool,
+}
+
+#[tauri::command]
+pub async fn db_list_environments(app: AppHandle) -> Result<Vec<EnvironmentRow>, String> {
+    let db_path = get_db_path(&app)?;
+    let conn = rusqlite::Connection::open(db_path).map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, name, created_at, updated_at FROM environments ORDER BY name ASC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(EnvironmentRow {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                created_at: row.get(2)?,
+                updated_at: row.get(3)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows)
+}
+
+#[tauri::command]
+pub async fn db_create_environment(app: AppHandle, name: String) -> Result<i64, String> {
+    let db_path = get_db_path(&app)?;
+    let conn = rusqlite::Connection::open(db_path).map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO environments (name) VALUES (?)",
+        [&name],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(conn.last_insert_rowid())
+}
+
+#[tauri::command]
+pub async fn db_update_environment(
+    app: AppHandle,
+    id: i64,
+    name: String,
+) -> Result<bool, String> {
+    let db_path = get_db_path(&app)?;
+    let conn = rusqlite::Connection::open(db_path).map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE environments SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        rusqlite::params![name, id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn db_delete_environment(app: AppHandle, id: i64) -> Result<bool, String> {
+    let db_path = get_db_path(&app)?;
+    let conn = rusqlite::Connection::open(db_path).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM environments WHERE id = ?", [id])
+        .map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn db_duplicate_environment(app: AppHandle, id: i64) -> Result<i64, String> {
+    let db_path = get_db_path(&app)?;
+    let conn = rusqlite::Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let name: String = conn
+        .query_row(
+            "SELECT name FROM environments WHERE id = ?",
+            [id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT INTO environments (name) VALUES (?)",
+        [format!("{} (copy)", name)],
+    )
+    .map_err(|e| e.to_string())?;
+    let new_id = conn.last_insert_rowid();
+
+    conn.execute(
+        "INSERT INTO environment_variables (environment_id, key, value, initial_value, enabled)
+         SELECT ?, key, value, initial_value, enabled FROM environment_variables WHERE environment_id = ?",
+        rusqlite::params![new_id, id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(new_id)
+}
+
+#[tauri::command]
+pub async fn db_get_environment_variables(
+    app: AppHandle,
+    environment_id: i64,
+) -> Result<Vec<EnvironmentVariableRow>, String> {
+    let db_path = get_db_path(&app)?;
+    let conn = rusqlite::Connection::open(db_path).map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT key, value, initial_value, enabled FROM environment_variables
+             WHERE environment_id = ? ORDER BY key ASC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([environment_id], |row| {
+            Ok(EnvironmentVariableRow {
+                key: row.get(0)?,
+                value: row.get(1)?,
+                initial_value: row.get(2)?,
+                enabled: row.get::<_, i64>(3)? != 0,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows)
+}
+
+#[tauri::command]
+pub async fn db_set_environment_variable(
+    app: AppHandle,
+    environment_id: i64,
+    key: String,
+    value: String,
+    initial_value: Option<String>,
+) -> Result<bool, String> {
+    let db_path = get_db_path(&app)?;
+    let conn = rusqlite::Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let initial = initial_value.unwrap_or_else(|| value.clone());
+    conn.execute(
+        "INSERT INTO environment_variables (environment_id, key, value, initial_value, enabled, updated_at)
+         VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+         ON CONFLICT(environment_id, key) DO UPDATE SET
+           value = excluded.value,
+           initial_value = CASE
+             WHEN excluded.initial_value != '' THEN excluded.initial_value
+             ELSE environment_variables.initial_value
+           END,
+           updated_at = CURRENT_TIMESTAMP",
+        rusqlite::params![environment_id, key, value, initial],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn db_delete_environment_variable(
+    app: AppHandle,
+    environment_id: i64,
+    key: String,
+) -> Result<bool, String> {
+    let db_path = get_db_path(&app)?;
+    let conn = rusqlite::Connection::open(db_path).map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM environment_variables WHERE environment_id = ? AND key = ?",
+        rusqlite::params![environment_id, key],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn db_clear_environment_variables(
+    app: AppHandle,
+    environment_id: i64,
+) -> Result<bool, String> {
+    let db_path = get_db_path(&app)?;
+    let conn = rusqlite::Connection::open(db_path).map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM environment_variables WHERE environment_id = ?",
+        [environment_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn db_reset_environment_variables(
+    app: AppHandle,
+    environment_id: i64,
+) -> Result<bool, String> {
+    let db_path = get_db_path(&app)?;
+    let conn = rusqlite::Connection::open(db_path).map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE environment_variables SET value = initial_value, updated_at = CURRENT_TIMESTAMP
+         WHERE environment_id = ?",
+        [environment_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
 // --- Cookie Jar Commands ---
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

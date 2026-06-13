@@ -68,6 +68,29 @@ describe('applyRequestAuth', () => {
     expect(result.headers.Authorization).toBe('Bearer abc123');
   });
 
+  it('does not overwrite Authorization header when bearer tab stores a static JWT', async () => {
+    const result = await applyRequestAuth({
+      authType: 'bearer',
+      authData: { token: 'stale-jwt' },
+      method: 'GET',
+      url: 'https://api.example.com',
+      headers: { Authorization: 'Bearer fresh-jwt' },
+    });
+    expect(result.headers.Authorization).toBe('Bearer fresh-jwt');
+  });
+
+  it('uses chain-extracted token instead of a static bearer JWT', async () => {
+    const result = await applyRequestAuth({
+      authType: 'bearer',
+      authData: { token: 'stale-jwt' },
+      method: 'GET',
+      url: 'https://api.example.com',
+      headers: {},
+      chainRuntimeVars: { accessToken: 'fresh-jwt' },
+    });
+    expect(result.headers.Authorization).toBe('Bearer fresh-jwt');
+  });
+
   it('applies basic auth', async () => {
     const result = await applyRequestAuth({
       authType: 'basic',

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte';
-  import { variables, type Variable } from '$lib/stores/variableStore';
+  import { variables, getResolvedVariables, type Variable } from '$lib/stores/variableStore';
+  import { environmentsRev } from '$lib/stores/environmentStore';
   import {
     getVariableContext,
     filterVariableSuggestions,
@@ -87,17 +88,26 @@
   );
   const showVariablePreview = $derived(hoverTokenName !== null);
 
+  let envRev = $state(0);
+
   const collectionVars = $derived.by(() => {
     variablesRev;
-    return collectionId ? variables.getForCollection(collectionId) : [];
+    envRev;
+    return getResolvedVariables(collectionId ?? undefined);
   });
 
   onMount(() => {
     if (collectionId) void variables.load(collectionId);
-    const unsub = variables.subscribe(() => {
+    const unsubVars = variables.subscribe(() => {
       variablesRev++;
     });
-    return unsub;
+    const unsubEnv = environmentsRev.subscribe(() => {
+      envRev++;
+    });
+    return () => {
+      unsubVars();
+      unsubEnv();
+    };
   });
 
   $effect(() => {

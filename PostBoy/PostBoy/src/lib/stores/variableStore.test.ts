@@ -9,6 +9,7 @@ import {
   variables,
   interpolate,
   interpolateKeyValues,
+  expandChainTokenVars,
   getUnresolvedVariables,
   getAllUnresolvedVariables,
   countVariablesInText,
@@ -164,10 +165,10 @@ describe('variableStore', () => {
       expect(variables.getForCollection(999)).toEqual([]);
     });
 
-    it('returns empty array for collectionId 0 (falsy)', () => {
-      expect(variables.getForCollection(0)).toEqual([]);
-    });
+  it('returns empty array for collectionId 0 (falsy)', () => {
+    expect(variables.getForCollection(0)).toEqual([]);
   });
+});
 });
 
 describe('interpolate', () => {
@@ -189,6 +190,20 @@ describe('interpolate', () => {
 
     const result = interpolate('{{unknown}}', 1);
     expect(result).toBe('{{unknown}}');
+  });
+
+  it('chain overrides beat stored variables during interpolation', async () => {
+    mockInvoke.mockResolvedValueOnce([{ key: 'apiToken', value: 'stale' }]);
+    await variables.load(1);
+
+    const result = interpolate('Bearer {{apiToken}}', 1, expandChainTokenVars({ accessToken: 'fresh' }));
+    expect(result).toBe('Bearer fresh');
+  });
+
+  it('expandChainTokenVars mirrors extracted token names', () => {
+    const expanded = expandChainTokenVars({ accessToken: 'jwt-value' });
+    expect(expanded.apiToken).toBe('jwt-value');
+    expect(expanded.token).toBe('jwt-value');
   });
 
   it('handles multiple variables in one string', async () => {

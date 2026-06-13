@@ -56,6 +56,15 @@ describe('sensitiveData', () => {
     expect(secretsByKey.get('password')).toBe('real-secret');
   });
 
+  it('does not mask sensitive JSON keys when the value is a variable reference', () => {
+    const json = '{\n  "apiKey": "{{apiKey}}"\n}';
+    const matches = findSensitiveJsonMatches(json);
+    expect(matches).toHaveLength(0);
+    const { text } = maskSensitiveJsonText(json);
+    expect(text).toContain('"{{apiKey}}"');
+    expect(text).not.toMatch(/"•+"/);
+  });
+
   it('finds sensitive match only within the quoted value span', () => {
     const json = '{\n  "username": "ada",\n  "password": "secret"\n}';
     const matches = findSensitiveJsonMatches(json);

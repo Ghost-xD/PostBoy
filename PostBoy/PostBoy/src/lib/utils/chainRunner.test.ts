@@ -21,7 +21,8 @@ import {
   type ChainCallbacks,
 } from '$lib/utils/chainRunner';
 
-import { variables } from '$lib/stores/variableStore';
+import { variables, interpolate, persistExtractedVariable } from '$lib/stores/variableStore';
+import { activeEnvironmentId, envVariables } from '$lib/stores/environmentStore';
 
 function mockDbCalls(overrides: {
   getVariables?: any;
@@ -903,6 +904,345 @@ describe('executeChain', () => {
     const results = await executeChain(chain, 1);
 
     expect(results).toEqual([]);
+  });
+
+  it('step 2 uses accessToken extracted in step 1 when the same key exists in the active environment', async () => {
+    const STALE = 'stale-expired-token';
+    const FRESH = 'fresh-token-from-step-1';
+    const ENV_ID = 10;
+    let httpCalls = 0;
+    let step2Authorization: string | undefined;
+
+    activeEnvironmentId.set(ENV_ID);
+
+    mockInvoke.mockImplementation((cmd: string, args?: any) => {
+      if (cmd === 'db_get_variables') {
+        return Promise.resolve([{ key: 'accessToken', value: STALE }]);
+      }
+      if (cmd === 'db_get_environment_variables') {
+        return Promise.resolve([
+          { key: 'accessToken', value: STALE, initial_value: STALE, enabled: true },
+        ]);
+      }
+      if (cmd === 'db_set_variable' || cmd === 'db_set_environment_variable') {
+        return Promise.resolve(undefined);
+      }
+      if (cmd === 'db_get_request') {
+        const id = args?.id;
+        if (id === 1) {
+          return Promise.resolve({
+            name: 'Login',
+            method: 'POST',
+            url: 'https://api.com/login',
+            headers: '[]',
+            params: '[]',
+          });
+        }
+        if (id === 2) {
+          return Promise.resolve({
+            name: 'Get License',
+            method: 'GET',
+            url: 'https://api.com/license',
+            headers: JSON.stringify([{ key: 'Authorization', value: 'Bearer {{accessToken}}' }]),
+            params: '[]',
+            auth_type: 'none',
+          });
+        }
+      }
+      if (cmd === 'execute_http_request') {
+        httpCalls++;
+        if (httpCalls === 1) {
+          return Promise.resolve({
+            status: 200,
+            statusText: 'OK',
+            body: JSON.stringify({ accessToken: FRESH }),
+            responseTime: 100,
+          });
+        }
+        step2Authorization = args?.headers?.Authorization;
+        return Promise.resolve({
+          status: 200,
+          statusText: 'OK',
+          body: '{}',
+          responseTime: 50,
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await variables.load(1);
+    await envVariables.load(ENV_ID);
+
+    // After chain extraction, both collection and active environment must be updated.
+    await persistExtractedVariable(1, 'accessToken', FRESH);
+    expect(interpolate('Bearer {{accessToken}}', 1)).toBe(`Bearer ${FRESH}`);
+
+    const chain: Chain = {
+      id: 'c1',
+      name: 'GetLicense',
+      steps: [
+        {
+          id: 's1',
+          requestId: 1,
+          extractions: [{ jsonPath: 'accessToken', variableName: 'accessToken' }],
+        },
+        { id: 's2', requestId: 2, extractions: [] },
+      ],
+    };
+
+    const results = await executeChain(chain, 1);
+
+    expect(results[0].status).toBe('success');
+    expect(results[1].status).toBe('success');
+    expect(step2Authorization).toBe(`Bearer ${FRESH}`);
+    expect(envVariables.getForEnvironment(ENV_ID).find((v) => v.key === 'accessToken')?.value).toBe(FRESH);
+
+    activeEnvironmentId.set(null);
+  });
+
+  it('step 2 uses extracted token when bearer auth tab stores a stale literal JWT', async () => {
+    const STALE = 'stale-expired-token';
+    const FRESH = 'fresh-token-from-step-1';
+    let httpCalls = 0;
+    let step2Authorization: string | undefined;
+
+    mockInvoke.mockImplementation((cmd: string, args?: any) => {
+      if (cmd === 'db_get_variables') {
+        return Promise.resolve([{ key: 'accessToken', value: STALE }]);
+      }
+      if (cmd === 'db_get_environment_variables') {
+        return Promise.resolve([]);
+      }
+      if (cmd === 'db_set_variable' || cmd === 'db_set_environment_variable') {
+        return Promise.resolve(undefined);
+      }
+      if (cmd === 'db_get_request') {
+        const id = args?.id;
+        if (id === 1) {
+          return Promise.resolve({
+            name: 'Login',
+            method: 'POST',
+            url: 'https://api.com/login',
+            headers: '[]',
+            params: '[]',
+          });
+        }
+        if (id === 2) {
+          return Promise.resolve({
+            name: 'Get License',
+            method: 'GET',
+            url: 'https://api.com/license',
+            headers: JSON.stringify([{ key: 'Authorization', value: 'Bearer {{accessToken}}' }]),
+            params: '[]',
+            auth_type: 'bearer',
+            auth_data: JSON.stringify({ token: STALE }),
+          });
+        }
+      }
+      if (cmd === 'execute_http_request') {
+        httpCalls++;
+        if (httpCalls === 1) {
+          return Promise.resolve({
+            status: 200,
+            statusText: 'OK',
+            body: JSON.stringify({ accessToken: FRESH }),
+            responseTime: 100,
+          });
+        }
+        step2Authorization = args?.headers?.Authorization;
+        return Promise.resolve({
+          status: 200,
+          statusText: 'OK',
+          body: '{}',
+          responseTime: 50,
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await variables.load(1);
+
+    const chain: Chain = {
+      id: 'c1',
+      name: 'GetLicense',
+      steps: [
+        {
+          id: 's1',
+          requestId: 1,
+          extractions: [{ jsonPath: 'accessToken', variableName: 'accessToken' }],
+        },
+        { id: 's2', requestId: 2, extractions: [] },
+      ],
+    };
+
+    const results = await executeChain(chain, 1);
+
+    expect(results[0].status).toBe('success');
+    expect(results[1].status).toBe('success');
+    expect(step2Authorization).toBe(`Bearer ${FRESH}`);
+  });
+
+  it('step 2 uses chain token when only bearer auth tab has a stale literal JWT', async () => {
+    const STALE = 'stale-expired-token';
+    const FRESH = 'fresh-token-from-step-1';
+    let httpCalls = 0;
+    let step2Authorization: string | undefined;
+
+    mockInvoke.mockImplementation((cmd: string, args?: any) => {
+      if (cmd === 'db_get_variables') {
+        return Promise.resolve([{ key: 'accessToken', value: STALE }]);
+      }
+      if (cmd === 'db_set_variable') {
+        return Promise.resolve(undefined);
+      }
+      if (cmd === 'db_get_request') {
+        const id = args?.id;
+        if (id === 1) {
+          return Promise.resolve({
+            name: 'Login',
+            method: 'POST',
+            url: 'https://api.com/login',
+            headers: '[]',
+            params: '[]',
+          });
+        }
+        if (id === 2) {
+          return Promise.resolve({
+            name: 'Get License',
+            method: 'GET',
+            url: 'https://api.com/license',
+            headers: '[]',
+            params: '[]',
+            auth_type: 'bearer',
+            auth_data: JSON.stringify({ token: STALE }),
+          });
+        }
+      }
+      if (cmd === 'execute_http_request') {
+        httpCalls++;
+        if (httpCalls === 1) {
+          return Promise.resolve({
+            status: 200,
+            statusText: 'OK',
+            body: JSON.stringify({ accessToken: FRESH }),
+            responseTime: 100,
+          });
+        }
+        step2Authorization = args?.headers?.Authorization;
+        return Promise.resolve({
+          status: 200,
+          statusText: 'OK',
+          body: '{}',
+          responseTime: 50,
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await variables.load(1);
+
+    const chain: Chain = {
+      id: 'c1',
+      name: 'GetLicense',
+      steps: [
+        {
+          id: 's1',
+          requestId: 1,
+          extractions: [{ jsonPath: 'accessToken', variableName: 'accessToken' }],
+        },
+        { id: 's2', requestId: 2, extractions: [] },
+      ],
+    };
+
+    const results = await executeChain(chain, 1);
+
+    expect(results[1].status).toBe('success');
+    expect(step2Authorization).toBe(`Bearer ${FRESH}`);
+  });
+
+  it('step 2 resolves {{apiToken}} from chain-extracted accessToken', async () => {
+    const STALE = 'stale-api-token';
+    const FRESH = 'fresh-token-from-step-1';
+    let httpCalls = 0;
+    let step2Authorization: string | undefined;
+
+    mockInvoke.mockImplementation((cmd: string, args?: any) => {
+      if (cmd === 'db_get_variables') {
+        return Promise.resolve([]);
+      }
+      if (cmd === 'db_get_environment_variables') {
+        return Promise.resolve([
+          { key: 'apiToken', value: STALE, initial_value: STALE, enabled: true },
+        ]);
+      }
+      if (cmd === 'db_set_variable' || cmd === 'db_set_environment_variable') {
+        return Promise.resolve(undefined);
+      }
+      if (cmd === 'db_get_request') {
+        const id = args?.id;
+        if (id === 1) {
+          return Promise.resolve({
+            name: 'Login',
+            method: 'POST',
+            url: 'https://api.com/login',
+            headers: '[]',
+            params: '[]',
+          });
+        }
+        if (id === 2) {
+          return Promise.resolve({
+            name: 'Get License',
+            method: 'GET',
+            url: 'https://api.com/license',
+            headers: JSON.stringify([{ key: 'Authorization', value: 'Bearer {{apiToken}}' }]),
+            params: '[]',
+            auth_type: 'none',
+          });
+        }
+      }
+      if (cmd === 'execute_http_request') {
+        httpCalls++;
+        if (httpCalls === 1) {
+          return Promise.resolve({
+            status: 200,
+            statusText: 'OK',
+            body: JSON.stringify({ accessToken: FRESH }),
+            responseTime: 100,
+          });
+        }
+        step2Authorization = args?.headers?.Authorization;
+        return Promise.resolve({
+          status: 401,
+          statusText: 'Unauthorized',
+          body: '',
+          responseTime: 50,
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await variables.load(1);
+    await envVariables.load(10);
+    activeEnvironmentId.set(10);
+
+    const chain: Chain = {
+      id: 'c1',
+      name: 'GetLicense',
+      steps: [
+        {
+          id: 's1',
+          requestId: 1,
+          extractions: [{ jsonPath: 'accessToken', variableName: 'accessToken' }],
+        },
+        { id: 's2', requestId: 2, extractions: [] },
+      ],
+    };
+
+    await executeChain(chain, 1);
+
+    expect(step2Authorization).toBe(`Bearer ${FRESH}`);
+
+    activeEnvironmentId.set(null);
   });
 });
 

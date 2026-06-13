@@ -13,13 +13,13 @@
 
 | Area          | Still missing or partial                                                                                                                |
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Environments  | No global/env profiles or switcher — collection variables only                                                                          |
+| Environments  | ✅ Named profiles, switcher, initial/current values, Postman env import/export — ❌ global vars, secret type, dynamic `{{$…}}` vars      |
 | Auth          | Akamai EdgeGrid, ASAP, inherit-from-folder                                                                                              |
 | Protocols     | GraphQL introspection UI; gRPC streaming & `.proto` import; SOAP, MQTT, Socket.IO                                                       |
 | Scripts       | No `pm.sendRequest`, cookies, crypto libs; HTTP scripts not persisted; WS/SSE scripts in stream body only; no collection/folder scripts |
 | Organization  | Tags, versioning, Git sync, API Builder                                                                                                 |
 | Automation    | Newman/CLI, CI integrations, scheduled runs, test pass/fail dashboard                                                                   |
-| Import/export | No OpenAPI/HAR/WSDL/RAML export; no WSDL/RAML import                                                                                    |
+| Import/export | ✅ Collection + env export (Ripple v2 / Postman v2.1); ❌ OpenAPI/HAR/WSDL/RAML export; no WSDL/RAML import                               |
 | UI            | Light theme, multi-window, web/mobile clients                                                                                           |
 
 
@@ -82,17 +82,24 @@ Ripple **does** support WebSocket (WS/WSS), SSE, and gRPC **unary** as first-cla
 
 ## Environments & Variables
 
+Ripple now has **Postman-style named environments** (SQLite `environments` + `environment_variables` tables). Active environment variables **override** collection variables on key conflicts. Scripts expose `pm.environment` and `pm.collectionVariables` separately.
 
-| Feature                                      | Status                 |
-| -------------------------------------------- | ---------------------- |
-| Global variables                             | ❌                      |
-| Environment variables (Dev / Staging / Prod) | ❌                      |
-| Environment switcher                         | ❌                      |
-| Variable scopes beyond collection            | ❌                      |
-| Secret variable type                         | ❌ Plain text in SQLite |
-| Dynamic variables (`{{$randomInt}}`, etc.)   | ❌                      |
-| Initial / current value split                | ❌                      |
 
+| Feature                                      | Status                                                                                       |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Environment variables (Dev / Staging / Prod) | ✅ Create, rename, duplicate, delete in **Tools → Environments** (`Ctrl+Shift+V`)             |
+| Environment switcher                         | ✅ Request bar dropdown (left of Send); persists active env in settings                       |
+| Initial / current value split                | ✅ Per env var; **Reset values** restores current from initial                                |
+| Variable scopes beyond collection            | ⚠️ Collection + active environment only — no global, local, or data-file scopes             |
+| Global variables                             | ❌                                                                                            |
+| Secret variable type                         | ❌ Env vars stored as plain text; sensitive **field names** masked in request UI only       |
+| Dynamic variables (`{{$randomInt}}`, etc.)   | ❌                                                                                            |
+| Postman environment import / export          | ✅ `.postman_environment.json` via Environments panel                                       |
+| Chain run environment selection              | ✅ **▶** on a chain prompts for environment; sets active env before run                       |
+| Auto-sync extracted tokens to environment    | ⚠️ Chain steps and token refresh write to collection **and** active env when one is selected |
+
+
+**Typical workflow:** put stable config in the environment (`baseUrl`, `apiKey`, `sessionId`); use `{{var}}` in request URLs, headers, and bodies; run **GetLicense** (or token refresh) to populate `apiToken`; switch environments from the request bar or chain picker.
 
 ---
 
@@ -133,6 +140,7 @@ Ripple **does** support WebSocket (WS/WSS), SSE, and gRPC **unary** as first-cla
 | Feature                                   | Status                                                                                  |
 | ----------------------------------------- | --------------------------------------------------------------------------------------- |
 | Collection Runner with JS test assertions | ⚠️ Chains run HTTP or stream steps and extract JSON; no script test execution in chains |
+| Environment picker when running a chain   | ✅ Sidebar **▶** and **Run Chain** prompt for target environment                         |
 | Run delay / iteration controls in chains  | ⚠️ Limited vs Postman Runner                                                            |
 | Newman / Postman CLI                      | ❌                                                                                       |
 | CI/CD integrations                        | ❌                                                                                       |
@@ -167,19 +175,23 @@ Ripple **does** support WebSocket (WS/WSS), SSE, and gRPC **unary** as first-cla
 ## Import / Export
 
 
-| Feature                                     | Status                                              |
-| ------------------------------------------- | --------------------------------------------------- |
-| Export to OpenAPI 3                         | ❌                                                   |
-| Export to RAML / WSDL                       | ❌                                                   |
-| Import from WSDL / RAML                     | ❌                                                   |
-| Team export with separate environment files | ⚠️ Collection JSON; envs merged into vars on import |
+| Feature                                     | Status                                                                                       |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Export collection (Ripple native)           | ✅ v2 JSON: requests, collection variables, chains, token-refresh config                      |
+| Export collection (Postman v2.1)            | ✅ Per-collection from sidebar; bulk **File → Export Collections**                           |
+| Import collection (Ripple / Postman)        | ✅ Sidebar import + **File → Import**; Ripple v2 restores chains and token refresh            |
+| Export / import Postman environment file  | ✅ Environments panel                                                                          |
+| Export to OpenAPI 3                         | ❌                                                                                            |
+| Export to RAML / WSDL                       | ❌                                                                                            |
+| Import from WSDL / RAML                     | ❌                                                                                            |
+| Team export with separate environment files | ⚠️ Collections and envs export separately; no single Postman “team bundle” zip               |
 
 
 ---
 
 ## Suggested Priority
 
-1. **Environments** — named profiles + switcher
+1. ~~**Environments** — named profiles + switcher~~ ✅ **Done** (remaining: global vars, secret type, dynamic vars)
 2. **Persist HTTP scripts & gRPC fields** — save/load on collection + Postman `event` import (stream scripts already persist via `bodyType: stream`)
 3. **Richer script runtime** — `pm.sendRequest`, cookies, crypto helpers
 4. **gRPC streaming** + `.proto` import
@@ -189,4 +201,4 @@ Ripple **does** support WebSocket (WS/WSS), SSE, and gRPC **unary** as first-cla
 
 ---
 
-*Last verified: June 2026 against the PostBoyFork codebase. Omit a gap row once Ripple matches Postman for that feature.*
+*Last verified: June 2026 against the PostBoyFork codebase. Environments, collection export (Ripple v2 / Postman v2.1), and chain environment picker verified in this pass.*

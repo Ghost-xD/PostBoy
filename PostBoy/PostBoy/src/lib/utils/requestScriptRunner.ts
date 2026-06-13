@@ -32,14 +32,28 @@ export interface ScriptVariableApi {
   unset: (name: string) => void;
 }
 
+export interface ScriptVariableScope {
+  environment: ScriptVariableApi;
+  collection: ScriptVariableApi;
+}
+
+function normalizeScopes(
+  scopes: ScriptVariableApi | ScriptVariableScope
+): ScriptVariableScope {
+  if ('environment' in scopes && 'collection' in scopes) return scopes;
+  const api = scopes as ScriptVariableApi;
+  return { environment: api, collection: api };
+}
+
 function buildPm(
   request: ScriptRequestContext,
   response: ScriptResponseContext | null,
-  variables: ScriptVariableApi,
+  scopes: ScriptVariableApi | ScriptVariableScope,
   logs: string[],
   errors: string[],
   testResults: ScriptRunResult['testResults']
 ) {
+  const { environment, collection } = normalizeScopes(scopes);
   const pm = {
     request: {
       get url() {
@@ -79,9 +93,9 @@ function buildPm(
         },
       },
     },
-    variables: variables,
-    environment: variables,
-    collectionVariables: variables,
+    variables: environment,
+    environment,
+    collectionVariables: collection,
     response: response
       ? {
           code: response.status,
@@ -150,7 +164,7 @@ function runScript(source: string, pm: ReturnType<typeof buildPm>): void {
 export function runPreRequestScript(
   script: string,
   request: ScriptRequestContext,
-  variables: ScriptVariableApi
+  scopes: ScriptVariableApi | ScriptVariableScope
 ): ScriptRunResult {
   const logs: string[] = [];
   const errors: string[] = [];
@@ -161,7 +175,7 @@ export function runPreRequestScript(
     headers: { ...request.headers },
     body: request.body,
   };
-  const pm = buildPm(reqCopy, null, variables, logs, errors, testResults);
+  const pm = buildPm(reqCopy, null, scopes, logs, errors, testResults);
   try {
     runScript(script, pm);
   } catch (e: any) {
@@ -174,12 +188,12 @@ export function runTestScript(
   script: string,
   request: ScriptRequestContext,
   response: ScriptResponseContext,
-  variables: ScriptVariableApi
+  scopes: ScriptVariableApi | ScriptVariableScope
 ): ScriptRunResult {
   const logs: string[] = [];
   const errors: string[] = [];
   const testResults: ScriptRunResult['testResults'] = [];
-  const pm = buildPm({ ...request }, response, variables, logs, errors, testResults);
+  const pm = buildPm({ ...request }, response, scopes, logs, errors, testResults);
   try {
     runScript(script, pm);
   } catch (e: any) {

@@ -262,6 +262,35 @@ pub fn get_migrations() -> Vec<Migration> {
             ",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 13,
+            description: "create_environments_tables",
+            sql: "
+                CREATE TABLE IF NOT EXISTS environments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS environment_variables (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    environment_id INTEGER NOT NULL,
+                    key TEXT NOT NULL,
+                    value TEXT NOT NULL DEFAULT '',
+                    initial_value TEXT NOT NULL DEFAULT '',
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (environment_id) REFERENCES environments(id) ON DELETE CASCADE,
+                    UNIQUE(environment_id, key)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_environment_variables_env
+                    ON environment_variables(environment_id, key);
+            ",
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
@@ -490,6 +519,30 @@ pub fn initialize_database(db_path: PathBuf) -> Result<(), String> {
 
             CREATE INDEX IF NOT EXISTS idx_request_examples_request
                 ON request_examples(request_id, created_at DESC);
+        "),
+        (13, "create_environments_tables", "
+            CREATE TABLE IF NOT EXISTS environments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS environment_variables (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                environment_id INTEGER NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL DEFAULT '',
+                initial_value TEXT NOT NULL DEFAULT '',
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (environment_id) REFERENCES environments(id) ON DELETE CASCADE,
+                UNIQUE(environment_id, key)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_environment_variables_env
+                ON environment_variables(environment_id, key);
         "),
     ];
 

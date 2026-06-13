@@ -77,6 +77,8 @@ export function findSensitiveJsonMatches(text: string): SensitiveJsonMatch[] {
       /* keep unescaped slice */
     }
 
+    if (containsVariableReference(value)) continue;
+
     const valueFrom = match.index + match[0].indexOf(quoted);
     const valueTo = valueFrom + quoted.length;
     const line = text.slice(0, valueFrom).split('\n').length;

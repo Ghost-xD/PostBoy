@@ -80,6 +80,46 @@ export const db = {
   clearVariables: async (collectionId: number) => {
     return await invoke('db_clear_variables', { collectionId });
   },
+  listEnvironments: async () => {
+    return await invoke('db_list_environments');
+  },
+  createEnvironment: async (name: string) => {
+    return await invoke('db_create_environment', { name });
+  },
+  updateEnvironment: async (id: number, name: string) => {
+    return await invoke('db_update_environment', { id, name });
+  },
+  deleteEnvironment: async (id: number) => {
+    return await invoke('db_delete_environment', { id });
+  },
+  duplicateEnvironment: async (id: number) => {
+    return await invoke('db_duplicate_environment', { id });
+  },
+  getEnvironmentVariables: async (environmentId: number) => {
+    return await invoke('db_get_environment_variables', { environmentId });
+  },
+  setEnvironmentVariable: async (
+    environmentId: number,
+    key: string,
+    value: string,
+    initialValue?: string
+  ) => {
+    return await invoke('db_set_environment_variable', {
+      environmentId,
+      key,
+      value,
+      initialValue: initialValue ?? null,
+    });
+  },
+  deleteEnvironmentVariable: async (environmentId: number, key: string) => {
+    return await invoke('db_delete_environment_variable', { environmentId, key });
+  },
+  clearEnvironmentVariables: async (environmentId: number) => {
+    return await invoke('db_clear_environment_variables', { environmentId });
+  },
+  resetEnvironmentVariables: async (environmentId: number) => {
+    return await invoke('db_reset_environment_variables', { environmentId });
+  },
   renameCollection: async (id: number, name: string) => {
     return await invoke('db_rename_collection', { id, name });
   },

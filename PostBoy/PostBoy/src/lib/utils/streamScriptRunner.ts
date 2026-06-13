@@ -1,8 +1,10 @@
 import {
   runPreRequestScript,
   type ScriptVariableApi,
+  type ScriptVariableScope,
   type ScriptRunResult,
 } from './requestScriptRunner';
+import type { ScriptVariableContext } from './scriptVariables';
 
 export interface StreamScriptContext {
   method: string;
@@ -22,7 +24,7 @@ export interface StreamMessageContext {
 export function runStreamPreConnectScript(
   script: string,
   ctx: StreamScriptContext,
-  variables: ScriptVariableApi
+  scopes: ScriptVariableApi | ScriptVariableScope | ScriptVariableContext
 ): ScriptRunResult {
   return runPreRequestScript(
     script,
@@ -31,7 +33,7 @@ export function runStreamPreConnectScript(
       url: ctx.url,
       headers: { ...ctx.headers },
     },
-    variables
+    scopes
   );
 }
 
@@ -39,7 +41,7 @@ export function runStreamOnMessageScript(
   script: string,
   ctx: StreamScriptContext,
   message: StreamMessageContext,
-  variables: ScriptVariableApi
+  scopes: ScriptVariableApi | ScriptVariableScope | ScriptVariableContext
 ): ScriptRunResult {
   const logs: string[] = [];
   const errors: string[] = [];
@@ -64,7 +66,7 @@ export function runStreamOnMessageScript(
     responseTime: 0,
   };
 
-  const pm = buildStreamMessagePm(request, response, message, variables, logs, errors, testResults);
+  const pm = buildStreamMessagePm(request, response, message, scopes, logs, errors, testResults);
 
   if (!script?.trim()) {
     return { request, logs, errors, testResults };
@@ -90,11 +92,16 @@ function buildStreamMessagePm(
     responseTime: number;
   },
   message: StreamMessageContext,
-  variables: ScriptVariableApi,
+  scopes: ScriptVariableApi | ScriptVariableScope | ScriptVariableContext,
   logs: string[],
   errors: string[],
   testResults: ScriptRunResult['testResults']
 ) {
+  const normalized =
+    'environment' in scopes && 'collection' in scopes
+      ? scopes
+      : { environment: scopes as ScriptVariableApi, collection: scopes as ScriptVariableApi };
+
   return {
     request: {
       get url() {
@@ -112,7 +119,9 @@ function buildStreamMessagePm(
         },
       },
     },
-    variables,
+    variables: normalized.environment,
+    environment: normalized.environment,
+    collectionVariables: normalized.collection,
     message: {
       get data() {
         return message.data;

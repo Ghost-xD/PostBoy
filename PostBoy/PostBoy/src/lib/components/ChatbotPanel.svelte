@@ -2040,7 +2040,8 @@
   }
 
   .cb-icon-btn.primary:hover:not(:disabled) {
-    filter: brightness(1.1);
+    background: var(--accent-hover, #3b7ae8);
+    color: #fff;
   }
 
   .cb-icon-btn.primary:active:not(:disabled) {
@@ -2377,7 +2378,7 @@
     transition: all 0.15s;
   }
 
-  .cb-btn:hover:not(:disabled) {
+  .cb-btn:hover:not(:disabled):not(.primary) {
     background: var(--bg-tertiary, #2b2d31);
     color: var(--text-primary, #f2f3f5);
   }
@@ -2394,7 +2395,9 @@
   }
 
   .cb-btn.primary:hover:not(:disabled) {
-    filter: brightness(1.1);
+    background: var(--accent-hover, #3b7ae8);
+    border-color: var(--accent-hover, #3b7ae8);
+    color: #fff;
   }
 
   .cb-btn.danger {

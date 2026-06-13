@@ -20,6 +20,7 @@
   import * as modalManager from '$lib/utils/modalManager.svelte';
   import { parseOpenApiSpec } from '$lib/utils/openApiParser';
   import { importCollection } from '$lib/utils/collectionImporter';
+  import { exportAllCollections } from '$lib/utils/collectionExporter';
   import { serializeAuthFromTab, authFieldsFromStored } from '$lib/auth/tabAuth';
   import { isStreamMethod, serializeStreamConfig, parseStreamConfig, applyStreamConfigToTab } from '$lib/utils/streamConfig';
   
@@ -37,6 +38,7 @@
   import SettingsPanel from '$lib/components/SettingsPanel.svelte';
   import DiagnosticsPanel from '$lib/components/DiagnosticsPanel.svelte';
   import CookieJarPanel from '$lib/components/CookieJarPanel.svelte';
+  import EnvironmentsPanel from '$lib/components/EnvironmentsPanel.svelte';
   import McpServersPanel from '$lib/components/McpServersPanel.svelte';
   import ChatbotScreen from '$lib/components/ChatbotScreen.svelte';
   import ToolsNavBar from '$lib/components/ToolsNavBar.svelte';
@@ -45,6 +47,7 @@
   import LoadTestScreen from '$lib/components/LoadTestScreen.svelte';
   import SearchPicker from '$lib/components/SearchPicker.svelte';
   import { loadSettings, settings, toggleTheme } from '$lib/stores/settingsStore';
+  import { initEnvironments } from '$lib/stores/environmentStore';
   import { chatbotSupported, chatbotStatus, initChatbotFeature, teardownChatbotFeature, loadDefaultModel } from '$lib/stores/chatbotStore';
   import { isMac, formatShortcut, matchesSqlRunnerShortcut, SQL_RUNNER_SHORTCUT } from '$lib/utils/platform';
 
@@ -75,6 +78,7 @@
     { key: 'sql', label: 'SQL Runner', title: formatShortcut(SQL_RUNNER_SHORTCUT) },
     { key: 'diagnostics', label: 'Diagnostics', title: formatShortcut('Ctrl+Shift+N') },
     { key: 'cookies', label: 'Cookie Jar', title: formatShortcut('Ctrl+Shift+X') },
+    { key: 'environments', label: 'Environments', title: formatShortcut('Ctrl+Shift+V') },
     mcpTabAvailable ? { key: 'mcp', label: 'MCP Servers', title: 'Manage MCP servers' } : null,
     { key: 'settings', label: 'Settings', title: formatShortcut('Ctrl+,') },
   ].filter(Boolean) as ToolsNavTab[]));
@@ -128,6 +132,7 @@
       loadCollections(),
       loadHistory(),
       restoreTabs(),
+      initEnvironments(),
     ]);
     version = appVersion as string;
 
@@ -291,6 +296,7 @@
         await MenuItem.new({ id: 'encoder', text: 'Base64 / URL Encoder', accelerator: 'CmdOrCtrl+Shift+E', action: () => showToolsPanel.update(v => v === 'encoder' ? false : 'encoder') }),
         await MenuItem.new({ id: 'sql-runner', text: 'SQL Query Runner', accelerator: isMac ? 'Control+Shift+Q' : 'Ctrl+Shift+Q', action: () => showToolsPanel.update(v => v === 'sql' ? false : 'sql') }),
         await MenuItem.new({ id: 'cookie-jar', text: 'Cookie Jar', accelerator: 'CmdOrCtrl+Shift+X', action: () => showToolsPanel.update(v => v === 'cookies' ? false : 'cookies') }),
+        await MenuItem.new({ id: 'environments', text: 'Environments', accelerator: 'CmdOrCtrl+Shift+V', action: () => showToolsPanel.update(v => v === 'environments' ? false : 'environments') }),
         await MenuItem.new({ id: 'diagnostics', text: 'Network Diagnostics', accelerator: 'CmdOrCtrl+Shift+N', action: () => showToolsPanel.update(v => v === 'diagnostics' ? false : 'diagnostics') }),
         await MenuItem.new({ id: 'diff-tool', text: 'Diff / Compare', accelerator: 'CmdOrCtrl+Shift+B', action: () => showDiffTool.update(v => !v) }),
         await MenuItem.new({ id: 'load-test', text: 'Load Test Lab', accelerator: 'CmdOrCtrl+Shift+T', action: () => showLoadTest.update(v => v ? false : { collectionId: null }) }),
@@ -632,6 +638,13 @@
       if (mod && e.shiftKey && e.key === 'X') {
         e.preventDefault();
         showToolsPanel.update(v => v === 'cookies' ? false : 'cookies');
+        return;
+      }
+
+      // Ctrl+Shift+V — Environments
+      if (mod && e.shiftKey && e.key === 'V') {
+        e.preventDefault();
+        showToolsPanel.update(v => v === 'environments' ? false : 'environments');
         return;
       }
 
@@ -1181,7 +1194,7 @@
     ]);
 
     if (!result) return;
-    const exportData = await db.exportCollections(null, result.format) as string;
+    const exportData = await exportAllCollections(result.format === 'postman' ? 'postman' : 'ripple');
     const filePath = await fileOps.showSaveDialog({ title: 'Save Export', defaultPath: `collections.${result.format === 'postman' ? 'postman_collection' : 'ripple'}.json` }) as string | null;
     if (filePath) {
       await fileOps.writeFile(filePath as string, exportData);
@@ -1541,6 +1554,8 @@
           <DiagnosticsPanel />
         {:else if $showToolsPanel === 'cookies'}
           <CookieJarPanel />
+        {:else if $showToolsPanel === 'environments'}
+          <EnvironmentsPanel />
         {:else if $showToolsPanel === 'mcp' && mcpTabAvailable}
           <McpServersPanel />
         {:else if $showToolsPanel === 'settings'}
@@ -1698,7 +1713,8 @@
     color: #fff;
   }
   .update-toast-btn.primary:hover {
-    filter: brightness(1.1);
+    background: var(--accent-hover, #3b7ae8);
+    color: #fff;
     transform: translateY(-1px);
   }
   .update-toast-btn.primary:disabled {

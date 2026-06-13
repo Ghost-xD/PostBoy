@@ -10,7 +10,10 @@
   import { addLog } from '$lib/stores/consoleStore';
   import { showLoadTest } from '$lib/stores/uiStore';
   import RequestChainPanel from './RequestChainPanel.svelte';
-  import { loadChains as loadChainsFromDb, executeChain, resolveRequest, type Chain } from '$lib/utils/chainRunner';
+  import { loadChains as loadChainsFromDb, resolveRequest, type Chain } from '$lib/utils/chainRunner';
+  import { pickChainRunEnvironment, applyChainRunEnvironment } from '$lib/utils/chainEnvironmentPicker';
+  import { exportCollection, importCollectionFile } from '$lib/utils/collectionExporter';
+  import * as modalManager from '$lib/utils/modalManager.svelte';
 
   function openLoadTest(collectionId: number) {
     showLoadTest.set({ collectionId });
@@ -319,14 +322,30 @@
 
   async function shareCollection(collectionId: number, collectionName: string) {
     try {
-      const json = await db.exportSingleCollection(collectionId);
+      const pick = await modalManager.showForm('Export Collection', 'Choose export format:', [
+        {
+          id: 'format',
+          label: 'Format',
+          type: 'select',
+          value: 'ripple',
+          options: [
+            { value: 'ripple', label: 'Ripple JSON (variables, chains, token refresh)' },
+            { value: 'postman', label: 'Postman Collection v2.1' },
+          ],
+        },
+      ]);
+      if (!pick) return;
+
+      const format = pick.format === 'postman' ? 'postman' : 'ripple';
+      const json = await exportCollection(collectionId, format);
+      const ext = format === 'postman' ? 'postman_collection.json' : 'ripple.json';
       const filePath = await fileOps.showSaveDialog({
-        defaultPath: `${collectionName.replace(/[^a-zA-Z0-9_-]/g, '_')}.ripple.json`,
-        filters: [{ name: 'Ripple Collection', extensions: ['json'] }],
+        defaultPath: `${collectionName.replace(/[^a-zA-Z0-9_-]/g, '_')}.${ext}`,
+        filters: [{ name: format === 'postman' ? 'Postman Collection' : 'Ripple Collection', extensions: ['json'] }],
       });
       if (filePath) {
         await fileOps.writeFile(filePath as string, json);
-        addLog(`✓ Exported collection "${collectionName}" to ${filePath}`, 'system');
+        addLog(`✓ Exported collection "${collectionName}" (${format})`, 'system');
       }
     } catch (e: any) {
       addLog(`✗ Failed to export collection: ${e}`, 'error');
@@ -336,14 +355,17 @@
   async function importSharedCollection() {
     try {
       const filePath = await fileOps.showOpenDialog({
-        filters: [{ name: 'Ripple Collection', extensions: ['json'] }],
+        filters: [{ name: 'Collection JSON', extensions: ['json'] }],
         multiple: false,
       });
       if (!filePath) return;
       const path = Array.isArray(filePath) ? filePath[0] : filePath;
-      const data = await fileOps.readFile(path as string) as string;
-      await db.importSingleCollection(data);
-      addLog('✓ Imported shared collection', 'system');
+      const result = await fileOps.readFile(path as string) as any;
+      const raw = typeof result === 'string' ? result : result?.data;
+      if (!raw) return;
+
+      const { format } = await importCollectionFile(raw);
+      addLog(`✓ Imported collection (${format})`, 'system');
       await onReload();
     } catch (e: any) {
       addLog(`✗ Failed to import collection: ${e}`, 'error');
@@ -364,7 +386,7 @@
   let tokenConfigVersion = $state(0);
   let refreshingCollections = new Set<number>();
   let refreshVersion = $state(0);
-  let refreshStatus: Map<number, { state: 'loading' | 'success' | 'error'; message: string }> = new Map();
+  let refreshStatus: Map<number, { state: 'loading' | 'success' | 'error'; label: string; detail: string }> = new Map();
   let showConfigModal = $state(false);
   let configModalCollectionId: number | null = $state(null);
 
@@ -377,7 +399,8 @@
   let chainModalCollectionId: number | null = $state(null);
   let chainModalInitialChainId: string | null = $state(null);
   let chainModalInitialResults: any[] | null = $state(null);
-  let runningChainCollections = $state(new Set<number>());
+  let chainModalAutoRun = $state(false);
+  let chainModalEnvPreselected = $state(false);
 
   async function toggleChainsSection(collectionId: number) {
     if (expandedChains.has(collectionId)) {
@@ -402,6 +425,7 @@
     chainModalCollectionId = collectionId;
     chainModalInitialChainId = null;
     chainModalInitialResults = null;
+    chainModalAutoRun = false;
     showChainModal = true;
   }
 
@@ -416,32 +440,25 @@
     chainModalCollectionId = null;
     chainModalInitialChainId = null;
     chainModalInitialResults = null;
+    chainModalAutoRun = false;
+    chainModalEnvPreselected = false;
   }
 
-  async function runChainInline(collectionId: number, chain: Chain) {
-    if (runningChainCollections.has(collectionId)) return;
-    runningChainCollections.add(collectionId);
-    runningChainCollections = new Set(runningChainCollections);
+  async function runChainFromSidebar(collectionId: number, chain: Chain) {
+    if (showChainModal && chainModalCollectionId === collectionId) return;
 
-    addLog(`▶ Running chain: ${chain.name}`, 'info');
-    try {
-      const results = await executeChain(chain, collectionId, {
-        onLog(msg, level) { addLog(`[Chain: ${chain.name}] ${msg}`, level); },
-      });
-      const passed = results.filter(r => r.status === 'success').length;
-      const failed = results.filter(r => r.status === 'error').length;
-      addLog(`✓ Chain "${chain.name}" complete: ${passed} passed, ${failed} failed`, passed === results.length ? 'system' : 'error');
+    const picked = await pickChainRunEnvironment(chain.name);
+    if (picked === undefined) return;
 
-      chainModalCollectionId = collectionId;
-      chainModalInitialChainId = chain.id;
-      chainModalInitialResults = results;
-      showChainModal = true;
-    } catch (err: any) {
-      addLog(`✗ Chain "${chain.name}" failed: ${err.message || err}`, 'error');
-    } finally {
-      runningChainCollections.delete(collectionId);
-      runningChainCollections = new Set(runningChainCollections);
-    }
+    const envName = await applyChainRunEnvironment(picked);
+    addLog(`▶ Chain "${chain.name}" → ${envName}`, 'system');
+
+    chainModalCollectionId = collectionId;
+    chainModalInitialChainId = chain.id;
+    chainModalInitialResults = null;
+    chainModalAutoRun = true;
+    chainModalEnvPreselected = true;
+    showChainModal = true;
   }
 
   function portal(node: HTMLElement) {
@@ -630,6 +647,25 @@
     closeConfigModal();
   }
 
+  function setRefreshStatus(
+    collectionId: number,
+    state: 'loading' | 'success' | 'error',
+    label: string,
+    detail: string
+  ) {
+    refreshStatus.set(collectionId, { state, label, detail });
+    refreshStatus = refreshStatus;
+    refreshVersion++;
+  }
+
+  function clearRefreshStatusLater(collectionId: number, ms: number) {
+    setTimeout(() => {
+      refreshStatus.delete(collectionId);
+      refreshStatus = refreshStatus;
+      refreshVersion++;
+    }, ms);
+  }
+
   async function executeTokenRefresh(collectionId: number) {
     let config = tokenRefreshConfigs.get(collectionId);
     if (!config) {
@@ -650,14 +686,15 @@
 
     refreshingCollections.add(collectionId);
     refreshingCollections = refreshingCollections;
-    refreshStatus.set(collectionId, { state: 'loading', message: 'Refreshing tokens...' });
-    refreshStatus = refreshStatus;
-    refreshVersion++;
+    setRefreshStatus(collectionId, 'loading', 'Refreshing…', 'Refreshing tokens from configured request');
 
     try {
       const request = await db.getRequest(config.requestId) as any;
       if (!request) {
-        addLog('✗ Token request not found', 'error');
+        const detail = 'Token request not found';
+        addLog(`✗ ${detail}`, 'error');
+        setRefreshStatus(collectionId, 'error', 'Request not found', detail);
+        clearRefreshStatusLater(collectionId, 4000);
         return;
       }
 
@@ -680,7 +717,10 @@
 
       if (response.status >= 400) {
         const bodyPreview = (response.body || '').slice(0, 300);
+        const detail = `Refresh failed: HTTP ${response.status}${bodyPreview ? ` — ${bodyPreview}` : ''}`;
         addLog(`✗ Token refresh failed: ${response.status} — ${bodyPreview}`, 'error');
+        setRefreshStatus(collectionId, 'error', 'Refresh failed', detail);
+        clearRefreshStatusLater(collectionId, 4000);
         return;
       }
 
@@ -688,7 +728,10 @@
       try {
         responseJson = JSON.parse(response.body);
       } catch {
-        addLog('✗ Token refresh response is not valid JSON', 'error');
+        const detail = 'Token refresh response is not valid JSON';
+        addLog(`✗ ${detail}`, 'error');
+        setRefreshStatus(collectionId, 'error', 'Invalid response', detail);
+        clearRefreshStatusLater(collectionId, 4000);
         return;
       }
 
@@ -708,21 +751,22 @@
         }
       }
 
-      const msg = `✓ Refreshed ${successCount}/${config.mappings.length} variables`;
-      addLog(msg, 'system');
-      refreshStatus.set(collectionId, { state: 'success', message: msg });
-      refreshStatus = refreshStatus;
-      refreshVersion++;
+      const msg = `Refreshed ${successCount}/${config.mappings.length} variable${config.mappings.length === 1 ? '' : 's'}`;
+      addLog(`✓ ${msg}`, 'system');
+      setRefreshStatus(
+        collectionId,
+        'success',
+        `${successCount}/${config.mappings.length} updated`,
+        msg
+      );
+      clearRefreshStatusLater(collectionId, 3000);
       await variables.load(collectionId);
       variablesTick++;
-      setTimeout(() => { refreshStatus.delete(collectionId); refreshStatus = refreshStatus; refreshVersion++; }, 3000);
     } catch (error: any) {
-      const msg = `✗ ${error.message || error}`;
-      addLog(`✗ Token refresh failed: ${error.message || error}`, 'error');
-      refreshStatus.set(collectionId, { state: 'error', message: msg });
-      refreshStatus = refreshStatus;
-      refreshVersion++;
-      setTimeout(() => { refreshStatus.delete(collectionId); refreshStatus = refreshStatus; refreshVersion++; }, 4000);
+      const detail = error.message || String(error);
+      addLog(`✗ Token refresh failed: ${detail}`, 'error');
+      setRefreshStatus(collectionId, 'error', 'Refresh failed', detail);
+      clearRefreshStatusLater(collectionId, 4000);
     } finally {
       refreshingCollections.delete(collectionId);
       refreshingCollections = refreshingCollections;
@@ -731,14 +775,14 @@
   }
 
   function hasTokenConfig(collectionId: number, _v?: number): boolean {
-    return tokenRefreshConfigs.has(collectionId) && tokenRefreshConfigs.get(collectionId) !== null;
+    return tokenRefreshConfigs.get(collectionId) != null;
   }
 
   function isRefreshing(collectionId: number, _v?: number): boolean {
     return refreshingCollections.has(collectionId);
   }
 
-  function getRefreshStatus(collectionId: number, _v?: number): { state: 'loading' | 'success' | 'error'; message: string } | undefined {
+  function getRefreshStatus(collectionId: number, _v?: number): { state: 'loading' | 'success' | 'error'; label: string; detail: string } | undefined {
     return refreshStatus.get(collectionId);
   }
 
@@ -762,18 +806,30 @@
     }
   }
 
+  async function preloadTokenRefreshConfigs(cols: any[]) {
+    let changed = false;
+    for (const col of cols) {
+      if (!tokenRefreshConfigs.has(col.id)) {
+        const config = await loadTokenRefreshConfig(col.id);
+        tokenRefreshConfigs.set(col.id, config);
+        changed = true;
+      }
+    }
+    if (changed) {
+      tokenRefreshConfigs = tokenRefreshConfigs;
+      tokenConfigVersion++;
+    }
+  }
+
   run(() => {
-    if (collections.length > 0) preloadChains(collections);
+    if (collections.length > 0) {
+      preloadChains(collections);
+      preloadTokenRefreshConfigs(collections);
+    }
   });
 
   onMount(async () => {
     await restoreExpandedState();
-    for (const collection of collections) {
-      const config = await loadTokenRefreshConfig(collection.id);
-      tokenRefreshConfigs.set(collection.id, config);
-    }
-    tokenRefreshConfigs = tokenRefreshConfigs;
-    tokenConfigVersion++;
   });
 
   async function restoreExpandedState() {
@@ -1172,12 +1228,19 @@
                 tabindex="0"
                 onclick={stopPropagation(() => executeTokenRefresh(collection.id))}
                 onkeypress={stopPropagation((e: Event) => (e as KeyboardEvent).key === 'Enter' && executeTokenRefresh(collection.id))}
-                title={hasTokenConfig(collection.id, tokenConfigVersion) ? 'Refresh tokens' : 'No token refresh configured'}
-              >{isRefreshing(collection.id, refreshVersion) ? '⏳' : '🔄'}</span>
-              {#if getRefreshStatus(collection.id, refreshVersion)}
-                {@const status = getRefreshStatus(collection.id, refreshVersion)}
-                <span class="refresh-toast {status?.state}">{status?.message}</span>
-              {/if}
+                title={isRefreshing(collection.id, refreshVersion)
+                  ? 'Refreshing tokens…'
+                  : hasTokenConfig(collection.id, tokenConfigVersion)
+                    ? 'Refresh tokens'
+                    : 'No token refresh configured'}
+              >
+                <svg class="refresh-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                  <path d="M3 3v5h5" />
+                  <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+                  <path d="M21 21v-5h-5" />
+                </svg>
+              </span>
               <span 
                 class="token-config-btn"
                 role="button"
@@ -1195,6 +1258,25 @@
                 title="Add Variable"
               >+</span>
             </button>
+
+            {#if getRefreshStatus(collection.id, refreshVersion)}
+              {@const status = getRefreshStatus(collection.id, refreshVersion)}
+              <div
+                class="token-refresh-status {status?.state}"
+                title={status?.detail}
+                role="status"
+                aria-live="polite"
+              >
+                {#if status?.state === 'loading'}
+                  <span class="refresh-status-pulse" aria-hidden="true"></span>
+                {:else if status?.state === 'success'}
+                  <span class="refresh-status-icon" aria-hidden="true">✓</span>
+                {:else}
+                  <span class="refresh-status-icon" aria-hidden="true">✕</span>
+                {/if}
+                <span class="refresh-status-label">{status?.label}</span>
+              </div>
+            {/if}
             
             {#if expandedVariables.has(collection.id)}
               <div class="variables-list">
@@ -1306,10 +1388,10 @@
                     <span class="chain-name" title="{chain.steps.length} step(s)">⛓ {chain.name}</span>
                     <button
                       class="chain-action-btn run"
-                      onclick={stopPropagation(() => runChainInline(collection.id, chain))}
-                      disabled={runningChainCollections.has(collection.id)}
+                      onclick={stopPropagation(() => runChainFromSidebar(collection.id, chain))}
+                      disabled={showChainModal && chainModalCollectionId === collection.id}
                       title="Run chain"
-                    >{runningChainCollections.has(collection.id) ? '⏳' : '▶'}</button>
+                    >▶</button>
                     <button
                       class="chain-action-btn edit"
                       onclick={stopPropagation(() => openChainBuilder(collection.id))}
@@ -1492,6 +1574,8 @@
     onClose={closeChainBuilder}
     initialChainId={chainModalInitialChainId}
     initialResults={chainModalInitialResults}
+    autoRun={chainModalAutoRun}
+    environmentPreselected={chainModalEnvPreselected}
   />
 {/if}
 
@@ -1954,12 +2038,25 @@
     flex-shrink: 0;
   }
 
+  .token-refresh-btn {
+    width: 16px;
+    height: 16px;
+    color: var(--text-secondary);
+  }
+
+  .refresh-icon {
+    display: block;
+    flex-shrink: 0;
+    shape-rendering: geometricPrecision;
+  }
+
   .token-refresh-btn:hover, .token-config-btn:hover {
     opacity: 1;
   }
 
   .token-refresh-btn.has-config {
     opacity: 0.8;
+    color: var(--text-secondary);
   }
 
   .token-refresh-btn:not(.has-config) {
@@ -1968,7 +2065,13 @@
   }
 
   .token-refresh-btn.refreshing {
+    opacity: 1;
+    color: var(--accent-color);
+  }
+
+  .token-refresh-btn.refreshing .refresh-icon {
     animation: spin 1s linear infinite;
+    transform-origin: center;
   }
 
   @keyframes spin {
@@ -1976,22 +2079,65 @@
     to { transform: rotate(360deg); }
   }
 
-  .refresh-toast {
-    font-size: 0.68rem;
-    padding: 2px 8px;
+  .token-refresh-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 8px 4px 38px;
+    padding: 4px 8px;
     border-radius: 4px;
-    white-space: nowrap;
-    animation: fadeIn 0.25s ease;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    text-transform: none;
+    line-height: 1.2;
+    min-width: 0;
+    animation: fadeIn 0.2s ease;
   }
-  .refresh-toast.loading {
-    color: var(--accent-color);
+
+  .token-refresh-status.loading {
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
   }
-  .refresh-toast.success {
+
+  .token-refresh-status.success {
     color: var(--success-color);
+    background: color-mix(in srgb, var(--success-color) 12%, var(--bg-secondary));
   }
-  .refresh-toast.error {
+
+  .token-refresh-status.error {
     color: var(--error-color);
+    background: color-mix(in srgb, var(--error-color) 10%, var(--bg-secondary));
   }
+
+  .refresh-status-pulse {
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    animation: refreshPulse 1s ease-in-out infinite;
+  }
+
+  @keyframes refreshPulse {
+    0%, 100% { opacity: 0.35; transform: scale(0.85); }
+    50% { opacity: 1; transform: scale(1); }
+  }
+
+  .refresh-status-icon {
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .refresh-status-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(-2px); }
     to { opacity: 1; transform: translateY(0); }
@@ -2311,14 +2457,20 @@
 
   .rename-collection-input,
   .rename-request-input {
-    background: var(--bg-secondary);
-    border: 1px solid #5865f2;
+    background: var(--bg-primary);
+    border: 1px solid var(--accent-color);
     border-radius: 3px;
-    color: #dbdee1;
+    color: var(--text-primary);
     font-size: 12px;
     padding: 2px 6px;
     width: 100%;
     outline: none;
+  }
+
+  .rename-collection-input:focus,
+  .rename-request-input:focus {
+    border-color: var(--accent-hover);
+    box-shadow: 0 0 0 2px var(--accent-glow);
   }
 
   .rename-collection-btn,
@@ -2335,23 +2487,27 @@
   }
 
   :global(.collection-request) .drag-grip {
-    color: #72767d;
+    color: color-mix(in srgb, var(--text-secondary) 55%, var(--text-primary));
     font-size: 12px;
     cursor: grab;
     user-select: none;
     line-height: 1;
     letter-spacing: -2px;
-    opacity: 0.7;
-    transition: opacity 0.15s ease, color 0.15s ease;
+    transition: color 0.15s ease;
     flex-shrink: 0;
     width: 14px;
     margin-left: -4px;
     margin-right: 2px;
   }
 
+  :global(.collection-request:hover) .drag-grip,
   :global(.collection-request) .drag-grip:hover {
-    opacity: 1;
-    color: #b5bac1;
+    color: color-mix(in srgb, var(--text-secondary) 30%, var(--text-primary));
+  }
+
+  :global(.collection-request) .drag-grip:active {
+    cursor: grabbing;
+    color: color-mix(in srgb, var(--text-secondary) 15%, var(--text-primary));
   }
 
   :global(.drag-spacer) {
@@ -2377,10 +2533,10 @@
 
   .new-folder-input {
     flex: 1;
-    background: var(--bg-secondary);
-    border: 1px solid #5865f2;
+    background: var(--bg-primary);
+    border: 1px solid var(--accent-color);
     border-radius: 3px;
-    color: #dbdee1;
+    color: var(--text-primary);
     font-size: 12px;
     padding: 3px 8px;
     outline: none;

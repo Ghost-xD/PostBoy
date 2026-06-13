@@ -2,7 +2,7 @@
   import { run, stopPropagation, createBubbler } from 'svelte/legacy';
 
   const bubble = createBubbler();
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { activeTab, updateActiveTab, updateActiveTabBatch, updateTab, activeTabId } from '$lib/stores/tabStore';
   import { get } from 'svelte/store';
   import { activeRequestTab, isSendingRequest, sendingTabIds } from '$lib/stores/uiStore';
@@ -27,7 +27,8 @@
   import { applyRequestAuthFromTab } from '$lib/auth/authResolver';
   import { serializeAuthFromTab } from '$lib/auth/tabAuth';
   import { runPreRequestScript, runTestScript } from '$lib/utils/requestScriptRunner';
-  import { createScriptVariableApi } from '$lib/utils/scriptVariables';
+  import { createScriptVariableContext } from '$lib/utils/scriptVariables';
+  import EnvironmentSwitcher from '$lib/components/EnvironmentSwitcher.svelte';
 
   interface Props {
     onHistoryUpdate?: () => Promise<void>;
@@ -295,15 +296,20 @@
   let authData = $derived($activeTab.authData || {});
   let collectionId = $derived($activeTab.collectionId);
 
-  // Local body content for JsonEditor two-way binding
+  // Local body content for JsonEditor two-way binding.
+  // Persist only tracks localBodyContent — not activeTabId — so tab switches load
+  // from the store first instead of writing stale editor text into the new tab.
   let localBodyContent = $state('');
   run(() => {
     localBodyContent = bodyContent;
   });
   run(() => {
-    if (localBodyContent !== bodyContent) {
-      updateActiveTab('bodyContent', localBodyContent);
-    }
+    const content = localBodyContent;
+    untrack(() => {
+      if (content !== bodyContent) {
+        updateActiveTab('bodyContent', content);
+      }
+    });
   });
 
   function handleUrlValue(rawValue: string) {
@@ -589,7 +595,7 @@
         const scriptResult = runPreRequestScript(
           preRequestScript,
           { method, url: requestUrl, headers: headersObj, body: requestBody },
-          createScriptVariableApi(collectionId)
+          createScriptVariableContext(collectionId)
         );
         for (const line of scriptResult.logs) addLog(`[script] ${line}`, 'info');
         for (const err of scriptResult.errors) addLog(`[script] ${err}`, 'error');
@@ -696,7 +702,7 @@
             body: response.body || '',
             responseTime,
           },
-          createScriptVariableApi(collectionId)
+          createScriptVariableContext(collectionId)
         );
         for (const line of testResult.logs) addLog(`[test] ${line}`, 'info');
         for (const err of testResult.errors) addLog(`[test] ${err}`, 'error');
@@ -890,6 +896,7 @@
         </button>
       </div>
     </div>
+    <EnvironmentSwitcher />
     {#if !isWsMethod && !isSseMethod && !isGrpcMethod}
     <button id="send-btn" onclick={sendRequest} class="send-btn" disabled={isCurrentTabSending} title="Send Request (Ctrl+Enter)">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -1138,11 +1145,13 @@
           </div>
 
         {:else if bodyType === 'json'}
-          <JsonEditor 
-            bind:value={localBodyContent}
-            {collectionId}
-            placeholder="Enter JSON data (auto-formats on paste/blur)" 
-          />
+          {#key $activeTabId}
+            <JsonEditor
+              bind:value={localBodyContent}
+              {collectionId}
+              placeholder="Enter JSON data (auto-formats on paste/blur)"
+            />
+          {/key}
 
         {:else}
           <VariableInput
@@ -1437,7 +1446,7 @@
     font-size: 0.78rem;
     cursor: pointer;
   }
-  .codegen-tab:hover { background: var(--bg-tertiary, #3a3d44); }
+  .codegen-tab:hover:not(.active) { background: var(--bg-tertiary, #3a3d44); }
   .codegen-tab.active {
     background: var(--bg-primary);
     color: var(--text-primary);

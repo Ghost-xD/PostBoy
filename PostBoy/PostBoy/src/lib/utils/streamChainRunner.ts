@@ -1,9 +1,9 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { ws, sse } from '$lib/api/tauri';
-import { variables } from '$lib/stores/variableStore';
+import { persistExtractedVariable } from '$lib/stores/variableStore';
 import { parseStreamConfig } from './streamConfig';
 import { runStreamPreConnectScript } from './streamScriptRunner';
-import { createScriptVariableApi } from './scriptVariables';
+import { createScriptVariableContext } from './scriptVariables';
 import type { ChainExtraction, StepResult, StepResponse } from './chainRunner';
 import { extractValues } from './chainRunner';
 
@@ -233,7 +233,7 @@ export async function executeStreamChainStep(
 
   let url = input.url;
   let headers = { ...input.headers };
-  const variableApi = createScriptVariableApi(collectionId);
+  const variableApi = createScriptVariableContext(collectionId);
 
   const preScript = config.wsPreRequestScript?.trim();
   if (preScript) {
@@ -275,7 +275,7 @@ export async function executeStreamChainStep(
 
       const extractedValues = extractValues(body, extractions);
       for (const ev of extractedValues) {
-        await variables.set(collectionId, ev.variableName, ev.value);
+        await persistExtractedVariable(collectionId, ev.variableName, ev.value);
       }
 
       return {
@@ -321,7 +321,7 @@ export async function executeStreamChainStep(
 
     const extractedValues = extractValues(body, extractions);
     for (const ev of extractedValues) {
-      await variables.set(collectionId, ev.variableName, ev.value);
+      await persistExtractedVariable(collectionId, ev.variableName, ev.value);
     }
 
     return {

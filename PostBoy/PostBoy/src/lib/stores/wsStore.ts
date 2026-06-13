@@ -5,7 +5,7 @@ import { tabs, type WsMessage } from '$lib/stores/tabStore';
 import { addLog } from '$lib/stores/consoleStore';
 import { recordStreamConnectHistory } from '$lib/utils/streamHistory';
 import { runStreamPreConnectScript, runStreamOnMessageScript } from '$lib/utils/streamScriptRunner';
-import { createScriptVariableApi } from '$lib/utils/scriptVariables';
+import { createScriptVariableContext } from '$lib/utils/scriptVariables';
 
 const MAX_MESSAGES = 1000;
 
@@ -43,7 +43,7 @@ function runOnMessageScript(tabId: string, message: WsMessage) {
     if (h.key && h.value) headers[h.key] = h.value;
   }
 
-  const variableApi = createScriptVariableApi(tab.collectionId);
+  const variableApi = createScriptVariableContext(tab.collectionId);
   const result = runStreamOnMessageScript(
     tab.wsOnMessageScript,
     { method: tab.method, url: tab.url, headers, collectionId: tab.collectionId },
@@ -115,7 +115,7 @@ export async function wsConnect(tabId: string, url: string, headers?: Record<str
   let connectHeaders = { ...(headers || {}) };
 
   if (tab.preRequestScript?.trim()) {
-    const variableApi = createScriptVariableApi(tab.collectionId);
+    const variableApi = createScriptVariableContext(tab.collectionId);
     const pre = runStreamPreConnectScript(
       tab.preRequestScript,
       { method: tab.method, url: connectUrl, headers: connectHeaders, collectionId: tab.collectionId },

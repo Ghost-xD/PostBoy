@@ -1,5 +1,6 @@
 import { ai, db } from '$lib/api/tauri';
 import type { DraftPlan, LoadConfig, PlanStep } from '$lib/stores/loadTestStore';
+import { getResolvedVariables } from '$lib/stores/variableStore';
 
 // ---------------------------------------------------------------------------
 // Prompt for the local AI ("Son of Anton") to draft a load-test plan.
@@ -270,12 +271,12 @@ export async function draftPlan({ config }: DraftPlanArgs): Promise<DraftPlan> {
   // tokens/base URLs are available to the run by default. The AI's
   // explicit values take precedence.
   try {
-    const vars = (await db.getVariables(config.collectionId)) as Array<{ key: string; value: string }>;
-    for (const v of vars || []) {
+    const vars = getResolvedVariables(config.collectionId);
+    for (const v of vars) {
       if (!(v.key in initialVars)) initialVars[v.key] = v.value;
     }
   } catch {
-    /* variables table may not exist yet */
+    /* variables may not be loaded yet */
   }
 
   // Load parameters (duration, concurrency, ramp-up, RPS, caps, timeout) are
