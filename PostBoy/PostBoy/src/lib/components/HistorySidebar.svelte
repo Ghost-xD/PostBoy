@@ -1,5 +1,6 @@
 <script lang="ts">
   import { db } from '$lib/api/tauri';
+  import { isHistorySuccessStatus } from '$lib/utils/streamHistory';
 
   interface Props {
     history?: any[];
@@ -95,6 +96,9 @@
     <option value="PUT">PUT</option>
     <option value="DELETE">DEL</option>
     <option value="PATCH">PATCH</option>
+    <option value="WS">WS</option>
+    <option value="WSS">WSS</option>
+    <option value="SSE">SSE</option>
   </select>
 </div>
 <div class="history-list">
@@ -108,8 +112,8 @@
       <div class="history-item" role="button" tabindex="0" onclick={() => onHistoryClick(item)} onkeypress={(e) => e.key === 'Enter' && onHistoryClick(item)}>
         <div class="history-item-top">
           <span class="method {item.method.toLowerCase()}">{item.method}</span>
-          <span class="status {item.status_code >= 200 && item.status_code < 300 ? 'success' : 'error'}">
-            {item.status_code || 'ERR'}
+          <span class="status {isHistorySuccessStatus(item.status_code) ? 'success' : 'error'}">
+            {item.status_code ?? 'ERR'}
           </span>
           <button
             class="history-delete-btn"
@@ -118,8 +122,8 @@
           >×</button>
         </div>
         <div class="history-item-url">{truncateUrl(item.url)}</div>
-        {#if item.created_at}
-          <div class="history-item-time">{getTimeAgo(item.created_at)}</div>
+        {#if item.executed_at || item.created_at}
+          <div class="history-item-time">{getTimeAgo(item.executed_at || item.created_at)}</div>
         {/if}
       </div>
     {/each}

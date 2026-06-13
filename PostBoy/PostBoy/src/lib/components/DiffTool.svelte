@@ -6,6 +6,7 @@
     computeSideBySideDiff, tryFormatJson, detectLanguage, buildLineColorMap,
     type DiffResult, type DiffLineEntry, type DiffSegment, type DiffOptions
   } from '$lib/utils/diffEngine';
+  import { shortcutTitle } from '$lib/utils/platform';
 
   interface DiffBlock {
     type: 'added' | 'removed' | 'modified';
@@ -363,9 +364,9 @@
     <div class="dt-bar-r">
       {#if diffResult && changePositions.length > 0}
         <div class="dt-nav">
-          <button class="dt-nb" onclick={goPrev} title="Previous (Alt+P)">▲</button>
+          <button class="dt-nb" onclick={goPrev} title={shortcutTitle('Previous', 'Alt+P')}>▲</button>
           <span class="dt-nl">{currentChangeIdx + 1}/{changePositions.length}</span>
-          <button class="dt-nb" onclick={goNext} title="Next (Alt+N)">▼</button>
+          <button class="dt-nb" onclick={goNext} title={shortcutTitle('Next', 'Alt+N')}>▼</button>
         </div>
       {/if}
       {#if diffResult}

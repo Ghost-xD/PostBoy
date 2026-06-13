@@ -6,20 +6,53 @@
   import { json } from '@codemirror/lang-json';
   import { oneDark } from '@codemirror/theme-one-dark';
   import { EditorState } from '@codemirror/state';
-  
+  import { autocompletion, type CompletionContext } from '@codemirror/autocomplete';
+  import { variables } from '$lib/stores/variableStore';
+  import { filterVariableSuggestions, maskVariableValue } from '$lib/utils/variableAutocomplete';
+
   interface Props {
     value?: string;
-    wordWrap?: boolean; // Enable word wrap by default
+    wordWrap?: boolean;
     placeholder?: string;
+    collectionId?: number | null;
   }
 
-  let { value = $bindable(''), wordWrap = true, placeholder = '' }: Props = $props();
-  
+  let {
+    value = $bindable(''),
+    wordWrap = true,
+    placeholder = '',
+    collectionId = null,
+  }: Props = $props();
+
   let editorDiv: HTMLDivElement | undefined = $state();
   let view: EditorView | undefined = $state();
-  
+  let activeCollectionId = $state<number | null>(null);
+
+  $effect(() => {
+    activeCollectionId = collectionId ?? null;
+    if (activeCollectionId) void variables.load(activeCollectionId);
+  });
+
+  function variableCompletionSource(context: CompletionContext) {
+    const match = context.matchBefore(/\{\{[\w.-]*$/);
+    if (!match || !activeCollectionId) return null;
+
+    const query = match.text.slice(2);
+    const vars = variables.getForCollection(activeCollectionId);
+    const filtered = filterVariableSuggestions(vars, query);
+    if (filtered.length === 0 && query) return null;
+
+    return {
+      from: match.from,
+      options: (filtered.length > 0 ? filtered : vars).map((v) => ({
+        label: v.key,
+        apply: `{{${v.key}}}`,
+        detail: maskVariableValue(v.value),
+      })),
+    };
+  }
+
   onMount(() => {
-    // Format the initial value if it's JSON
     let initialValue = value;
     try {
       if (value && value.trim()) {
@@ -29,11 +62,12 @@
     } catch {
       // Not valid JSON, use as-is
     }
-    
+
     const extensions = [
       basicSetup,
       json(),
       oneDark,
+      autocompletion({ override: [variableCompletionSource] }),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           value = update.state.doc.toString();
@@ -110,36 +144,33 @@
         },
       }),
     ];
-    
-    // Add line wrapping if enabled
+
     if (wordWrap) {
       extensions.push(EditorView.lineWrapping);
     }
-    
+
     const startState = EditorState.create({
       doc: initialValue,
       extensions,
     });
-    
+
     view = new EditorView({
       state: startState,
       parent: editorDiv,
     });
   });
-  
+
   onDestroy(() => {
     if (view) {
       view.destroy();
     }
   });
-  
-  // Update editor when value changes externally (from CURL parser or collection load)
+
   let lastExternalValue = $state('');
   run(() => {
     if (view && value !== view.state.doc.toString() && value !== lastExternalValue) {
       lastExternalValue = value;
-      
-      // Format the value before updating
+
       let formattedValue = value;
       try {
         if (value && value.trim()) {
@@ -147,10 +178,9 @@
           formattedValue = JSON.stringify(parsed, null, 2);
         }
       } catch {
-        // Not valid JSON, use as-is
         formattedValue = value;
       }
-      
+
       view.dispatch({
         changes: {
           from: 0,
@@ -170,7 +200,7 @@
     height: 100%;
     min-height: 300px;
   }
-  
+
   :global(.cm-editor) {
     height: 100%;
   }

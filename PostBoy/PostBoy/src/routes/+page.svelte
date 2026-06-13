@@ -23,6 +23,7 @@
   
   import TabBar from '$lib/components/TabBar.svelte';
   import RequestBuilder from '$lib/components/RequestBuilder.svelte';
+  import { HISTORY_UPDATED_EVENT } from '$lib/utils/streamHistory';
   import ResponsePanel from '$lib/components/ResponsePanel.svelte';
   import LeftSidebar from '$lib/components/LeftSidebar.svelte';
   import AppFooter from '$lib/components/AppFooter.svelte';
@@ -43,7 +44,7 @@
   import SearchPicker from '$lib/components/SearchPicker.svelte';
   import { loadSettings, settings } from '$lib/stores/settingsStore';
   import { chatbotSupported, chatbotStatus, initChatbotFeature, teardownChatbotFeature, loadDefaultModel } from '$lib/stores/chatbotStore';
-  import { isMac } from '$lib/utils/platform';
+  import { isMac, formatShortcut, matchesSqlRunnerShortcut, SQL_RUNNER_SHORTCUT } from '$lib/utils/platform';
 
   let version = $state('');
   let collections: any[] = $state([]);
@@ -67,13 +68,13 @@
   // Without the chatbot loop there's nothing to feed MCP tools into.
   let mcpTabAvailable = $derived(!!$chatbotSupported && !!$settings.chatbotEnabled);
   let toolsNavTabs = ($derived([
-    { key: 'jwt', label: 'JWT Decoder', title: 'Ctrl+Shift+J' },
-    { key: 'encoder', label: 'Encode / Decode', title: 'Ctrl+Shift+E' },
-    { key: 'sql', label: 'SQL Runner', title: 'Ctrl+Shift+Q' },
-    { key: 'diagnostics', label: 'Diagnostics', title: 'Ctrl+Shift+N' },
-    { key: 'cookies', label: 'Cookie Jar', title: 'Ctrl+Shift+X' },
+    { key: 'jwt', label: 'JWT Decoder', title: formatShortcut('Ctrl+Shift+J') },
+    { key: 'encoder', label: 'Encode / Decode', title: formatShortcut('Ctrl+Shift+E') },
+    { key: 'sql', label: 'SQL Runner', title: formatShortcut(SQL_RUNNER_SHORTCUT) },
+    { key: 'diagnostics', label: 'Diagnostics', title: formatShortcut('Ctrl+Shift+N') },
+    { key: 'cookies', label: 'Cookie Jar', title: formatShortcut('Ctrl+Shift+X') },
     mcpTabAvailable ? { key: 'mcp', label: 'MCP Servers', title: 'Manage MCP servers' } : null,
-    { key: 'settings', label: 'Settings', title: 'Ctrl+,' },
+    { key: 'settings', label: 'Settings', title: formatShortcut('Ctrl+,') },
   ].filter(Boolean) as ToolsNavTab[]));
 
   // The wave bump in the nav doubles as the active-tab indicator. We fill
@@ -153,6 +154,7 @@
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener(HISTORY_UPDATED_EVENT, loadHistory);
 
     checkForUpdates();
     listenForRustUpdate();
@@ -285,7 +287,7 @@
       const toolsItems: any[] = [
         await MenuItem.new({ id: 'jwt-decoder', text: 'JWT Decoder', accelerator: 'CmdOrCtrl+Shift+J', action: () => showToolsPanel.update(v => v === 'jwt' ? false : 'jwt') }),
         await MenuItem.new({ id: 'encoder', text: 'Base64 / URL Encoder', accelerator: 'CmdOrCtrl+Shift+E', action: () => showToolsPanel.update(v => v === 'encoder' ? false : 'encoder') }),
-        await MenuItem.new({ id: 'sql-runner', text: 'SQL Query Runner', accelerator: 'CmdOrCtrl+Shift+Q', action: () => showToolsPanel.update(v => v === 'sql' ? false : 'sql') }),
+        await MenuItem.new({ id: 'sql-runner', text: 'SQL Query Runner', accelerator: isMac ? 'Control+Shift+Q' : 'Ctrl+Shift+Q', action: () => showToolsPanel.update(v => v === 'sql' ? false : 'sql') }),
         await MenuItem.new({ id: 'cookie-jar', text: 'Cookie Jar', accelerator: 'CmdOrCtrl+Shift+X', action: () => showToolsPanel.update(v => v === 'cookies' ? false : 'cookies') }),
         await MenuItem.new({ id: 'diagnostics', text: 'Network Diagnostics', accelerator: 'CmdOrCtrl+Shift+N', action: () => showToolsPanel.update(v => v === 'diagnostics' ? false : 'diagnostics') }),
         await MenuItem.new({ id: 'diff-tool', text: 'Diff / Compare', accelerator: 'CmdOrCtrl+Shift+B', action: () => showDiffTool.update(v => !v) }),
@@ -315,6 +317,8 @@
       const viewSubmenu = await Submenu.new({
         text: 'View',
         items: [
+          await MenuItem.new({ id: 'reload', text: 'Reload', accelerator: 'CmdOrCtrl+R', action: () => reloadApp() }),
+          await PredefinedMenuItem.new({ item: 'Separator' }),
           await MenuItem.new({ id: 'next-tab', text: 'Next Tab', accelerator: 'Ctrl+Tab', action: () => nextTab() }),
           await MenuItem.new({ id: 'prev-tab', text: 'Previous Tab', accelerator: 'Ctrl+Shift+Tab', action: () => prevTab() }),
           await PredefinedMenuItem.new({ item: 'Separator' }),
@@ -405,6 +409,7 @@
   onDestroy(() => {
     window.removeEventListener('beforeunload', handleBeforeUnload);
     document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener(HISTORY_UPDATED_EVENT, loadHistory);
     if (keyboardHandler) {
       window.removeEventListener('keydown', keyboardHandler, true);
     }
@@ -452,6 +457,38 @@
   // These back both the global keyboard handler and the native menu so the two
   // stay in lockstep. Anything wired to a menu accelerator should go through one
   // of these rather than duplicating the logic inline.
+
+  function reloadApp() {
+    window.location.reload();
+  }
+
+  /** Option/Alt shortcuts — handled before the Cmd/Ctrl chord chain so they
+   *  aren't lost as else-if branches and always preventDefault to stop macOS
+   *  from inserting special characters (e.g. Option+1 → ¡). */
+  function handleOptionShortcut(e: KeyboardEvent): boolean {
+    if (!e.altKey || e.shiftKey || e.metaKey) return false;
+    if (isMac ? e.ctrlKey : false) return false;
+    const mod = isMac ? e.metaKey : e.ctrlKey;
+    if (mod) return false;
+
+    const actions: Record<string, () => void> = {
+      Digit1: () => activeResponseTab.set('preview'),
+      Digit2: () => activeResponseTab.set('headers'),
+      Digit3: () => activeResponseTab.set('console'),
+      Digit4: () => activeResponseTab.set('diff'),
+      KeyT: () => setPreviewMode('tree'),
+      KeyR: () => setPreviewMode('raw'),
+      KeyG: () => setPreviewMode('graph'),
+    };
+
+    const action = actions[e.code];
+    if (!action) return false;
+
+    e.preventDefault();
+    e.stopPropagation();
+    action();
+    return true;
+  }
 
   function triggerSendOrConnect() {
     const tab = $activeTab;
@@ -532,6 +569,16 @@
       // Primary chord modifier: Cmd on macOS, Ctrl everywhere else.
       const mod = isMac ? e.metaKey : e.ctrlKey;
 
+      // Ctrl/Cmd+R — reload the app window (Tauri webviews don't expose browser reload).
+      if (mod && !e.shiftKey && (e.key === 'r' || e.key === 'R')) {
+        e.preventDefault();
+        reloadApp();
+        return;
+      }
+
+      // Option/Alt response shortcuts (⌥1–4, ⌥T/R/G on macOS).
+      if (handleOptionShortcut(e)) return;
+
       // Ctrl/Cmd+/ — toggle keyboard shortcuts panel
       if (mod && (e.key === '/' || e.key === '?')) {
         e.preventDefault();
@@ -553,8 +600,8 @@
         return;
       }
 
-      // Ctrl+Shift+Q — SQL Query Runner
-      if (mod && e.shiftKey && e.key === 'Q') {
+      // SQL Query Runner — ⌃⇧Q on macOS (⌘⇧Q is reserved for Log Out).
+      if (matchesSqlRunnerShortcut(e)) {
         e.preventDefault();
         showToolsPanel.update(v => v === 'sql' ? false : 'sql');
         return;
@@ -802,27 +849,6 @@
       } else if (mod && (e.key === '}' || (e.shiftKey && e.key === ']'))) {
         e.preventDefault();
         rightSidebarCollapsed.update(v => !v);
-      } else if (e.altKey && !mod && !e.shiftKey && e.code === 'Digit1') {
-        e.preventDefault();
-        activeResponseTab.set('preview');
-      } else if (e.altKey && !mod && !e.shiftKey && e.code === 'Digit2') {
-        e.preventDefault();
-        activeResponseTab.set('headers');
-      } else if (e.altKey && !mod && !e.shiftKey && e.code === 'Digit3') {
-        e.preventDefault();
-        activeResponseTab.set('console');
-      } else if (e.altKey && !mod && !e.shiftKey && e.code === 'Digit4') {
-        e.preventDefault();
-        activeResponseTab.set('diff');
-      } else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyT') {
-        e.preventDefault();
-        setPreviewMode('tree');
-      } else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyR') {
-        e.preventDefault();
-        setPreviewMode('raw');
-      } else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyG') {
-        e.preventDefault();
-        setPreviewMode('graph');
       } else if (bodyTypeShortcutsEnabled && !mod && !e.shiftKey && !e.altKey) {
         const key = e.key.toLowerCase();
         const bodyTypes: Record<string, string> = {

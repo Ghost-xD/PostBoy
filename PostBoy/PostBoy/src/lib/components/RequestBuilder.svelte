@@ -14,6 +14,7 @@
   import { generators, type CodeGenOptions } from '$lib/utils/codeGenerator';
   import { variables, interpolate, interpolateJson, interpolateKeyValues, getAllUnresolvedVariables } from '$lib/stores/variableStore';
   import JsonEditor from './JsonEditor.svelte';
+  import VariableInput from './VariableInput.svelte';
   import WebSocketPanel from './WebSocketPanel.svelte';
   import SsePanel from './SsePanel.svelte';
   import MethodSelect from './MethodSelect.svelte';
@@ -233,6 +234,7 @@
   let authToken = $derived($activeTab.authToken);
   let authApiKey = $derived($activeTab.authApiKey);
   let authApiValue = $derived($activeTab.authApiValue);
+  let collectionId = $derived($activeTab.collectionId);
 
   // Local body content for JsonEditor two-way binding
   let localBodyContent = $state('');
@@ -245,9 +247,8 @@
     }
   });
 
-  function handleUrlInput(e: Event) {
-    const input = e.target as HTMLInputElement;
-    const value = input.value.trim();
+  function handleUrlValue(rawValue: string) {
+    const value = rawValue.trim();
     
     if (!value) {
       updateActiveTabBatch({
@@ -349,8 +350,7 @@
     const pasted = e.clipboardData?.getData('text') || '';
     if (pasted.trim().toLowerCase().startsWith('curl ')) {
       e.preventDefault();
-      const fakeEvent = { target: { value: pasted } } as unknown as Event;
-      handleUrlInput(fakeEvent);
+      handleUrlValue(pasted);
     }
   }
 
@@ -726,14 +726,14 @@
     <div class="request-bar-inner">
       <MethodSelect value={method} onValueChange={(v) => updateActiveTab('method', v)} />
       <div class="url-divider"></div>
-      <input 
-        type="text" 
+      <VariableInput
         id="url-input"
         value={url}
-        oninput={handleUrlInput}
+        {collectionId}
+        oninput={handleUrlValue}
         onpaste={handlePaste}
+        inputClass="url-input"
         placeholder={isWsMethod ? 'Enter WebSocket URL (ws:// or wss://)' : isSseMethod ? 'Enter SSE endpoint URL' : 'Enter request URL or paste curl command'}
-        class="url-input"
         onkeypress={(e) => e.key === 'Enter' && !isWsMethod && !isSseMethod && sendRequest()}
       />
       <div class="bar-actions">
@@ -812,19 +812,19 @@
       <div class="key-value-pairs" id="params-container">
         {#each params as param, i}
           <div class="key-value-row">
-            <input 
-              type="text" 
-              value={param.key} 
-              oninput={(e) => updateParam(i, 'key', e.currentTarget.value)} 
-              placeholder="Key" 
-              class="key-input" 
+            <VariableInput
+              value={param.key}
+              {collectionId}
+              oninput={(v) => updateParam(i, 'key', v)}
+              inputClass="key-input"
+              placeholder="Key"
             />
-            <input 
-              type="text" 
-              value={param.value} 
-              oninput={(e) => updateParam(i, 'value', e.currentTarget.value)} 
-              placeholder="Value" 
-              class="value-input" 
+            <VariableInput
+              value={param.value}
+              {collectionId}
+              oninput={(v) => updateParam(i, 'value', v)}
+              inputClass="value-input"
+              placeholder="Value"
             />
             <button class="remove-btn" onclick={() => removeParam(i)}>×</button>
           </div>
@@ -885,20 +885,20 @@
                   <option value="text">Text</option>
                   <option value="file">File</option>
                 </select>
-                <input 
-                  type="text" 
-                  value={pair.key} 
-                  oninput={(e) => updateFormDataPair(i, 'key', e.currentTarget.value)} 
-                  placeholder="Key" 
-                  class="key-input" 
+                <VariableInput
+                  value={pair.key}
+                  {collectionId}
+                  oninput={(v) => updateFormDataPair(i, 'key', v)}
+                  inputClass="key-input"
+                  placeholder="Key"
                 />
                 {#if pair.type === 'text'}
-                  <input 
-                    type="text" 
-                    value={pair.value} 
-                    oninput={(e) => updateFormDataPair(i, 'value', e.currentTarget.value)} 
-                    placeholder="Value" 
-                    class="value-input" 
+                  <VariableInput
+                    value={pair.value}
+                    {collectionId}
+                    oninput={(v) => updateFormDataPair(i, 'value', v)}
+                    inputClass="value-input"
+                    placeholder="Value"
                   />
                 {:else}
                   <div class="file-field">
@@ -916,19 +916,19 @@
           <div class="key-value-pairs" id="form-urlencoded-container">
             {#each formUrlencodedPairs as pair, i}
               <div class="key-value-row">
-                <input 
-                  type="text" 
-                  value={pair.key} 
-                  oninput={(e) => updateFormUrlencodedPair(i, 'key', e.currentTarget.value)} 
-                  placeholder="Key" 
-                  class="key-input" 
+                <VariableInput
+                  value={pair.key}
+                  {collectionId}
+                  oninput={(v) => updateFormUrlencodedPair(i, 'key', v)}
+                  inputClass="key-input"
+                  placeholder="Key"
                 />
-                <input 
-                  type="text" 
-                  value={pair.value} 
-                  oninput={(e) => updateFormUrlencodedPair(i, 'value', e.currentTarget.value)} 
-                  placeholder="Value" 
-                  class="value-input" 
+                <VariableInput
+                  value={pair.value}
+                  {collectionId}
+                  oninput={(v) => updateFormUrlencodedPair(i, 'value', v)}
+                  inputClass="value-input"
+                  placeholder="Value"
                 />
                 <button class="remove-btn" onclick={() => removeFormUrlencodedPair(i)}>×</button>
               </div>
@@ -940,25 +940,27 @@
           <div class="graphql-container">
             <div class="graphql-section">
               <label for="graphql-query">Query</label>
-              <textarea 
-                id="graphql-query"
+              <VariableInput
+                multiline
+                rows={10}
                 value={graphqlQuery}
-                oninput={(e) => updateActiveTab('graphqlQuery', e.currentTarget.value)}
+                {collectionId}
+                oninput={(v) => updateActiveTab('graphqlQuery', v)}
+                inputClass="body-input"
                 placeholder="&#123; query &#123; field &#125; &#125;"
-                class="body-input"
-                rows="10"
-              ></textarea>
+              />
             </div>
             <div class="graphql-section">
               <label for="graphql-variables">Variables (JSON)</label>
-              <textarea 
-                id="graphql-variables"
+              <VariableInput
+                multiline
+                rows={5}
                 value={graphqlVariables}
-                oninput={(e) => updateActiveTab('graphqlVariables', e.currentTarget.value)}
+                {collectionId}
+                oninput={(v) => updateActiveTab('graphqlVariables', v)}
+                inputClass="body-input"
                 placeholder='&#123; "key": "value" &#125;'
-                class="body-input"
-                rows="5"
-              ></textarea>
+              />
             </div>
           </div>
 
@@ -983,17 +985,20 @@
         {:else if bodyType === 'json'}
           <JsonEditor 
             bind:value={localBodyContent}
+            {collectionId}
             placeholder="Enter JSON data (auto-formats on paste/blur)" 
           />
 
         {:else}
-          <textarea 
+          <VariableInput
+            multiline
+            rows={15}
             value={bodyContent}
-            oninput={(e) => updateActiveTab('bodyContent', e.currentTarget.value)}
+            {collectionId}
+            oninput={(v) => updateActiveTab('bodyContent', v)}
+            inputClass="body-input"
             placeholder="Enter {bodyType} data..."
-            class="body-input"
-            rows="15"
-          ></textarea>
+          />
         {/if}
       </div>
     </div>
@@ -1016,42 +1021,43 @@
         </div>
         <div class="auth-content">
           {#if authType === 'basic'}
-            <input 
-              type="text" 
-              value={authUsername} 
-              oninput={(e) => updateActiveTab('authUsername', e.currentTarget.value)} 
-              placeholder="Username" 
-              class="auth-input" 
+            <VariableInput
+              value={authUsername}
+              {collectionId}
+              oninput={(v) => updateActiveTab('authUsername', v)}
+              inputClass="auth-input"
+              placeholder="Username"
             />
-            <input 
-              type="password" 
-              value={authPassword} 
-              oninput={(e) => updateActiveTab('authPassword', e.currentTarget.value)} 
-              placeholder="Password" 
-              class="auth-input" 
+            <VariableInput
+              type="password"
+              value={authPassword}
+              {collectionId}
+              oninput={(v) => updateActiveTab('authPassword', v)}
+              inputClass="auth-input"
+              placeholder="Password"
             />
           {:else if authType === 'bearer'}
-            <input 
-              type="text" 
-              value={authToken} 
-              oninput={(e) => updateActiveTab('authToken', e.currentTarget.value)} 
-              placeholder="Token" 
-              class="auth-input" 
+            <VariableInput
+              value={authToken}
+              {collectionId}
+              oninput={(v) => updateActiveTab('authToken', v)}
+              inputClass="auth-input"
+              placeholder={'Token (e.g. {{apiToken}})'}
             />
           {:else if authType === 'api-key'}
-            <input 
-              type="text" 
-              value={authApiKey} 
-              oninput={(e) => updateActiveTab('authApiKey', e.currentTarget.value)} 
-              placeholder="Key" 
-              class="auth-input" 
+            <VariableInput
+              value={authApiKey}
+              {collectionId}
+              oninput={(v) => updateActiveTab('authApiKey', v)}
+              inputClass="auth-input"
+              placeholder="Key"
             />
-            <input 
-              type="text" 
-              value={authApiValue} 
-              oninput={(e) => updateActiveTab('authApiValue', e.currentTarget.value)} 
-              placeholder="Value" 
-              class="auth-input" 
+            <VariableInput
+              value={authApiValue}
+              {collectionId}
+              oninput={(v) => updateActiveTab('authApiValue', v)}
+              inputClass="auth-input"
+              placeholder="Value"
             />
           {:else}
             <div class="empty-state">This request does not use any authorization.</div>
@@ -1092,22 +1098,20 @@
       <div class="key-value-pairs" id="headers-container">
         {#each headers as header, i}
           <div class="key-value-row">
-            <input 
-              type="text" 
-              value={header.key} 
-              oninput={(e) => updateHeader(i, 'key', e.currentTarget.value)} 
-              onchange={(e) => updateHeader(i, 'key', e.currentTarget.value)}
-              placeholder="Header name" 
-              class="key-input" 
-              list="common-headers" 
+            <VariableInput
+              value={header.key}
+              {collectionId}
+              oninput={(v) => updateHeader(i, 'key', v)}
+              inputClass="key-input"
+              placeholder="Header name"
+              list="common-headers"
             />
-            <input 
-              type="text" 
-              value={header.value} 
-              oninput={(e) => updateHeader(i, 'value', e.currentTarget.value)} 
-              onchange={(e) => updateHeader(i, 'value', e.currentTarget.value)}
-              placeholder="Value" 
-              class="value-input" 
+            <VariableInput
+              value={header.value}
+              {collectionId}
+              oninput={(v) => updateHeader(i, 'value', v)}
+              inputClass="value-input"
+              placeholder="Value"
             />
             <button class="remove-btn" onclick={() => removeHeader(i)}>×</button>
           </div>

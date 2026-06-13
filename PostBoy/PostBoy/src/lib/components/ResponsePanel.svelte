@@ -18,6 +18,7 @@
   import { detectResponseType } from '$lib/utils/responseUtils';
   import type { ResponseTypeInfo } from '$lib/utils/responseUtils';
   import { fileOps } from '$lib/api/tauri';
+  import { shortcutTitle } from '$lib/utils/platform';
 
   interface Props {
     onDragBottom?: (e: MouseEvent) => void;
@@ -320,7 +321,7 @@
       <button
         class="resp-tab {$activeResponseTab === 'preview' ? 'active' : ''}"
         onclick={() => activeResponseTab.set('preview')}
-        title="Preview (Alt+1)"
+        title={shortcutTitle('Preview', 'Alt+1')}
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.854 4.854a.5.5 0 1 0-.708-.708l-3.5 3.5a.5.5 0 0 0 0 .708l3.5 3.5a.5.5 0 0 0 .708-.708L2.707 8l3.147-3.146zm4.292 0a.5.5 0 0 1 .708-.708l3.5 3.5a.5.5 0 0 1 0 .708l-3.5 3.5a.5.5 0 0 1-.708-.708L13.293 8l-3.147-3.146z"/></svg>
         Preview
@@ -328,7 +329,7 @@
       <button
         class="resp-tab {$activeResponseTab === 'headers' ? 'active' : ''}"
         onclick={() => activeResponseTab.set('headers')}
-        title="Headers (Alt+2)"
+        title={shortcutTitle('Headers', 'Alt+2')}
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2zm15 2h-4v3h4V4zm0 4h-4v3h4V8zm0 4h-4v3h3a1 1 0 0 0 1-1v-2zm-5 3v-3H6v3h4zm-5 0v-3H1v2a1 1 0 0 0 1 1h3zm-4-4h4V8H1v3zm0-4h4V4H1v3zm5-3v3h4V4H6zm4 4H6v3h4V8z"/></svg>
         Headers
@@ -339,7 +340,7 @@
       <button
         class="resp-tab {$activeResponseTab === 'console' ? 'active' : ''}"
         onclick={() => activeResponseTab.set('console')}
-        title="Console (Alt+3)"
+        title={shortcutTitle('Console', 'Alt+3')}
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6 9a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3A.5.5 0 0 1 6 9zM3.854 4.146a.5.5 0 1 0-.708.708L4.793 6.5 3.146 8.146a.5.5 0 1 0 .708.708l2-2a.5.5 0 0 0 0-.708l-2-2z"/><path d="M2 1a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2H2zm12 1a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h12z"/></svg>
         Console
@@ -350,7 +351,7 @@
       <button
         class="resp-tab {$activeResponseTab === 'diff' ? 'active' : ''}"
         onclick={() => activeResponseTab.set('diff')}
-        title="Diff (Alt+4)"
+        title={shortcutTitle('Diff', 'Alt+4')}
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
         Diff
@@ -386,9 +387,9 @@
             {:else}
               <div class="resp-preview-toolbar">
                 <div class="view-toggle">
-                  <button class="view-toggle-btn {previewMode === 'tree' ? 'active' : ''}" onclick={() => previewMode = 'tree'} disabled={!parsedJson} title="Tree view (Alt+T)">Tree</button>
-                  <button class="view-toggle-btn {previewMode === 'raw' ? 'active' : ''}" onclick={() => previewMode = 'raw'} title="Raw view (Alt+R)">Raw</button>
-                  <button class="view-toggle-btn {graphFullscreen ? 'active' : ''}" onclick={openGraphFullscreen} disabled={!parsedJson} title="Graph view (Alt+G)">Graph</button>
+                  <button class="view-toggle-btn {previewMode === 'tree' ? 'active' : ''}" onclick={() => previewMode = 'tree'} disabled={!parsedJson} title={shortcutTitle('Tree view', 'Alt+T')}>Tree</button>
+                  <button class="view-toggle-btn {previewMode === 'raw' ? 'active' : ''}" onclick={() => previewMode = 'raw'} title={shortcutTitle('Raw view', 'Alt+R')}>Raw</button>
+                  <button class="view-toggle-btn {graphFullscreen ? 'active' : ''}" onclick={openGraphFullscreen} disabled={!parsedJson} title={shortcutTitle('Graph view', 'Alt+G')}>Graph</button>
                 </div>
                 <div class="toolbar-actions">
                   {#if responseContentType}

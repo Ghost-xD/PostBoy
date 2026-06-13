@@ -14,6 +14,8 @@ import {
   countVariablesInText,
   flattenJsonPaths,
   getValueAtPath,
+  resolveMappingEntry,
+  materializeMappingsFromResponse,
 } from './variableStore';
 
 import { get } from 'svelte/store';
@@ -469,5 +471,116 @@ describe('getValueAtPath', () => {
 
   it('handles part not present in object', () => {
     expect(getValueAtPath({ a: { b: 1 } }, 'a.c')).toBeUndefined();
+  });
+});
+
+describe('resolveMappingEntry', () => {
+  const tokenResponse = {
+    accessToken: 'jwt-token-value',
+    expiresIn: 3600,
+    tokenType: 'Bearer',
+  };
+
+  it('maps json path to variable name in the correct order', () => {
+    const result = resolveMappingEntry(tokenResponse, 'accessToken', 'apiToken');
+    expect(result).toEqual({ variableName: 'apiToken', value: 'jwt-token-value' });
+  });
+
+  it('auto-corrects when path and variable name fields are swapped', () => {
+    const result = resolveMappingEntry(tokenResponse, 'apiToken', 'accessToken');
+    expect(result).toEqual({ variableName: 'apiToken', value: 'jwt-token-value' });
+  });
+
+  it('returns null when neither field matches a response path', () => {
+    expect(resolveMappingEntry(tokenResponse, 'apiToken', 'missing')).toBeNull();
+  });
+
+  it('returns null for empty path or name', () => {
+    expect(resolveMappingEntry(tokenResponse, '', 'apiToken')).toBeNull();
+    expect(resolveMappingEntry(tokenResponse, 'accessToken', '')).toBeNull();
+  });
+});
+
+describe('materializeMappingsFromResponse', () => {
+  beforeEach(() => {
+    mockInvoke.mockReset();
+  });
+
+  it('writes variables from response mappings and reloads from db', async () => {
+    const response = { accessToken: 'secret-jwt', expiresIn: '3600' };
+    mockInvoke.mockResolvedValueOnce(undefined); // set apiToken
+    mockInvoke.mockResolvedValueOnce(undefined); // set expiresIn
+    mockInvoke.mockResolvedValueOnce([
+      { key: 'apiToken', value: 'secret-jwt' },
+      { key: 'expiresIn', value: '3600' },
+    ]); // reload after writes
+
+    const written = await materializeMappingsFromResponse(1, response, [
+      { jsonPath: 'accessToken', variableName: 'apiToken' },
+      { jsonPath: 'expiresIn', variableName: 'expiresIn' },
+    ]);
+
+    expect(written).toBe(2);
+    expect(mockInvoke).toHaveBeenCalledWith('db_set_variable', {
+      collectionId: 1,
+      key: 'apiToken',
+      value: 'secret-jwt',
+    });
+    expect(mockInvoke).toHaveBeenCalledWith('db_set_variable', {
+      collectionId: 1,
+      key: 'expiresIn',
+      value: '3600',
+    });
+    expect(mockInvoke).toHaveBeenCalledWith('db_get_variables', { collectionId: 1 });
+    expect(variables.getForCollection(1)).toEqual([
+      { key: 'apiToken', value: 'secret-jwt' },
+      { key: 'expiresIn', value: '3600' },
+    ]);
+  });
+
+  it('writes variables when mapping fields are swapped', async () => {
+    const response = { accessToken: 'swapped-fix' };
+    mockInvoke.mockResolvedValueOnce(undefined); // set
+    mockInvoke.mockResolvedValueOnce([{ key: 'apiToken', value: 'swapped-fix' }]); // reload
+
+    const written = await materializeMappingsFromResponse(2, response, [
+      { jsonPath: 'apiToken', variableName: 'accessToken' },
+    ]);
+
+    expect(written).toBe(1);
+    expect(mockInvoke).toHaveBeenCalledWith('db_set_variable', {
+      collectionId: 2,
+      key: 'apiToken',
+      value: 'swapped-fix',
+    });
+    expect(variables.getForCollection(2)).toEqual([{ key: 'apiToken', value: 'swapped-fix' }]);
+  });
+
+  it('returns 0 and skips db reload when no mappings resolve', async () => {
+    const written = await materializeMappingsFromResponse(3, { foo: 'bar' }, [
+      { jsonPath: 'missing', variableName: 'alsoMissing' },
+    ]);
+
+    expect(written).toBe(0);
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it('notifies subscribers after materializing so UI can refresh', async () => {
+    const response = { accessToken: 'notify-me' };
+    mockInvoke.mockResolvedValueOnce(undefined);
+    mockInvoke.mockResolvedValueOnce([{ key: 'apiToken', value: 'notify-me' }]);
+
+    let notifyCount = 0;
+    const unsub = variables.subscribe(() => {
+      notifyCount++;
+    });
+
+    await materializeMappingsFromResponse(4, response, [
+      { jsonPath: 'accessToken', variableName: 'apiToken' },
+    ]);
+
+    unsub();
+    // Initial subscribe callback + set + load = at least 3 notifications
+    expect(notifyCount).toBeGreaterThanOrEqual(3);
   });
 });

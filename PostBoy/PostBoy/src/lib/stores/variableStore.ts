@@ -8,6 +8,14 @@ export interface Variable {
 
 // Store: collectionId -> array of variables
 const variablesMap = writable<Map<number, Variable[]>>(new Map());
+// Bumped on every mutation so Svelte 5 runes reliably re-render Map-backed UI.
+const variablesRev = writable(0);
+
+function bumpVariablesRev() {
+  variablesRev.update((n) => n + 1);
+}
+
+export { variablesRev };
 
 export const variables = {
   subscribe: variablesMap.subscribe,
@@ -16,17 +24,21 @@ export const variables = {
     try {
       const vars = (await db.getVariables(collectionId)) as Variable[];
       variablesMap.update(map => {
-        map.set(collectionId, vars || []);
-        return new Map(map);
+        const next = new Map(map);
+        next.set(collectionId, vars || []);
+        return next;
       });
+      bumpVariablesRev();
       return vars || [];
     } catch (error) {
       // Table might not exist yet (migration pending), silently fail
       console.warn('Variables not loaded (migration may be pending):', error);
       variablesMap.update(map => {
-        map.set(collectionId, []);
-        return new Map(map);
+        const next = new Map(map);
+        next.set(collectionId, []);
+        return next;
       });
+      bumpVariablesRev();
       return [];
     }
   },
@@ -37,14 +49,17 @@ export const variables = {
       variablesMap.update(map => {
         const existing = map.get(collectionId) || [];
         const idx = existing.findIndex(v => v.key === key);
+        const updated = [...existing];
         if (idx >= 0) {
-          existing[idx] = { key, value };
+          updated[idx] = { key, value };
         } else {
-          existing.push({ key, value });
+          updated.push({ key, value });
         }
-        map.set(collectionId, [...existing].sort((a, b) => a.key.localeCompare(b.key)));
-        return new Map(map);
+        const next = new Map(map);
+        next.set(collectionId, updated.sort((a, b) => a.key.localeCompare(b.key)));
+        return next;
       });
+      bumpVariablesRev();
       return true;
     } catch (error) {
       console.error('Failed to set variable:', error);
@@ -57,9 +72,11 @@ export const variables = {
       await db.deleteVariable(collectionId, key);
       variablesMap.update(map => {
         const existing = map.get(collectionId) || [];
-        map.set(collectionId, existing.filter(v => v.key !== key));
-        return new Map(map);
+        const next = new Map(map);
+        next.set(collectionId, existing.filter(v => v.key !== key));
+        return next;
       });
+      bumpVariablesRev();
       return true;
     } catch (error) {
       console.error('Failed to delete variable:', error);
@@ -71,9 +88,11 @@ export const variables = {
     try {
       await db.clearVariables(collectionId);
       variablesMap.update(map => {
-        map.set(collectionId, []);
-        return new Map(map);
+        const next = new Map(map);
+        next.set(collectionId, []);
+        return next;
       });
+      bumpVariablesRev();
       return true;
     } catch (error) {
       console.error('Failed to clear variables:', error);
@@ -86,6 +105,59 @@ export const variables = {
     return get(variablesMap).get(collectionId) || [];
   }
 };
+
+export interface TokenRefreshMapping {
+  jsonPath: string;
+  variableName: string;
+}
+
+/**
+ * Resolve one response-mapping row into a variable key/value pair.
+ * If the JSON path does not match but the variable-name field matches a path
+ * (fields were entered backwards), the mapping is auto-corrected.
+ */
+export function resolveMappingEntry(
+  responseJson: unknown,
+  jsonPath: string,
+  variableName: string
+): { variableName: string; value: string } | null {
+  const trimmedPath = jsonPath.trim();
+  const trimmedName = variableName.trim();
+  if (!trimmedPath || !trimmedName) return null;
+
+  let value = getValueAtPath(responseJson as any, trimmedPath);
+  let name = trimmedName;
+
+  if (value === undefined) {
+    const swappedValue = getValueAtPath(responseJson as any, trimmedName);
+    if (swappedValue !== undefined) {
+      value = swappedValue;
+      name = trimmedPath;
+    }
+  }
+
+  if (value === undefined) return null;
+  return { variableName: name, value };
+}
+
+/** Write mapped values from a token response into collection variables. */
+export async function materializeMappingsFromResponse(
+  collectionId: number,
+  responseJson: unknown,
+  mappings: TokenRefreshMapping[]
+): Promise<number> {
+  let written = 0;
+  for (const m of mappings) {
+    const resolved = resolveMappingEntry(responseJson, m.jsonPath, m.variableName);
+    if (!resolved) continue;
+    const ok = await variables.set(collectionId, resolved.variableName, resolved.value);
+    if (ok) written++;
+  }
+  if (written > 0) {
+    await variables.load(collectionId);
+  }
+  return written;
+}
 
 const VARIABLE_REGEX = /\{\{([^}]+)\}\}/g;
 

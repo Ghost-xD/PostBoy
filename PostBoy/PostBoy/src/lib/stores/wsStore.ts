@@ -1,8 +1,8 @@
-import { writable, get } from 'svelte/store';
 import { listen } from '@tauri-apps/api/event';
 import { ws } from '$lib/api/tauri';
 import { tabs, type WsMessage } from '$lib/stores/tabStore';
 import { addLog } from '$lib/stores/consoleStore';
+import { recordStreamConnectHistory } from '$lib/utils/streamHistory';
 
 const MAX_MESSAGES = 1000;
 
@@ -67,12 +67,23 @@ export function initWsListeners() {
 }
 
 export async function wsConnect(tabId: string, url: string, headers?: Record<string, string>) {
+  const started = Date.now();
   updateTabWs(tabId, { wsStatus: 'connecting' });
   try {
     await ws.connect(tabId, url, headers);
+    await recordStreamConnectHistory(tabId, {
+      responseTimeMs: Date.now() - started,
+      status: 101,
+      summary: 'WebSocket connected',
+    });
   } catch (err: any) {
     updateTabWs(tabId, { wsStatus: 'error' });
     addLog(`WebSocket connect failed: ${err}`, 'error');
+    await recordStreamConnectHistory(tabId, {
+      responseTimeMs: Date.now() - started,
+      status: 0,
+      summary: `WebSocket connect failed: ${err}`,
+    }).catch(() => {});
   }
 }
 

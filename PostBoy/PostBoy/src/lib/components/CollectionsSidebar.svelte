@@ -4,7 +4,9 @@
   const bubble = createBubbler();
   import { db, http, fileOps } from '$lib/api/tauri';
   import { onMount, onDestroy } from 'svelte';
-  import { variables, type Variable, getValueAtPath, interpolate, interpolateKeyValues } from '$lib/stores/variableStore';
+  import { flip } from 'svelte/animate';
+  import { quintOut } from 'svelte/easing';
+  import { variables, materializeMappingsFromResponse, resolveMappingEntry, type Variable, getValueAtPath, interpolate, interpolateKeyValues } from '$lib/stores/variableStore';
   import { addLog } from '$lib/stores/consoleStore';
   import { showLoadTest } from '$lib/stores/uiStore';
   import RequestChainPanel from './RequestChainPanel.svelte';
@@ -62,12 +64,107 @@
   let editingRequestName: { id: number; collectionId: number; name: string } | null = $state(null);
 
   let dragRequestId: number | null = $state(null);
-  let dragOverRequestId: number | null = $state(null);
-  let dragCollectionId: number | null = null;
-  let dragInsertPos: 'before' | 'after' | null = $state(null);
+  let dragCollectionId: number | null = $state(null);
+  let dragInsertIndex: number | null = $state(null);
+  let dragOriginalOrder: number[] | null = null;
   let dragClone: HTMLElement | null = null;
   let dragOffsetX = 0;
   let dragOffsetY = 0;
+
+  const flipDuration = 220;
+
+  function requestOrdersEqual(a: number[], b: number[]): boolean {
+    return a.length === b.length && a.every((id, i) => id === b[i]);
+  }
+
+  function buildOrderWithInsert(original: number[], dragId: number, insertIndex: number): number[] {
+    const without = original.filter((id) => id !== dragId);
+    const next = [...without];
+    next.splice(insertIndex, 0, dragId);
+    return next;
+  }
+
+  function findDropIndex(clientY: number, collectionId: number): number | null {
+    if (dragInsertIndex === null) return null;
+
+    const container = document.querySelector(`.collection-requests[data-collection-id="${collectionId}"]`);
+    if (!container) return null;
+
+    const rows = Array.from(container.querySelectorAll('.collection-request')) as HTMLElement[];
+    if (rows.length === 0) return 0;
+
+    for (let i = 0; i < rows.length; i++) {
+      const rect = rows[i].getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      if (clientY < midY) return i;
+    }
+
+    return rows.length;
+  }
+
+  function getReorderableRequests(collection: any): any[] {
+    const requests = collection.requests || [];
+    let list = requests;
+
+    if (
+      dragCollectionId === collection.id &&
+      dragRequestId !== null &&
+      dragOriginalOrder &&
+      !searchQuery
+    ) {
+      const byId = new Map(requests.map((r: any) => [r.id, r]));
+      list = dragOriginalOrder
+        .filter((id) => id !== dragRequestId)
+        .map((id) => byId.get(id))
+        .filter(Boolean) as any[];
+    }
+
+    if (!searchQuery) return list;
+
+    const q = searchQuery.toLowerCase();
+    return list.filter(
+      (r: any) =>
+        requestMatchesSearch(r, searchQuery) ||
+        (collection.name || '').toLowerCase().includes(q)
+    );
+  }
+
+  function isDraggingCollection(collectionId: number): boolean {
+    return dragCollectionId === collectionId && dragInsertIndex !== null && !searchQuery;
+  }
+
+  type ReorderSlot =
+    | { kind: 'spacer'; key: string }
+    | { kind: 'request'; key: string; request: any };
+
+  function getReorderRenderSlots(collection: any): ReorderSlot[] {
+    const items = getReorderableRequests(collection);
+    const dragging = isDraggingCollection(collection.id);
+
+    if (!dragging || dragInsertIndex === null) {
+      return items.map((request: any) => ({
+        kind: 'request' as const,
+        key: `request-${request.id}`,
+        request
+      }));
+    }
+
+    const slots: ReorderSlot[] = [];
+    for (let index = 0; index < items.length; index++) {
+      if (dragInsertIndex === index) {
+        slots.push({ kind: 'spacer', key: 'drag-spacer' });
+      }
+      slots.push({
+        kind: 'request',
+        key: `request-${items[index].id}`,
+        request: items[index]
+      });
+    }
+    if (dragInsertIndex === items.length) {
+      slots.push({ kind: 'spacer', key: 'drag-spacer' });
+    }
+    return slots;
+  }
 
   function startRenameCollection(id: number, currentName: string) {
     editingCollectionName = { id, name: currentName };
@@ -122,19 +219,25 @@
   }
 
   function handleGripMouseDown(e: MouseEvent, requestId: number, collectionId: number) {
+    if (searchQuery) return;
+
     e.preventDefault();
     e.stopPropagation();
 
     const row = (e.target as HTMLElement).closest('.collection-request') as HTMLElement;
     if (!row) return;
 
+    const collection = collections.find((c) => c.id === collectionId);
+    const order = (collection?.requests || []).map((r: any) => r.id);
+    if (order.length < 2) return;
+
     const rect = row.getBoundingClientRect();
     dragOffsetX = e.clientX - rect.left;
     dragOffsetY = e.clientY - rect.top;
     dragRequestId = requestId;
     dragCollectionId = collectionId;
-    dragOverRequestId = null;
-    dragInsertPos = null;
+    dragInsertIndex = order.indexOf(requestId);
+    dragOriginalOrder = [...order];
 
     const clone = row.cloneNode(true) as HTMLElement;
     clone.style.cssText = `
@@ -145,11 +248,11 @@
       height: ${rect.height}px;
       z-index: 9999;
       pointer-events: none;
-      opacity: 0.92;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.35), 0 0 0 1px #5865f2;
+      opacity: 0.96;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.28), 0 0 0 1px rgba(88, 101, 242, 0.45);
       border-radius: 6px;
-      transform: scale(1.03);
-      transition: opacity 0.15s ease, transform 0.15s ease;
+      transform: scale(1.02);
+      transition: opacity 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
       background: var(--bg-secondary, #2b2d31);
     `;
     document.body.appendChild(clone);
@@ -164,25 +267,11 @@
         dragClone.style.top = `${ev.clientY - dragOffsetY}px`;
       }
 
-      const els = document.elementsFromPoint(ev.clientX, ev.clientY);
-      const target = els.find(el =>
-        el.classList.contains('collection-request') && el.getAttribute('data-request-id')
-      ) as HTMLElement | undefined;
-
-      if (target) {
-        const id = Number(target.getAttribute('data-request-id'));
-        if (!isNaN(id) && id !== dragRequestId) {
-          const targetRect = target.getBoundingClientRect();
-          const midY = targetRect.top + targetRect.height / 2;
-          dragOverRequestId = id;
-          dragInsertPos = ev.clientY < midY ? 'before' : 'after';
-        } else {
-          dragOverRequestId = null;
-          dragInsertPos = null;
+      if (dragInsertIndex !== null && dragRequestId !== null && dragCollectionId !== null) {
+        const targetIndex = findDropIndex(ev.clientY, dragCollectionId);
+        if (targetIndex !== null && targetIndex !== dragInsertIndex) {
+          dragInsertIndex = targetIndex;
         }
-      } else {
-        dragOverRequestId = null;
-        dragInsertPos = null;
       }
     }
 
@@ -192,42 +281,36 @@
 
       if (dragClone) {
         dragClone.style.opacity = '0';
-        dragClone.style.transform = 'scale(0.96)';
+        dragClone.style.transform = 'scale(0.98)';
         const cloneRef = dragClone;
-        setTimeout(() => cloneRef.remove(), 150);
+        setTimeout(() => cloneRef.remove(), 180);
         dragClone = null;
       }
 
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
 
-      if (dragOverRequestId !== null && dragRequestId !== null && dragOverRequestId !== dragRequestId && dragInsertPos) {
-        const collection = collections.find(c => c.id === dragCollectionId);
-        if (collection?.requests) {
-          const reqs = [...collection.requests];
-          const fromIdx = reqs.findIndex((r: any) => r.id === dragRequestId);
-          let toIdx = reqs.findIndex((r: any) => r.id === dragOverRequestId);
-          if (fromIdx !== -1 && toIdx !== -1) {
-            const [moved] = reqs.splice(fromIdx, 1);
-            if (fromIdx < toIdx) toIdx--;
-            const insertAt = dragInsertPos === 'after' ? toIdx + 1 : toIdx;
-            reqs.splice(insertAt, 0, moved);
-            const newOrder = reqs.map((r: any) => r.id);
-            try {
-              await db.reorderRequests(newOrder);
-              addLog('✓ Requests reordered', 'system');
-              await onReload();
-            } catch (err: any) {
-              addLog(`✗ Failed to reorder: ${err}`, 'error');
-            }
-          }
+      const finalOrder =
+        dragOriginalOrder && dragRequestId !== null && dragInsertIndex !== null
+          ? buildOrderWithInsert(dragOriginalOrder, dragRequestId, dragInsertIndex)
+          : null;
+      const originalOrder = dragOriginalOrder;
+
+      dragRequestId = null;
+      dragCollectionId = null;
+      dragInsertIndex = null;
+
+      if (finalOrder && originalOrder && !requestOrdersEqual(finalOrder, originalOrder)) {
+        try {
+          await db.reorderRequests(finalOrder);
+          addLog('✓ Requests reordered', 'system');
+          await onReload();
+        } catch (err: any) {
+          addLog(`✗ Failed to reorder: ${err}`, 'error');
         }
       }
 
-      dragRequestId = null;
-      dragOverRequestId = null;
-      dragCollectionId = null;
-      dragInsertPos = null;
+      dragOriginalOrder = null;
     }
 
     window.addEventListener('mousemove', onMouseMove);
@@ -511,36 +594,37 @@
       .map(m => ({ jsonPath: m.jsonPath.trim(), variableName: m.variableName.trim() }))
       .filter(m => m.jsonPath && m.variableName);
 
+    // Capture before closeConfigModal clears testResponseJson.
+    const cachedTestJson = testResponseJson;
+
     if (validMappings.length === 0) {
       await saveTokenRefreshConfig(collectionId, null);
+      addLog(`✓ Token refresh cleared for collection`, 'system');
     } else {
       await saveTokenRefreshConfig(collectionId, {
         requestId: configModalRequestId,
         mappings: validMappings
       });
-    }
 
-    // If the user already ran Test, materialize the mapped variables now so
-    // they show up under the collection's VARIABLES section without having
-    // to invoke the full token-refresh flow.
-    if (testResponseJson !== null && validMappings.length > 0) {
-      const { getValueAtPath } = await import('$lib/stores/variableStore');
-      await variables.load(collectionId);
-      let written = 0;
-      for (const m of validMappings) {
-        const value = getValueAtPath(testResponseJson, m.jsonPath);
-        if (value !== undefined) {
-          const ok = await variables.set(collectionId, m.variableName, value);
-          if (ok) written++;
+      // Keep the variables section open so new values are visible immediately.
+      expandedVariables.add(collectionId);
+      expandedVariables = new Set(expandedVariables);
+
+      closeConfigModal();
+
+      if (cachedTestJson !== null) {
+        const written = await materializeMappingsFromResponse(collectionId, cachedTestJson, validMappings);
+        if (written > 0) {
+          addLog(`✓ Token refresh configured; wrote ${written} variable(s) from Test response`, 'system');
+        } else {
+          addLog(`✓ Token refresh configured (no values extracted from Test response)`, 'system');
         }
-      }
-      if (written > 0) {
-        addLog(`✓ Token refresh configured; wrote ${written} variable(s) from Test response`, 'system');
+        variablesTick++;
       } else {
-        addLog(`✓ Token refresh configured (no values extracted from Test response)`, 'system');
+        addLog(`✓ Token refresh configured — fetching token…`, 'system');
+        await executeTokenRefresh(collectionId);
       }
-    } else {
-      addLog(`✓ Token refresh configured for collection`, 'system');
+      return;
     }
 
     closeConfigModal();
@@ -612,13 +696,13 @@
       addLog(`  Response keys: [${responseKeys.slice(0, 10).join(', ')}]`, 'info');
 
       let successCount = 0;
+      successCount = await materializeMappingsFromResponse(collectionId, responseJson, config.mappings);
+
       for (const mapping of config.mappings) {
-        const value = getValueAtPath(responseJson, mapping.jsonPath);
-        if (value !== undefined) {
-          const masked = String(value).length > 8 ? String(value).slice(0, 4) + '...' + String(value).slice(-4) : '***';
-          await variables.set(collectionId, mapping.variableName, value);
-          addLog(`  ✓ {{${mapping.variableName}}} = ${masked} (from ${mapping.jsonPath})`, 'system');
-          successCount++;
+        const resolved = resolveMappingEntry(responseJson, mapping.jsonPath, mapping.variableName);
+        if (resolved) {
+          const masked = resolved.value.length > 8 ? resolved.value.slice(0, 4) + '...' + resolved.value.slice(-4) : '***';
+          addLog(`  ✓ {{${resolved.variableName}}} = ${masked} (from ${mapping.jsonPath})`, 'system');
         } else {
           addLog(`  ✗ Path "${mapping.jsonPath}" not found in response. Available: [${responseKeys.join(', ')}]`, 'error');
         }
@@ -629,6 +713,8 @@
       refreshStatus.set(collectionId, { state: 'success', message: msg });
       refreshStatus = refreshStatus;
       refreshVersion++;
+      await variables.load(collectionId);
+      variablesTick++;
       setTimeout(() => { refreshStatus.delete(collectionId); refreshStatus = refreshStatus; refreshVersion++; }, 3000);
     } catch (error: any) {
       const msg = `✗ ${error.message || error}`;
@@ -819,8 +905,19 @@
 
   async function saveNewVariable() {
     if (!addingVariable || !addingVariable.key.trim()) return;
-    await variables.set(addingVariable.collectionId, addingVariable.key.trim(), addingVariable.value);
-    addLog(`✓ Added variable {{${addingVariable.key}}}`, 'system');
+    const { collectionId, key, value } = addingVariable;
+    const trimmedKey = key.trim();
+    const ok = await variables.set(collectionId, trimmedKey, value);
+    if (!ok) {
+      addLog(`✗ Failed to save variable {{${trimmedKey}}}`, 'error');
+      return;
+    }
+    // Re-read from DB so the list always reflects what was persisted.
+    await variables.load(collectionId);
+    expandedVariables.add(collectionId);
+    expandedVariables = new Set(expandedVariables);
+    variablesTick++;
+    addLog(`✓ Added variable {{${trimmedKey}}}`, 'system');
     addingVariable = null;
   }
 
@@ -834,7 +931,13 @@
 
   async function saveEditVariable() {
     if (!editingVariable) return;
-    await variables.set(editingVariable.collectionId, editingVariable.key, editingVariable.value);
+    const ok = await variables.set(editingVariable.collectionId, editingVariable.key, editingVariable.value);
+    if (!ok) {
+      addLog(`✗ Failed to update variable {{${editingVariable.key}}}`, 'error');
+      return;
+    }
+    await variables.load(editingVariable.collectionId);
+    variablesTick++;
     addLog(`✓ Updated variable {{${editingVariable.key}}}`, 'system');
     editingVariable = null;
   }
@@ -852,7 +955,20 @@
     }
   }
 
-  let varsMap = $derived($variables);
+  // Reactive tick bumped whenever the variables store mutates.
+  let variablesTick = $state(0);
+
+  onMount(() => {
+    const unsub = variables.subscribe(() => {
+      variablesTick++;
+    });
+    return unsub;
+  });
+
+  function varsForCollection(collectionId: number): Variable[] {
+    variablesTick;
+    return variables.getForCollection(collectionId);
+  }
 
   interface TreeNode {
     collection: any;
@@ -966,6 +1082,7 @@
       {@const collection = node.collection}
       {@const hasChildren = node.children.length > 0}
       {@const isFolder = hasChildren || (collection.requests?.length === 0 && collection.description === '' && node.children.length === 0 && collection.parent_id !== undefined)}
+      {@const reorderSlots = getReorderRenderSlots(collection)}
       <div class="collection-item {expandedCollections.has(collection.id) ? 'expanded' : ''}" style="padding-left: {node.depth * 16}px">
         <div class="collection-header" role="button" tabindex="0" onclick={() => toggleCollection(collection.id)} onkeypress={(e) => e.key === 'Enter' && toggleCollection(collection.id)}>
           <div class="collection-name">
@@ -1046,7 +1163,7 @@
             >
               <span class="variables-toggle" class:open={expandedVariables.has(collection.id)}>▶</span>
               <span class="variables-label">Variables</span>
-              <span class="variables-count">{(varsMap.get(collection.id) || []).length}</span>
+              <span class="variables-count">{varsForCollection(collection.id).length}</span>
               <span 
                 class="token-refresh-btn"
                 class:has-config={hasTokenConfig(collection.id, tokenConfigVersion)}
@@ -1102,7 +1219,7 @@
                   </div>
                 {/if}
                 
-                {#each (varsMap.get(collection.id) || []) as variable}
+                {#each varsForCollection(collection.id) as variable (variable.key)}
                   {#if editingVariable?.collectionId === collection.id && editingVariable?.key === variable.key}
                     <div class="variable-row editing">
                       <span class="var-key-display">{'{{' + variable.key + '}}'}</span>
@@ -1148,7 +1265,7 @@
                   {/if}
                 {/each}
                 
-                {#if (varsMap.get(collection.id) || []).length === 0 && !addingVariable}
+                {#if varsForCollection(collection.id).length === 0 && !addingVariable}
                   <div class="no-variables">No variables. Click + to add.</div>
                 {/if}
               </div>
@@ -1208,56 +1325,61 @@
           </div>
 
           <!-- Requests Section -->
-          <div class="collection-requests">
-            {#each (searchQuery ? (collection.requests || []).filter((r: any) => requestMatchesSearch(r, searchQuery) || (collection.name || '').toLowerCase().includes(searchQuery.toLowerCase())) : (collection.requests || [])) as request}
+          <div class="collection-requests" data-collection-id={collection.id}>
+            {#each reorderSlots as slot (slot.key)}
+              {@const request = slot.kind === 'request' ? slot.request : null}
               <div
-                class="collection-request {dragRequestId === request.id ? 'dragging' : ''} {dragOverRequestId === request.id && dragInsertPos === 'before' ? 'drag-over-before' : ''} {dragOverRequestId === request.id && dragInsertPos === 'after' ? 'drag-over-after' : ''}"
-                role="button"
-                tabindex="0"
-                data-request-id={request.id}
-                onclick={() => { if (!editingRequestName) onRequestClick({...request, collectionId: collection.id}); }}
-                onkeypress={(e) => e.key === 'Enter' && onRequestClick({...request, collectionId: collection.id})}
+                class={slot.kind === 'spacer' ? 'drag-spacer' : 'collection-request'}
+                animate:flip={{ duration: flipDuration, easing: quintOut }}
+                aria-hidden={slot.kind === 'spacer' ? true : undefined}
+                role={slot.kind === 'request' ? 'button' : undefined}
+                tabindex={slot.kind === 'request' ? 0 : undefined}
+                data-request-id={request?.id}
+                onclick={() => { if (request && !editingRequestName) onRequestClick({...request, collectionId: collection.id}); }}
+                onkeypress={(e) => { if (request && e.key === 'Enter') onRequestClick({...request, collectionId: collection.id}); }}
               >
-                <div class="drag-grip" title="Drag to reorder" onmousedown={(e) => handleGripMouseDown(e, request.id, collection.id)} role="button" tabindex="-1" aria-label="Drag to reorder">⋮⋮</div>
-                <div class="method {request.method.toLowerCase()}">{request.method}</div>
-                <div class="name">
-                  {#if editingRequestName?.id === request.id}
-                    <input
-                      class="rename-request-input"
-                      type="text"
-                      bind:value={editingRequestName!.name}
-                      onkeydown={(e) => { if (e.key === 'Enter') saveRenameRequest(); if (e.key === 'Escape') cancelRenameRequest(); }}
-                      onblur={saveRenameRequest}
-                      onclick={stopPropagation(bubble('click'))}
-                    />
-                  {:else}
-                    <!-- svelte-ignore a11y_no_static_element_interactions -->
-                    <span class="request-name-text" ondblclick={stopPropagation(() => startRenameRequest(request.id, collection.id, request.name))}>{request.name}</span>
-                  {/if}
-                </div>
-                <div class="request-actions">
-                  <button
-                    class="request-action-btn rename-request-btn"
-                    onclick={stopPropagation(() => startRenameRequest(request.id, collection.id, request.name))}
-                    title="Rename"
-                  >
-                    ✎
-                  </button>
-                  <button
-                    class="request-action-btn duplicate-request-btn"
-                    onclick={stopPropagation(() => duplicateRequest(collection.id, request.id))}
-                    title="Duplicate Request"
-                  >
-                    📋
-                  </button>
-                  <button 
-                    class="request-action-btn delete-request-btn"
-                    onclick={stopPropagation(() => deleteRequest(collection.id, request.id))}
-                    title="Delete Request"
-                  >
-                    🗑️
-                  </button>
-                </div>
+                {#if request}
+                  <div class="drag-grip" title="Drag to reorder" onmousedown={(e) => handleGripMouseDown(e, request.id, collection.id)} role="button" tabindex="-1" aria-label="Drag to reorder">⋮⋮</div>
+                  <div class="method {request.method.toLowerCase()}">{request.method}</div>
+                  <div class="name">
+                    {#if editingRequestName?.id === request.id}
+                      <input
+                        class="rename-request-input"
+                        type="text"
+                        bind:value={editingRequestName!.name}
+                        onkeydown={(e) => { if (e.key === 'Enter') saveRenameRequest(); if (e.key === 'Escape') cancelRenameRequest(); }}
+                        onblur={saveRenameRequest}
+                        onclick={stopPropagation(bubble('click'))}
+                      />
+                    {:else}
+                      <!-- svelte-ignore a11y_no_static_element_interactions -->
+                      <span class="request-name-text" ondblclick={stopPropagation(() => startRenameRequest(request.id, collection.id, request.name))}>{request.name}</span>
+                    {/if}
+                  </div>
+                  <div class="request-actions">
+                    <button
+                      class="request-action-btn rename-request-btn"
+                      onclick={stopPropagation(() => startRenameRequest(request.id, collection.id, request.name))}
+                      title="Rename"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      class="request-action-btn duplicate-request-btn"
+                      onclick={stopPropagation(() => duplicateRequest(collection.id, request.id))}
+                      title="Duplicate Request"
+                    >
+                      📋
+                    </button>
+                    <button
+                      class="request-action-btn delete-request-btn"
+                      onclick={stopPropagation(() => deleteRequest(collection.id, request.id))}
+                      title="Delete Request"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                {/if}
               </div>
             {/each}
           </div>
@@ -1437,9 +1559,15 @@
     overflow: hidden;
   }
 
-  .variables-section {
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  .variables-section,
+  .chains-section {
     margin: 0 4px;
+    padding: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .chains-section {
+    margin-bottom: 4px;
   }
   
   .variables-header {
@@ -1658,11 +1786,6 @@
   }
 
   /* ── Chains Section ── */
-  .chains-section {
-    padding: 0 4px;
-    margin: 0 4px 4px;
-  }
-
   .chains-header {
     display: flex;
     align-items: center;
@@ -2231,43 +2354,13 @@
     color: #b5bac1;
   }
 
-  :global(.collection-request.dragging) {
-    opacity: 0.25;
-    background: var(--bg-tertiary, #383a40) !important;
-    border-style: dashed !important;
-    transition: opacity 0.15s ease;
-  }
-
-  :global(.collection-request.drag-over-before) {
-    box-shadow: 0 -2px 0 0 #5865f2;
-    position: relative;
-  }
-
-  :global(.collection-request.drag-over-before::before) {
-    content: '';
-    position: absolute;
-    top: -4px;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: linear-gradient(to bottom, rgba(88, 101, 242, 0.3), transparent);
-    pointer-events: none;
-  }
-
-  :global(.collection-request.drag-over-after) {
-    box-shadow: 0 2px 0 0 #5865f2;
-    position: relative;
-  }
-
-  :global(.collection-request.drag-over-after::after) {
-    content: '';
-    position: absolute;
-    bottom: -4px;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: linear-gradient(to top, rgba(88, 101, 242, 0.3), transparent);
-    pointer-events: none;
+  :global(.drag-spacer) {
+    box-sizing: border-box;
+    min-height: calc(0.76rem + 1.2em);
+    margin-bottom: 2px;
+    border-radius: 5px;
+    border: 1px dashed rgba(88, 101, 242, 0.4);
+    background: rgba(88, 101, 242, 0.07);
   }
 
   .new-folder-row {
