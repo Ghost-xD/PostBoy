@@ -158,7 +158,15 @@ export const http = {
     url: string,
     headers?: Record<string, string>,
     body?: string,
-    options?: { timeout?: number; proxyUrl?: string; sslVerification?: boolean; followRedirects?: boolean; maxRedirects?: number }
+    options?: {
+      timeout?: number;
+      proxyUrl?: string;
+      sslVerification?: boolean;
+      followRedirects?: boolean;
+      maxRedirects?: number;
+      authType?: string;
+      authData?: Record<string, unknown>;
+    }
   ) => {
     return await invoke('execute_http_request', {
       method, url, headers, body,
@@ -167,8 +175,42 @@ export const http = {
       sslVerify: options?.sslVerification,
       followRedirects: options?.followRedirects,
       maxRedirects: options?.maxRedirects,
+      authType: options?.authType,
+      authData: options?.authData,
     });
   }
+};
+
+export interface GrpcInvokeResponse {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: string;
+  responseTime: number;
+}
+
+export const grpc = {
+  listServices: async (address: string): Promise<string[]> => {
+    return await invoke('grpc_list_services', { address }) as string[];
+  },
+  describeService: async (address: string, service: string): Promise<string[]> => {
+    return await invoke('grpc_describe_service', { address, service }) as string[];
+  },
+  invoke: async (
+    address: string,
+    service: string,
+    method: string,
+    metadata?: Record<string, string>,
+    bodyJson?: string
+  ): Promise<GrpcInvokeResponse> => {
+    return await invoke('grpc_invoke', {
+      address,
+      service,
+      method,
+      metadata,
+      bodyJson,
+    }) as GrpcInvokeResponse;
+  },
 };
 
 // SQL client

@@ -203,6 +203,8 @@ pub async fn probe_collection(
             None,
             Some(true),
             Some(10),
+            None,
+            None,
         )
         .await;
         let elapsed_ms = started.elapsed().as_millis() as u64;

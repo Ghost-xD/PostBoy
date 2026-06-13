@@ -500,7 +500,7 @@ async fn run_request(app: &AppHandle, request_id: i64) -> Result<Value, String> 
         body,
     };
 
-    let resp = http_client::execute_request(http_req, Some(30), None, Some(false), Some(true), Some(10))
+    let resp = http_client::execute_request(http_req, Some(30), None, Some(false), Some(true), Some(10), None, None)
         .await
         .map_err(|e| format!("Request failed: {e}"))?;
 

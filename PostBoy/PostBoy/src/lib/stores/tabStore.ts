@@ -25,6 +25,11 @@ export interface Tab {
   authToken: string;
   authApiKey: string;
   authApiValue: string;
+  authData: Record<string, unknown>;
+  grpcService: string;
+  grpcMethod: string;
+  preRequestScript: string;
+  testScript: string;
   responseStatus: number | null;
   responseStatusText: string;
   responseTime: number | null;
@@ -82,6 +87,11 @@ export function createDefaultTab(id?: string): Tab {
     authToken: '',
     authApiKey: '',
     authApiValue: '',
+    authData: {},
+    grpcService: '',
+    grpcMethod: '',
+    preRequestScript: '',
+    testScript: '',
     responseStatus: null,
     responseStatusText: '',
     responseTime: null,

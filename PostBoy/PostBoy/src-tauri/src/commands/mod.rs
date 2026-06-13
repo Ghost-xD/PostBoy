@@ -1,7 +1,13 @@
+use rusqlite::Row;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tauri::{AppHandle, Manager};
 use std::path::PathBuf;
+
+fn row_text(row: &Row<'_>, idx: usize, default: &str) -> rusqlite::Result<String> {
+    row.get::<_, Option<String>>(idx)
+        .map(|v| v.unwrap_or_else(|| default.to_string()))
+}
 
 // Helper function to get database path and ensure directory exists
 fn get_db_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -285,19 +291,19 @@ pub async fn db_get_requests(app: AppHandle, collection_id: i64) -> Result<Vec<R
             name: row.get(2)?,
             method: row.get(3)?,
             url: row.get(4)?,
-            headers: row.get(5)?,
-            params: row.get(6)?,
+            headers: row_text(row, 5, "[]")?,
+            params: row_text(row, 6, "[]")?,
             body_type: row.get(7)?,
             body_content: row.get(8)?,
             auth_type: row.get(9)?,
-            auth_data: row.get(10)?,
+            auth_data: row_text(row, 10, "{}")?,
             description: row.get(11)?,
             status_code: row.get(12)?,
             response_time: row.get(13)?,
             response_headers: row.get(14)?,
             response_body: row.get(15)?,
-            created_at: row.get(16)?,
-            updated_at: row.get(17)?,
+            created_at: row_text(row, 16, "")?,
+            updated_at: row_text(row, 17, "")?,
         })
     })
     .map_err(|e| e.to_string())?
@@ -326,19 +332,19 @@ pub async fn db_get_request(app: AppHandle, id: i64) -> Result<Option<Request>, 
             name: row.get(2).map_err(|e| e.to_string())?,
             method: row.get(3).map_err(|e| e.to_string())?,
             url: row.get(4).map_err(|e| e.to_string())?,
-            headers: row.get(5).map_err(|e| e.to_string())?,
-            params: row.get(6).map_err(|e| e.to_string())?,
+            headers: row_text(row, 5, "[]").map_err(|e| e.to_string())?,
+            params: row_text(row, 6, "[]").map_err(|e| e.to_string())?,
             body_type: row.get(7).map_err(|e| e.to_string())?,
             body_content: row.get(8).map_err(|e| e.to_string())?,
             auth_type: row.get(9).map_err(|e| e.to_string())?,
-            auth_data: row.get(10).map_err(|e| e.to_string())?,
+            auth_data: row_text(row, 10, "{}").map_err(|e| e.to_string())?,
             description: row.get::<_, Option<String>>(11).unwrap_or(None),
             status_code: row.get(12).map_err(|e| e.to_string())?,
             response_time: row.get(13).map_err(|e| e.to_string())?,
             response_headers: row.get(14).map_err(|e| e.to_string())?,
             response_body: row.get(15).map_err(|e| e.to_string())?,
-            created_at: row.get(16).map_err(|e| e.to_string())?,
-            updated_at: row.get(17).map_err(|e| e.to_string())?,
+            created_at: row_text(row, 16, "").map_err(|e| e.to_string())?,
+            updated_at: row_text(row, 17, "").map_err(|e| e.to_string())?,
         }))
     } else {
         Ok(None)
@@ -656,15 +662,15 @@ pub async fn db_get_history(app: AppHandle, limit: Option<i64>) -> Result<Vec<Hi
             url: row.get(2)?,
             status_code: row.get(3)?,
             response_time: row.get(4)?,
-            headers: row.get(5)?,
-            params: row.get(6)?,
+            headers: row_text(row, 5, "{}")?,
+            params: row_text(row, 6, "[]")?,
             body_type: row.get(7)?,
             body_content: row.get(8)?,
             auth_type: row.get(9)?,
-            auth_data: row.get(10)?,
+            auth_data: row_text(row, 10, "{}")?,
             response_headers: row.get(11)?,
             response_body: row.get(12)?,
-            executed_at: row.get(13)?,
+            executed_at: row_text(row, 13, "")?,
         })
     })
     .map_err(|e| e.to_string())?

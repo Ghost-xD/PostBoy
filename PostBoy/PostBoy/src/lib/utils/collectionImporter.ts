@@ -240,7 +240,96 @@ function convertPostmanAuth(auth: any): { authType: string; authData: Record<str
     }
     case 'apikey': {
       const vals = kvToMap(auth.apikey);
-      return { authType: 'apikey', authData: { key: vals.key || 'X-API-Key', value: vals.value || '', addTo: vals.in || 'header' } };
+      return { authType: 'api-key', authData: { key: vals.key || 'X-API-Key', value: vals.value || '', addTo: vals.in || 'header' } };
+    }
+    case 'digest': {
+      const vals = kvToMap(auth.digest);
+      return {
+        authType: 'digest',
+        authData: {
+          username: vals.username || '',
+          password: vals.password || '',
+          realm: vals.realm || '',
+          nonce: vals.nonce || '',
+          algorithm: vals.algorithm || 'MD5',
+          qop: vals.qop || '',
+          opaque: vals.opaque || '',
+          nonceCount: vals.nonceCount || '',
+          clientNonce: vals.clientNonce || '',
+        },
+      };
+    }
+    case 'oauth2': {
+      const vals = kvToMap(auth.oauth2);
+      const grantTypeMap: Record<string, string> = {
+        client_credentials: 'client_credentials',
+        password_credentials: 'password',
+        authorization_code: 'authorization_code',
+        authorization_code_with_pkce: 'authorization_code',
+        implicit: 'implicit',
+      };
+      const rawGrant = vals.grant_type || vals.grantType || 'client_credentials';
+      return {
+        authType: 'oauth2',
+        authData: {
+          grantType: grantTypeMap[rawGrant] || rawGrant,
+          accessTokenUrl: vals.accessTokenUrl || vals.accessTokenURL || '',
+          authUrl: vals.authUrl || '',
+          redirectUri: vals.redirectUri || vals.callbackUrl || '',
+          clientId: vals.clientId || vals.client_id || '',
+          clientSecret: vals.clientSecret || vals.client_secret || '',
+          username: vals.username || '',
+          password: vals.password || '',
+          scope: vals.scope || '',
+          state: vals.state || '',
+          accessToken: vals.accessToken || '',
+          refreshToken: vals.refreshToken || '',
+          tokenType: vals.tokenType || 'Bearer',
+          addTokenTo: vals.addTokenTo || 'header',
+          headerPrefix: vals.headerPrefix || '',
+          queryParamName: vals.queryParamName || 'access_token',
+          clientAuth: vals.clientAuthentication || vals.clientAuth || 'body',
+          authCode: vals.code || '',
+        },
+      };
+    }
+    case 'awsv4': {
+      const vals = kvToMap(auth.awsv4);
+      return {
+        authType: 'aws-sigv4',
+        authData: {
+          accessKey: vals.accessKey || vals.accessKeyId || '',
+          secretKey: vals.secretKey || vals.secretAccessKey || '',
+          sessionToken: vals.sessionToken || '',
+          region: vals.region || 'us-east-1',
+          service: vals.service || 'execute-api',
+        },
+      };
+    }
+    case 'hawk': {
+      const vals = kvToMap(auth.hawk);
+      return {
+        authType: 'hawk',
+        authData: {
+          authId: vals.authId || vals.id || '',
+          authKey: vals.authKey || vals.key || '',
+          algorithm: vals.algorithm || 'sha256',
+          ext: vals.ext || '',
+          user: vals.user || '',
+        },
+      };
+    }
+    case 'ntlm': {
+      const vals = kvToMap(auth.ntlm);
+      return {
+        authType: 'ntlm',
+        authData: {
+          username: vals.username || '',
+          password: vals.password || '',
+          domain: vals.domain || '',
+          workstation: vals.workstation || '',
+        },
+      };
     }
     default:
       return { authType: 'none', authData: {} };
@@ -422,7 +511,7 @@ function convertInsomniaAuth(auth: any): { authType: string; authData: Record<st
     case 'basic':
       return { authType: 'basic', authData: { username: auth.username || '', password: auth.password || '' } };
     case 'apikey':
-      return { authType: 'apikey', authData: { key: auth.key || 'X-API-Key', value: auth.value || '', addTo: auth.addTo || 'header' } };
+      return { authType: 'api-key', authData: { key: auth.key || 'X-API-Key', value: auth.value || '', addTo: auth.addTo || 'header' } };
     default:
       return { authType: 'none', authData: {} };
   }

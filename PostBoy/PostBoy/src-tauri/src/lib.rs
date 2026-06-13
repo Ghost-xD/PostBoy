@@ -5,9 +5,11 @@ mod database;
 mod http_client;
 mod load_probe;
 mod load_test;
+mod native_http;
 mod net_client;
 mod sql_client;
 mod ws_client;
+mod grpc_client;
 mod sse_client;
 
 use tauri::Manager;
@@ -430,6 +432,9 @@ pub fn run() {
                     ws_client::ws_disconnect,
                     sse_client::sse_connect,
                     sse_client::sse_disconnect,
+                    grpc_client::grpc_list_services,
+                    grpc_client::grpc_invoke,
+                    grpc_client::grpc_describe_service,
                     commands::db_get_cookies,
                     commands::db_get_cookies_for_url,
                     commands::db_set_cookie,
@@ -540,6 +545,9 @@ pub fn run() {
                     ws_client::ws_disconnect,
                     sse_client::sse_connect,
                     sse_client::sse_disconnect,
+                    grpc_client::grpc_list_services,
+                    grpc_client::grpc_invoke,
+                    grpc_client::grpc_describe_service,
                     commands::db_get_cookies,
                     commands::db_get_cookies_for_url,
                     commands::db_set_cookie,

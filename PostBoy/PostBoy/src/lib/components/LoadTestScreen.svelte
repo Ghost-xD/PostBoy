@@ -5,6 +5,7 @@
   import { showLoadTest } from '$lib/stores/uiStore';
   import { addLog } from '$lib/stores/consoleStore';
   import { renderMarkdown } from '$lib/utils/markdownRenderer';
+  import { userCollections } from '$lib/utils/collectionFilters';
   import {
     phase,
     config,
@@ -91,7 +92,7 @@
     }
     try {
       const cols = (await db.getCollections()) as Array<{ id: number; name: string; parent_id?: number | null }>;
-      collections = cols || [];
+      collections = userCollections(cols || []);
     } catch (e: any) {
       collections = [];
       addLog(`Load Test: failed to load collections — ${e?.message || e}`, 'error');

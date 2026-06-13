@@ -1,5 +1,7 @@
 import { db, http, fileOps } from '$lib/api/tauri';
 import { variables, interpolate, interpolateJson, interpolateKeyValues, getValueAtPath, flattenJsonPaths } from '$lib/stores/variableStore';
+import { applyRequestAuth } from '$lib/auth/authResolver';
+import { normalizeAuthType } from '$lib/auth/tabAuth';
 
 export interface ChainExtraction {
   jsonPath: string;
@@ -90,18 +92,6 @@ export async function resolveRequest(request: any, collectionId: number): Promis
   if (typeof authDataRaw === 'string') {
     try { authDataRaw = JSON.parse(authDataRaw); } catch { authDataRaw = {}; }
   }
-  if (authType === 'bearer') {
-    const token = interpolate(authDataRaw.token || '', collectionId);
-    if (token) headersObj['Authorization'] = `Bearer ${token}`;
-  } else if (authType === 'basic') {
-    const username = interpolate(authDataRaw.username || '', collectionId);
-    const password = interpolate(authDataRaw.password || '', collectionId);
-    if (username) headersObj['Authorization'] = `Basic ${btoa(`${username}:${password}`)}`;
-  } else if (authType === 'api-key') {
-    const key = interpolate(authDataRaw.key || '', collectionId);
-    const value = interpolate(authDataRaw.value || '', collectionId);
-    if (key) headersObj[key] = value;
-  }
 
   let requestBody: string | undefined;
   const bodyType = request.body_type || 'none';
@@ -179,11 +169,26 @@ export async function resolveRequest(request: any, collectionId: number): Promis
     }
   }
 
+  const authResult = await applyRequestAuth({
+    authType: normalizeAuthType(authType),
+    authData: authDataRaw,
+    method: request.method,
+    url: requestUrl,
+    headers: headersObj,
+    body: requestBody,
+    collectionId,
+  });
+  Object.assign(headersObj, authResult.headers);
+  requestUrl = authResult.url;
+  requestBody = authResult.body;
+
   return {
     method: request.method,
     url: requestUrl,
     headers: headersObj,
     body: requestBody,
+    authType: normalizeAuthType(authType),
+    authData: authDataRaw as Record<string, unknown>,
   };
 }
 
@@ -211,7 +216,11 @@ export async function executeStep(
     resolved.method,
     resolved.url,
     Object.keys(resolved.headers).length > 0 ? resolved.headers : undefined,
-    resolved.body
+    resolved.body,
+    {
+      authType: resolved.authType,
+      authData: resolved.authData,
+    }
   );
 
   const stepResponse: StepResponse = {

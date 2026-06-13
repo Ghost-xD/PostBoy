@@ -1,3 +1,5 @@
+import { generateCurl } from './codeGenerator';
+
 export interface FormField {
   key: string;
   value: string;
@@ -229,46 +231,41 @@ export interface CurlExportOptions {
   authPassword?: string;
   authApiKey?: string;
   authApiValue?: string;
+  authData?: Record<string, unknown>;
+  resolvedHeaders?: Record<string, string>;
 }
 
 export function generateCurlCommand(opts: CurlExportOptions): string {
-  const parts: string[] = ['curl'];
-  
-  if (opts.method !== 'GET') {
-    parts.push(`-X ${opts.method}`);
-  }
-  
-  parts.push(`'${opts.url}'`);
-  
-  const allHeaders: Array<{key: string, value: string}> = [...opts.headers.filter(h => h.key && h.value)];
-  
-  if (opts.authType === 'bearer' && opts.authToken) {
-    allHeaders.push({ key: 'Authorization', value: `Bearer ${opts.authToken}` });
-  } else if (opts.authType === 'api-key' && opts.authApiKey && opts.authApiValue) {
-    allHeaders.push({ key: opts.authApiKey, value: opts.authApiValue });
-  }
-  
-  for (const h of allHeaders) {
-    parts.push(`-H '${h.key}: ${h.value}'`);
-  }
-  
-  if (opts.authType === 'basic' && opts.authUsername) {
-    parts.push(`-u '${opts.authUsername}:${opts.authPassword || ''}'`);
-  }
-  
   if (opts.bodyType === 'form-data' && opts.formDataPairs?.length) {
-    for (const pair of opts.formDataPairs.filter(p => p.key)) {
+    const parts: string[] = ['curl'];
+    if (opts.method !== 'GET') parts.push(`-X ${opts.method}`);
+    parts.push(`'${opts.url.replace(/'/g, "'\\''")}'`);
+    for (const h of opts.headers.filter((x) => x.key && x.value)) {
+      parts.push(`-H '${h.key.replace(/'/g, "'\\''")}: ${h.value.replace(/'/g, "'\\''")}'`);
+    }
+    for (const pair of opts.formDataPairs.filter((p) => p.key)) {
       if (pair.type === 'file' && pair.value) {
-        parts.push(`-F '${pair.key}=@${pair.value}'`);
+        parts.push(`-F '${pair.key.replace(/'/g, "'\\''")}=@${pair.value.replace(/'/g, "'\\''")}'`);
       } else if (pair.type === 'text') {
-        const escaped = pair.value.replace(/'/g, "'\\''");
-        parts.push(`-F '${pair.key}=${escaped}'`);
+        parts.push(`-F '${pair.key.replace(/'/g, "'\\''")}=${pair.value.replace(/'/g, "'\\''")}'`);
       }
     }
-  } else if (opts.body && opts.method !== 'GET' && opts.method !== 'HEAD') {
-    const escaped = opts.body.replace(/'/g, "'\\''");
-    parts.push(`-d '${escaped}'`);
+    return parts.join(' \\\n  ');
   }
-  
-  return parts.join(' \\\n  ');
+
+  return generateCurl({
+    method: opts.method,
+    url: opts.url,
+    headers: opts.headers,
+    body: opts.body,
+    bodyType: opts.bodyType,
+    authType: opts.authType,
+    authToken: opts.authToken,
+    authUsername: opts.authUsername,
+    authPassword: opts.authPassword,
+    authApiKey: opts.authApiKey,
+    authApiValue: opts.authApiValue,
+    authData: opts.authData,
+    resolvedHeaders: opts.resolvedHeaders,
+  });
 }

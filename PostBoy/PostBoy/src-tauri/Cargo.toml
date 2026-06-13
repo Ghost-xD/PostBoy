@@ -59,6 +59,7 @@ base64 = "0.22"
 url = "2"
 hickory-resolver = "0.25"
 surge-ping = "0.8"
+granc_core = "0.6"
 
 # Optional dependencies for the `chatbot` feature.
 # When the feature is disabled (`--no-default-features`), none of these are compiled,
@@ -107,8 +108,11 @@ http = { version = "1", optional = true }
 # At runtime, llama.cpp probes for a usable device and falls back to CPU
 # automatically if no GPU/driver is found, so users with no GPU still work.
 [target.'cfg(target_os = "macos")'.dependencies]
+curl = { version = "0.4", default-features = false }
 llama-cpp-2 = { version = "0.1", optional = true, default-features = false, features = ["metal"] }
 
 [target.'cfg(not(target_os = "macos"))'.dependencies]
+curl = { version = "0.4", default-features = false, features = ["openssl-sys"] }
+openssl-sys = { version = "0.9", features = ["vendored"] }
 llama-cpp-2 = { version = "0.1", optional = true, default-features = false, features = ["vulkan"] }
 

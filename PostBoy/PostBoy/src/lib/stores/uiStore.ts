@@ -12,7 +12,7 @@ export const responseLayout = writable<'right' | 'bottom'>('bottom');
 export const responsePanelHeight = writable<number>(560);
 
 // Request/Response tabs within the main area
-export const activeRequestTab = writable<'params' | 'body' | 'auth' | 'headers' | 'docs'>('body');
+export const activeRequestTab = writable<'params' | 'body' | 'auth' | 'headers' | 'scripts' | 'docs'>('body');
 export const activeResponseTab = writable<'preview' | 'headers' | 'console' | 'diff'>('preview');
 
 // Modals and overlays

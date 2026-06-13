@@ -219,6 +219,28 @@ pub fn get_migrations() -> Vec<Migration> {
             ",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 11,
+            description: "repair_null_request_fields_and_remove_test_fixtures",
+            sql: "
+                UPDATE requests SET headers = '[]' WHERE headers IS NULL;
+                UPDATE requests SET params = '[]' WHERE params IS NULL;
+                UPDATE requests SET body_type = 'none' WHERE body_type IS NULL;
+                UPDATE requests SET body_content = '' WHERE body_content IS NULL;
+                UPDATE requests SET auth_type = 'none' WHERE auth_type IS NULL;
+                UPDATE requests SET auth_data = '{}' WHERE auth_data IS NULL;
+                UPDATE requests SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL;
+                UPDATE requests SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL;
+                DELETE FROM collections WHERE name IN (
+                    'Test Collection',
+                    'Read Test',
+                    'Updated Name',
+                    'Request Test Collection',
+                    'Timestamp Test'
+                );
+            ",
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
@@ -414,6 +436,23 @@ pub fn initialize_database(db_path: PathBuf) -> Result<(), String> {
 
             CREATE INDEX IF NOT EXISTS idx_mcp_servers_enabled
                 ON mcp_servers(enabled);
+        "),
+        (11, "repair_null_request_fields_and_remove_test_fixtures", "
+            UPDATE requests SET headers = '[]' WHERE headers IS NULL;
+            UPDATE requests SET params = '[]' WHERE params IS NULL;
+            UPDATE requests SET body_type = 'none' WHERE body_type IS NULL;
+            UPDATE requests SET body_content = '' WHERE body_content IS NULL;
+            UPDATE requests SET auth_type = 'none' WHERE auth_type IS NULL;
+            UPDATE requests SET auth_data = '{}' WHERE auth_data IS NULL;
+            UPDATE requests SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL;
+            UPDATE requests SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL;
+            DELETE FROM collections WHERE name IN (
+                'Test Collection',
+                'Read Test',
+                'Updated Name',
+                'Request Test Collection',
+                'Timestamp Test'
+            );
         "),
     ];
 

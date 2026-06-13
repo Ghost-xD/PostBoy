@@ -18,25 +18,12 @@ describe('Database Schema Tests', () => {
   let dbPath: string;
 
   beforeAll(() => {
-    // Determine database path based on OS
-    const platform = os.platform();
-    const home = os.homedir();
-    
-    if (platform === 'win32') {
-      dbPath = path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'com.ripple.app', 'ripple.db');
-    } else if (platform === 'darwin') {
-      dbPath = path.join(home, 'Library', 'Application Support', 'com.ripple.app', 'ripple.db');
-    } else {
-      dbPath = path.join(home, '.config', 'com.ripple.app', 'ripple.db');
-    }
-
-    // Create directory if it doesn't exist
+    dbPath = path.join(os.tmpdir(), `ripple-schema-test-${Date.now()}.db`);
     const dbDir = path.dirname(dbPath);
     if (!fs.existsSync(dbDir)) {
       fs.mkdirSync(dbDir, { recursive: true });
     }
 
-    // Initialize database with schema
     db = new Database(dbPath);
     
     // Create tables
@@ -87,6 +74,9 @@ describe('Database Schema Tests', () => {
   afterAll(() => {
     if (db) {
       db.close();
+    }
+    if (dbPath && fs.existsSync(dbPath)) {
+      fs.unlinkSync(dbPath);
     }
   });
 

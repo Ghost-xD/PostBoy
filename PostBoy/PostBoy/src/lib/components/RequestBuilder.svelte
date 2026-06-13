@@ -21,6 +21,13 @@
   import { initWsListeners } from '$lib/stores/wsStore';
   import { initSseListeners } from '$lib/stores/sseStore';
   import { captureCookies, injectCookies } from '$lib/stores/cookieStore';
+  import RequestAuthPanel from './RequestAuthPanel.svelte';
+  import RequestScriptsPanel from './RequestScriptsPanel.svelte';
+  import GrpcPanel from './GrpcPanel.svelte';
+  import { applyRequestAuthFromTab } from '$lib/auth/authResolver';
+  import { serializeAuthFromTab } from '$lib/auth/tabAuth';
+  import { runPreRequestScript, runTestScript } from '$lib/utils/requestScriptRunner';
+  import { createScriptVariableApi } from '$lib/utils/scriptVariables';
 
   interface Props {
     onHistoryUpdate?: () => Promise<void>;
@@ -98,11 +105,21 @@
     const resolvedAuthApiKey = interpolate(authApiKey, collectionId);
     const resolvedAuthApiValue = interpolate(authApiValue, collectionId);
 
+    const headersObj: Record<string, string> = {};
+    resolvedHeaders.filter((h) => h.key && h.value).forEach((h) => { headersObj[h.key] = h.value; });
+
+    const authResult = await applyRequestAuthFromTab(
+      { authType, authData, authUsername: resolvedAuthUsername, authPassword: resolvedAuthPassword,
+        authToken: resolvedAuthToken, authApiKey: resolvedAuthApiKey, authApiValue: resolvedAuthApiValue, collectionId },
+      method, resolvedUrl, headersObj, resolvedBody || undefined
+    );
+
     const curlCmd = generateCurlCommand({
-      method, url: resolvedUrl, headers: resolvedHeaders, body: resolvedBody, bodyType,
+      method, url: authResult.url, headers: resolvedHeaders, body: resolvedBody, bodyType,
       formDataPairs: bodyType === 'form-data' ? formDataPairs : undefined,
       authType, authToken: resolvedAuthToken, authUsername: resolvedAuthUsername,
       authPassword: resolvedAuthPassword, authApiKey: resolvedAuthApiKey, authApiValue: resolvedAuthApiValue,
+      authData, resolvedHeaders: authResult.headers,
     });
     await navigator.clipboard.writeText(curlCmd);
     addLog('✓ Copied as cURL (variables resolved)', 'system');
@@ -122,11 +139,28 @@
     return { destroy() { node.parentNode?.removeChild(node); } };
   }
 
-  function getCodeGenOptions(): CodeGenOptions {
-    return { method, url, headers: headers.filter(h => h.key && h.value), body: bodyContent, bodyType, authType, authToken, authUsername, authPassword, authApiKey, authApiValue };
+  function getCodeGenOptions(resolvedHeaders?: Record<string, string>, resolvedUrl?: string): CodeGenOptions {
+    return {
+      method, url: resolvedUrl || url, headers: headers.filter(h => h.key && h.value), body: bodyContent, bodyType,
+      authType, authToken, authUsername, authPassword, authApiKey, authApiValue, authData, resolvedHeaders,
+    };
   }
 
-  let generatedCode = $derived(showCodeGenModal ? generators[codeGenLanguage]?.generate(getCodeGenOptions()) || '' : '');
+  let generatedCode = $state('');
+  run(() => {
+    if (!showCodeGenModal) { generatedCode = ''; return; }
+    void (async () => {
+      const headersObj: Record<string, string> = {};
+      headers.filter((h) => h.key && h.value).forEach((h) => { headersObj[h.key] = h.value; });
+      const authResult = await applyRequestAuthFromTab(
+        { authType, authData, authUsername, authPassword, authToken, authApiKey, authApiValue, collectionId },
+        method, url, headersObj, bodyContent || undefined
+      );
+      generatedCode = generators[codeGenLanguage]?.generate(
+        getCodeGenOptions(authResult.headers, authResult.url)
+      ) || '';
+    })();
+  });
 
   async function copyGeneratedCode() {
     await navigator.clipboard.writeText(generatedCode);
@@ -215,6 +249,9 @@
   let method = $derived($activeTab.method);
   let isWsMethod = $derived(method === 'WS' || method === 'WSS');
   let isSseMethod = $derived(method === 'SSE');
+  let isGrpcMethod = $derived(method === 'GRPC');
+  let preRequestScript = $derived($activeTab.preRequestScript || '');
+  let testScript = $derived($activeTab.testScript || '');
 
   let url = $derived($activeTab.url);
   let params = $derived($activeTab.params);
@@ -234,6 +271,7 @@
   let authToken = $derived($activeTab.authToken);
   let authApiKey = $derived($activeTab.authApiKey);
   let authApiValue = $derived($activeTab.authApiValue);
+  let authData = $derived($activeTab.authData || {});
   let collectionId = $derived($activeTab.collectionId);
 
   // Local body content for JsonEditor two-way binding
@@ -270,6 +308,7 @@
         authToken: '',
         authApiKey: '',
         authApiValue: '',
+        authData: {},
         responseStatus: null,
         responseStatusText: '',
         responseTime: null,
@@ -403,7 +442,8 @@
       currentUrl,
       ...params.map(p => p.key), ...params.map(p => p.value),
       ...headers.map(h => h.key), ...headers.map(h => h.value),
-      bodyContent, authToken, authUsername, authPassword, authApiKey, authApiValue
+      bodyContent, authToken, authUsername, authPassword, authApiKey, authApiValue,
+      ...Object.values(authData).filter(v => typeof v === 'string')
     ];
     const unresolved = getAllUnresolvedVariables(textsToCheck, collectionId);
     if (unresolved.length > 0) {
@@ -437,21 +477,6 @@
       resolvedHeaders.filter(h => h.key && h.value).forEach(h => {
         headersObj[h.key] = h.value;
       });
-
-      // Interpolate auth fields
-      const resolvedAuthToken = interpolate(authToken, collectionId);
-      const resolvedAuthUsername = interpolate(authUsername, collectionId);
-      const resolvedAuthPassword = interpolate(authPassword, collectionId);
-      const resolvedAuthApiKey = interpolate(authApiKey, collectionId);
-      const resolvedAuthApiValue = interpolate(authApiValue, collectionId);
-
-      if (authType === 'bearer' && resolvedAuthToken) {
-        headersObj['Authorization'] = `Bearer ${resolvedAuthToken}`;
-      } else if (authType === 'basic' && resolvedAuthUsername) {
-        headersObj['Authorization'] = `Basic ${btoa(`${resolvedAuthUsername}:${resolvedAuthPassword}`)}`;
-      } else if (authType === 'api-key' && resolvedAuthApiKey) {
-        headersObj[resolvedAuthApiKey] = resolvedAuthApiValue;
-      }
 
       let requestBody: string | undefined;
       if (method !== 'GET' && method !== 'HEAD') {
@@ -538,6 +563,60 @@
         }
       }
 
+      // Pre-request script (can mutate url, headers, body)
+      if (preRequestScript.trim()) {
+        const scriptResult = runPreRequestScript(
+          preRequestScript,
+          { method, url: requestUrl, headers: headersObj, body: requestBody },
+          createScriptVariableApi(collectionId)
+        );
+        for (const line of scriptResult.logs) addLog(`[script] ${line}`, 'info');
+        for (const err of scriptResult.errors) addLog(`[script] ${err}`, 'error');
+        if (scriptResult.errors.length) {
+          addLog('Pre-request script failed — aborting send', 'error');
+          return;
+        }
+        requestUrl = scriptResult.request.url;
+        Object.assign(headersObj, scriptResult.request.headers);
+        requestBody = scriptResult.request.body;
+      }
+
+      // Apply auth after body is built (AWS Sig V4 signs payload hash)
+      const authResult = await applyRequestAuthFromTab(
+        {
+          authType,
+          authData,
+          authUsername,
+          authPassword,
+          authToken,
+          authApiKey,
+          authApiValue,
+          collectionId,
+        },
+        method,
+        requestUrl,
+        headersObj,
+        requestBody
+      );
+      if (authResult.warning) {
+        addLog(`⚠ Auth: ${authResult.warning}`, 'error');
+      }
+      Object.assign(headersObj, authResult.headers);
+      requestUrl = authResult.url;
+      requestBody = authResult.body;
+      if (authResult.oauthUpdate) {
+        updateTab(sendingTabId, {
+          authData: {
+            ...authData,
+            accessToken: authResult.oauthUpdate.accessToken,
+            refreshToken: authResult.oauthUpdate.refreshToken ?? (authData as any).refreshToken,
+            tokenType: authResult.oauthUpdate.tokenType,
+            expiresAt: authResult.oauthUpdate.expiresAt,
+          },
+          authToken: authResult.oauthUpdate.accessToken,
+        });
+      }
+
       if (collectionId && !headersObj['Cookie']) {
         const cookieHeader = await injectCookies(collectionId, requestUrl);
         if (cookieHeader) {
@@ -546,12 +625,25 @@
       }
 
       const reqSettings = getSettingsForRequest();
+      const { authType: nativeAuthType, authData: nativeAuthData } = serializeAuthFromTab({
+        authType,
+        authData,
+        authUsername,
+        authPassword,
+        authToken,
+        authApiKey,
+        authApiValue,
+      });
       const response: any = await http.executeRequest(
         method,
         requestUrl,
         Object.keys(headersObj).length > 0 ? headersObj : undefined,
         requestBody,
-        reqSettings
+        {
+          ...reqSettings,
+          authType: nativeAuthType,
+          authData: nativeAuthData,
+        }
       );
 
       const responseTime = response.responseTime || (Date.now() - startTime);
@@ -572,24 +664,52 @@
 
       addLog(`✓ ${response.status} ${response.statusText || 'OK'} • ${responseTime}ms • ${responseSize}`, 'info');
 
+      if (testScript.trim()) {
+        const testResult = runTestScript(
+          testScript,
+          { method, url: requestUrl, headers: headersObj, body: requestBody },
+          {
+            status: response.status,
+            statusText: response.statusText || 'OK',
+            headers: response.headers || {},
+            body: response.body || '',
+            responseTime,
+          },
+          createScriptVariableApi(collectionId)
+        );
+        for (const line of testResult.logs) addLog(`[test] ${line}`, 'info');
+        for (const err of testResult.errors) addLog(`[test] ${err}`, 'error');
+        for (const t of testResult.testResults) {
+          addLog(t.passed ? `✓ ${t.name}` : `✗ ${t.name}${t.error ? `: ${t.error}` : ''}`, t.passed ? 'info' : 'error');
+        }
+      }
+
       if (collectionId && response.headers) {
         const headerEntries = Object.entries(response.headers) as Array<[string, string]>;
         await captureCookies(collectionId, headerEntries, requestUrl);
       }
 
-      const authData: any = {};
-      if (authType === 'basic') {
-        authData.username = authUsername;
-        authData.password = authPassword;
-      } else if (authType === 'bearer') {
-        authData.token = authToken;
-      } else if (authType === 'api-key') {
-        authData.key = authApiKey;
-        authData.value = authApiValue;
-      }
+      const { authType: savedAuthType, authData: savedAuthData } = serializeAuthFromTab({
+        authType,
+        authData,
+        authUsername,
+        authPassword,
+        authToken,
+        authApiKey,
+        authApiValue,
+      });
 
       await db.addHistory(
-        { method, url: requestUrl, headers: headersObj, params: validParams, bodyType, bodyContent, authType, authData },
+        {
+          method,
+          url: requestUrl,
+          headers: headersObj,
+          params: validParams,
+          bodyType,
+          bodyContent,
+          authType: savedAuthType,
+          authData: savedAuthData,
+        },
         { status: response.status, responseTime, headers: response.headers || {}, body: response.body }
       );
 
@@ -733,8 +853,8 @@
         oninput={handleUrlValue}
         onpaste={handlePaste}
         inputClass="url-input"
-        placeholder={isWsMethod ? 'Enter WebSocket URL (ws:// or wss://)' : isSseMethod ? 'Enter SSE endpoint URL' : 'Enter request URL or paste curl command'}
-        onkeypress={(e) => e.key === 'Enter' && !isWsMethod && !isSseMethod && sendRequest()}
+        placeholder={isWsMethod ? 'Enter WebSocket URL (ws:// or wss://)' : isSseMethod ? 'Enter SSE endpoint URL' : isGrpcMethod ? 'Enter gRPC server (grpcb.in:9000)' : 'Enter request URL or paste curl command'}
+        onkeypress={(e) => e.key === 'Enter' && !isWsMethod && !isSseMethod && !isGrpcMethod && sendRequest()}
       />
       <div class="bar-actions">
         <button class="action-icon-btn {curlCopied ? 'copied' : ''}" onclick={copyAsCurl} title="Copy as cURL (Ctrl+Shift+K)">
@@ -749,7 +869,7 @@
         </button>
       </div>
     </div>
-    {#if !isWsMethod && !isSseMethod}
+    {#if !isWsMethod && !isSseMethod && !isGrpcMethod}
     <button id="send-btn" onclick={sendRequest} class="send-btn" disabled={isCurrentTabSending} title="Send Request (Ctrl+Enter)">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       {isCurrentTabSending ? 'Sending...' : 'Send'}
@@ -764,6 +884,10 @@
   {:else if isSseMethod}
     <div class="ws-panel-wrapper">
       <SsePanel />
+    </div>
+  {:else if isGrpcMethod}
+    <div class="ws-panel-wrapper">
+      <GrpcPanel />
     </div>
   {:else}
   <div class="request-tabs">
@@ -796,6 +920,13 @@
     >
       Headers
       <span class="tab-count">{headers.filter(h => h.key).length}</span>
+    </button>
+    <button
+      class="tab-btn {$activeRequestTab === 'scripts' ? 'active' : ''}"
+      onclick={() => activeRequestTab.set('scripts')}
+      title="Pre-request & test scripts"
+    >
+      Scripts
     </button>
     <button
       class="tab-btn {$activeRequestTab === 'docs' ? 'active' : ''}"
@@ -1004,66 +1135,11 @@
     </div>
 
     <div id="auth-tab" class="tab-pane {$activeRequestTab === 'auth' ? 'active' : ''}">
-      <div class="auth-section">
-        <div class="auth-type-selector">
-          <label for="auth-type">Type:</label>
-          <select 
-            id="auth-type" 
-            value={authType} 
-            onchange={(e) => updateActiveTab('authType', e.currentTarget.value)} 
-            class="auth-type-select"
-          >
-            <option value="none">No Auth</option>
-            <option value="basic">Basic Auth</option>
-            <option value="bearer">Bearer Token</option>
-            <option value="api-key">API Key</option>
-          </select>
-        </div>
-        <div class="auth-content">
-          {#if authType === 'basic'}
-            <VariableInput
-              value={authUsername}
-              {collectionId}
-              oninput={(v) => updateActiveTab('authUsername', v)}
-              inputClass="auth-input"
-              placeholder="Username"
-            />
-            <VariableInput
-              type="password"
-              value={authPassword}
-              {collectionId}
-              oninput={(v) => updateActiveTab('authPassword', v)}
-              inputClass="auth-input"
-              placeholder="Password"
-            />
-          {:else if authType === 'bearer'}
-            <VariableInput
-              value={authToken}
-              {collectionId}
-              oninput={(v) => updateActiveTab('authToken', v)}
-              inputClass="auth-input"
-              placeholder={'Token (e.g. {{apiToken}})'}
-            />
-          {:else if authType === 'api-key'}
-            <VariableInput
-              value={authApiKey}
-              {collectionId}
-              oninput={(v) => updateActiveTab('authApiKey', v)}
-              inputClass="auth-input"
-              placeholder="Key"
-            />
-            <VariableInput
-              value={authApiValue}
-              {collectionId}
-              oninput={(v) => updateActiveTab('authApiValue', v)}
-              inputClass="auth-input"
-              placeholder="Value"
-            />
-          {:else}
-            <div class="empty-state">This request does not use any authorization.</div>
-          {/if}
-        </div>
-      </div>
+      <RequestAuthPanel />
+    </div>
+
+    <div id="scripts-tab" class="tab-pane {$activeRequestTab === 'scripts' ? 'active' : ''}">
+      <RequestScriptsPanel />
     </div>
 
     <div id="headers-tab" class="tab-pane {$activeRequestTab === 'headers' ? 'active' : ''}">

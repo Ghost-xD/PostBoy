@@ -233,6 +233,34 @@
     box-sizing: border-box;
   }
 
+  .variable-input-wrap :global(.auth-input),
+  .variable-input-wrap :global(.script-editor),
+  .variable-input-wrap :global(.grpc-input),
+  .variable-input-wrap :global(.grpc-body-input) {
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 0.5rem;
+    font-size: 0.9rem;
+  }
+
+  .variable-input-wrap :global(.auth-input:focus),
+  .variable-input-wrap :global(.script-editor:focus),
+  .variable-input-wrap :global(.grpc-input:focus),
+  .variable-input-wrap :global(.grpc-body-input:focus) {
+    outline: none;
+    border-color: var(--accent-color);
+  }
+
+  .variable-input-wrap :global(.auth-input::placeholder),
+  .variable-input-wrap :global(.script-editor::placeholder),
+  .variable-input-wrap :global(.grpc-input::placeholder),
+  .variable-input-wrap :global(.grpc-body-input::placeholder) {
+    color: var(--text-secondary);
+    opacity: 0.85;
+  }
+
   .var-suggestions {
     position: absolute;
     left: 0;

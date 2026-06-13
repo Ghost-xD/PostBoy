@@ -27,7 +27,11 @@
     { value: 'SSE', label: 'SSE' },
   ];
 
-  const allItems = [...httpMethods, ...wsMethods, ...sseMethods];
+  const grpcMethods = [
+    { value: 'GRPC', label: 'gRPC' },
+  ];
+
+  const allItems = [...httpMethods, ...wsMethods, ...sseMethods, ...grpcMethods];
 </script>
 
 <Select.Root
@@ -104,6 +108,29 @@
               value={method.value}
               label={method.label}
               style="--item-color: var(--method-{method.value.toLowerCase()})"
+            >
+              {#snippet children({ selected })}
+                <span class="item-label">{method.label}</span>
+                {#if selected}
+                  <svg class="item-check" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 1 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/>
+                  </svg>
+                {/if}
+              {/snippet}
+            </Select.Item>
+          {/each}
+        </Select.Group>
+
+        <div class="method-separator"></div>
+
+        <Select.Group>
+          <Select.GroupHeading class="method-group-heading">gRPC</Select.GroupHeading>
+          {#each grpcMethods as method (method.value)}
+            <Select.Item
+              class="method-item"
+              value={method.value}
+              label={method.label}
+              style="--item-color: var(--method-grpc, #8b5cf6)"
             >
               {#snippet children({ selected })}
                 <span class="item-label">{method.label}</span>

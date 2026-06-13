@@ -20,6 +20,7 @@
   import * as modalManager from '$lib/utils/modalManager.svelte';
   import { parseOpenApiSpec } from '$lib/utils/openApiParser';
   import { importCollection } from '$lib/utils/collectionImporter';
+  import { serializeAuthFromTab, authFieldsFromStored } from '$lib/auth/tabAuth';
   
   import TabBar from '$lib/components/TabBar.svelte';
   import RequestBuilder from '$lib/components/RequestBuilder.svelte';
@@ -428,20 +429,25 @@
   async function loadCollections() {
     try {
       const cols = await db.getCollections() as any[];
-      // Fetch each collection's requests concurrently instead of awaiting them
-      // one-by-one (the old N+1 serial loop dominated cold-start with many
-      // collections).
-      await Promise.all(cols.map(async (col) => {
-        col.requests = await db.getRequests(col.id);
-      }));
-      collections = cols;
-      
-      // Load variables in background (don't block UI)
-      for (const col of cols) {
+      const loaded = await Promise.all(
+        cols.map(async (col) => {
+          try {
+            const requests = await db.getRequests(col.id);
+            return { ...col, requests };
+          } catch (err) {
+            console.error(`Failed to load requests for "${col.name}":`, err);
+            return { ...col, requests: [] };
+          }
+        })
+      );
+      collections = loaded;
+
+      for (const col of loaded) {
         variables.load(col.id).catch(() => {});
       }
     } catch (error) {
       console.error('Failed to load collections:', error);
+      addLog(`Failed to load collections: ${error}`, 'error');
     }
   }
 
@@ -941,16 +947,7 @@
 
       if (choice === 2 || choice === -1) return;
       if (choice === 0) {
-        const updateAuthData: any = {};
-        if (tab.authType === 'basic') {
-          updateAuthData.username = tab.authUsername;
-          updateAuthData.password = tab.authPassword;
-        } else if (tab.authType === 'bearer') {
-          updateAuthData.token = tab.authToken;
-        } else if (tab.authType === 'api-key') {
-          updateAuthData.key = tab.authApiKey;
-          updateAuthData.value = tab.authApiValue;
-        }
+        const { authType: updateAuthType, authData: updateAuthData } = serializeAuthFromTab(tab);
         const requestData = {
           name: tab.name,
           method: tab.method,
@@ -959,7 +956,7 @@
           params: tab.params.filter(p => p.key),
           bodyContent: getSerializableBodyContent(tab),
           bodyType: tab.bodyType,
-          authType: tab.authType,
+          authType: updateAuthType,
           authData: updateAuthData,
           description: tab.description,
           ...buildResponsePayload(tab)
@@ -994,16 +991,7 @@
     const requestName = result.name || suggestedName;
     const collectionId = parseInt(result.collection);
 
-    const authData: any = {};
-    if (tab.authType === 'basic') {
-      authData.username = tab.authUsername;
-      authData.password = tab.authPassword;
-    } else if (tab.authType === 'bearer') {
-      authData.token = tab.authToken;
-    } else if (tab.authType === 'api-key') {
-      authData.key = tab.authApiKey;
-      authData.value = tab.authApiValue;
-    }
+    const { authType: saveAuthType, authData } = serializeAuthFromTab(tab);
 
     const requestData = {
       name: requestName,
@@ -1013,7 +1001,7 @@
       params: tab.params.filter(p => p.key),
       bodyContent: getSerializableBodyContent(tab),
       bodyType: tab.bodyType,
-      authType: tab.authType,
+      authType: saveAuthType,
       authData,
       description: tab.description,
       ...buildResponsePayload(tab)
@@ -1232,6 +1220,7 @@
       try { authDataRaw = JSON.parse(authDataRaw); } catch { authDataRaw = {}; }
     }
     const loadedAuthType = request.authType || request.auth_type || 'none';
+    const authFields = authFieldsFromStored(loadedAuthType, authDataRaw);
 
     const loadedBodyType = request.bodyType || request.body_type || 'json';
     const loadedBodyContent = request.bodyContent || request.body_content || '';
@@ -1257,12 +1246,7 @@
       params: parsedParams,
       bodyType: loadedBodyType,
       bodyContent: loadedBodyContent,
-      authType: loadedAuthType,
-      authToken: authDataRaw.token || '',
-      authUsername: authDataRaw.username || '',
-      authPassword: authDataRaw.password || '',
-      authApiKey: authDataRaw.key || '',
-      authApiValue: authDataRaw.value || '',
+      ...authFields,
       description: request.description || '',
       responseStatus: request.statusCode ?? request.status_code ?? null,
       responseTime: request.responseTime ?? request.response_time ?? null,
@@ -1337,6 +1321,7 @@
       try { histAuthData = JSON.parse(histAuthData); } catch { histAuthData = {}; }
     }
     const histAuthType = item.authType || item.auth_type || 'none';
+    const histAuthFields = authFieldsFromStored(histAuthType, histAuthData);
 
     // Create a new tab with history data
     const newTab = storeAddTab();
@@ -1348,12 +1333,7 @@
       params: parsedParams,
       bodyType: item.bodyType || item.body_type || 'json',
       bodyContent: item.bodyContent || item.body_content || '',
-      authType: histAuthType,
-      authToken: histAuthData.token || '',
-      authUsername: histAuthData.username || '',
-      authPassword: histAuthData.password || '',
-      authApiKey: histAuthData.key || '',
-      authApiValue: histAuthData.value || '',
+      ...histAuthFields,
       responseStatus: item.status || item.status_code,
       responseTime: item.responseTime || item.response_time,
       responseHeaders: respHeaders,

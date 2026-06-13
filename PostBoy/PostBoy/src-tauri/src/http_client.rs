@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Instant;
 
+use crate::native_http;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HttpRequest {
     pub method: String,
@@ -26,7 +28,7 @@ pub struct HttpResponse {
     pub is_binary: bool,
 }
 
-fn is_binary_content_type(content_type: &str) -> bool {
+pub(crate) fn is_binary_content_type(content_type: &str) -> bool {
     let ct = content_type.to_lowercase();
     ct.starts_with("image/")
         || ct.starts_with("audio/")
@@ -67,12 +69,30 @@ pub async fn execute_request(
     ssl_verify: Option<bool>,
     follow_redirects: Option<bool>,
     max_redirects: Option<usize>,
+    auth_type: Option<String>,
+    auth_data: Option<serde_json::Value>,
 ) -> Result<HttpResponse, String> {
+    let timeout = timeout_secs.unwrap_or(30);
+    let verify = ssl_verify.unwrap_or(false);
+
+    if let Some(ref at) = auth_type {
+        if at == "ntlm" || at == "client-cert" {
+            let data = auth_data.unwrap_or(serde_json::json!({}));
+            return native_http::execute_native_request(
+                request,
+                timeout,
+                verify,
+                at,
+                &data,
+            );
+        }
+    }
+
     let start = Instant::now();
     
     let mut builder = reqwest::Client::builder()
-        .danger_accept_invalid_certs(!ssl_verify.unwrap_or(false))
-        .timeout(std::time::Duration::from_secs(timeout_secs.unwrap_or(30)));
+        .danger_accept_invalid_certs(!verify)
+        .timeout(std::time::Duration::from_secs(timeout));
 
     if let Some(ref proxy) = proxy_url {
         if !proxy.is_empty() {
@@ -167,6 +187,8 @@ pub async fn execute_http_request(
     ssl_verify: Option<bool>,
     follow_redirects: Option<bool>,
     max_redirects: Option<usize>,
+    auth_type: Option<String>,
+    auth_data: Option<serde_json::Value>,
 ) -> Result<HttpResponse, String> {
     let request = HttpRequest {
         method,
@@ -174,6 +196,16 @@ pub async fn execute_http_request(
         headers,
         body,
     };
-    
-    execute_request(request, timeout_secs, proxy_url, ssl_verify, follow_redirects, max_redirects).await
+
+    execute_request(
+        request,
+        timeout_secs,
+        proxy_url,
+        ssl_verify,
+        follow_redirects,
+        max_redirects,
+        auth_type,
+        auth_data,
+    )
+    .await
 }

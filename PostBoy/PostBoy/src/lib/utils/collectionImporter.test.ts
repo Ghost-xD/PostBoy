@@ -524,7 +524,7 @@ describe('importCollection — Postman v2.1', () => {
   it('handles apikey auth', () => {
     const result = importCollection(JSON.stringify(POSTMAN_WITH_AUTH));
     const apikeyReq = result.collections[0].requests.find(r => r.name === 'API Key Request')!;
-    expect(apikeyReq.authType).toBe('apikey');
+    expect(apikeyReq.authType).toBe('api-key');
     expect(apikeyReq.authData).toEqual({ key: 'X-Api-Key', value: 'mykey123', addTo: 'header' });
   });
 
@@ -729,7 +729,7 @@ describe('importCollection — Insomnia v4', () => {
     expect(basic.authData).toEqual({ username: 'user', password: 'pass' });
 
     const apikey = reqs.find(r => r.name === 'API Key')!;
-    expect(apikey.authType).toBe('apikey');
+    expect(apikey.authType).toBe('api-key');
 
     const none = reqs.find(r => r.name === 'None')!;
     expect(none.authType).toBe('none');
