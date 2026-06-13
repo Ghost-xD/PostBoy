@@ -3,6 +3,7 @@ import {
   activeEnvironmentId,
   envVariables,
 } from '$lib/stores/environmentStore';
+import { globalVariables } from '$lib/stores/globalVariableStore';
 import { get } from 'svelte/store';
 import type { ScriptVariableApi } from './requestScriptRunner';
 
@@ -11,12 +12,15 @@ export interface ScriptVariableContext {
   environment: ScriptVariableApi;
   /** pm.collectionVariables */
   collection: ScriptVariableApi;
+  /** pm.globals */
+  globals: ScriptVariableApi;
 }
 
 /** Overlay + scoped variables for script execution (Postman-compatible). */
 export function createScriptVariableContext(collectionId?: number): ScriptVariableContext {
   const envOverlay = new Map<string, string>();
   const collOverlay = new Map<string, string>();
+  const globalOverlay = new Map<string, string>();
   const envId = get(activeEnvironmentId);
 
   const environment: ScriptVariableApi = {
@@ -63,7 +67,27 @@ export function createScriptVariableContext(collectionId?: number): ScriptVariab
     },
   };
 
-  return { environment, collection };
+  const globals: ScriptVariableApi = {
+    get(name: string) {
+      if (globalOverlay.has(name)) return globalOverlay.get(name);
+      const v = globalVariables.getAll().find((x) => x.key === name);
+      return v?.value;
+    },
+    set(name: string, value: string) {
+      globalOverlay.set(name, value);
+      void globalVariables.set(name, value);
+    },
+    has(name: string) {
+      if (globalOverlay.has(name)) return true;
+      return !!globalVariables.getAll().find((x) => x.key === name);
+    },
+    unset(name: string) {
+      globalOverlay.delete(name);
+      void globalVariables.delete(name);
+    },
+  };
+
+  return { environment, collection, globals };
 }
 
 /** @deprecated Use createScriptVariableContext for full Postman scoping. */

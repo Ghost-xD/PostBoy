@@ -5,6 +5,7 @@ import {
   envVariables,
   environmentsRev,
 } from './environmentStore';
+import { globalVariables, globalsRev } from './globalVariableStore';
 
 export interface Variable {
   key: string;
@@ -129,14 +130,18 @@ export async function persistExtractedVariable(
   return ok;
 }
 
-/** Merge collection + active environment variables. Environment wins on key conflicts. */
+/** Merge global + collection + active environment. Later scopes win on conflicts. */
 export function getResolvedVariables(collectionId: number | undefined): Variable[] {
+  get(globalsRev);
   get(environmentsRev);
   const collVars = variables.getForCollection(collectionId);
   const envId = get(activeEnvironmentId);
   const envVars = envVariables.getForEnvironment(envId).filter((v) => v.enabled);
 
   const merged = new Map<string, Variable>();
+  for (const v of globalVariables.getAll()) {
+    merged.set(v.key, { key: v.key, value: v.value });
+  }
   for (const v of collVars) {
     merged.set(v.key, { key: v.key, value: v.value });
   }
@@ -259,8 +264,7 @@ export function interpolate(
   collectionId: number | undefined,
   overrides?: Record<string, string>
 ): string {
-  if (!text) return text;
-  if (!collectionId && !get(activeEnvironmentId) && !overrides) return text;
+  if (!text || !text.includes('{{')) return text;
 
   const varMap = buildInterpolationMap(collectionId, overrides);
 
@@ -282,8 +286,7 @@ export function interpolateJson(
   collectionId: number | undefined,
   overrides?: Record<string, string>
 ): string {
-  if (!text) return text;
-  if (!collectionId && !get(activeEnvironmentId) && !overrides) return text;
+  if (!text || !text.includes('{{')) return text;
 
   const varMap = buildInterpolationMap(collectionId, overrides);
 

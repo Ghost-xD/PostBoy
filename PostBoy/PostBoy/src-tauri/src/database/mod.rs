@@ -291,6 +291,19 @@ pub fn get_migrations() -> Vec<Migration> {
             ",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 14,
+            description: "create_global_variables_table",
+            sql: "
+                CREATE TABLE IF NOT EXISTS global_variables (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL DEFAULT '',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+            ",
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
@@ -543,6 +556,14 @@ pub fn initialize_database(db_path: PathBuf) -> Result<(), String> {
 
             CREATE INDEX IF NOT EXISTS idx_environment_variables_env
                 ON environment_variables(environment_id, key);
+        "),
+        (14, "create_global_variables_table", "
+            CREATE TABLE IF NOT EXISTS global_variables (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL DEFAULT '',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
         "),
     ];
 

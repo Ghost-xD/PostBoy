@@ -80,6 +80,18 @@ export const db = {
   clearVariables: async (collectionId: number) => {
     return await invoke('db_clear_variables', { collectionId });
   },
+  getGlobalVariables: async () => {
+    return await invoke('db_get_global_variables');
+  },
+  setGlobalVariable: async (key: string, value: string) => {
+    return await invoke('db_set_global_variable', { key, value });
+  },
+  deleteGlobalVariable: async (key: string) => {
+    return await invoke('db_delete_global_variable', { key });
+  },
+  clearGlobalVariables: async () => {
+    return await invoke('db_clear_global_variables');
+  },
   listEnvironments: async () => {
     return await invoke('db_list_environments');
   },

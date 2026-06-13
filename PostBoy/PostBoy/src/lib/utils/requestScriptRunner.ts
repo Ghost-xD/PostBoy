@@ -35,14 +35,24 @@ export interface ScriptVariableApi {
 export interface ScriptVariableScope {
   environment: ScriptVariableApi;
   collection: ScriptVariableApi;
+  globals?: ScriptVariableApi;
 }
 
 function normalizeScopes(
   scopes: ScriptVariableApi | ScriptVariableScope
-): ScriptVariableScope {
-  if ('environment' in scopes && 'collection' in scopes) return scopes;
+): ScriptVariableScope & { globals: ScriptVariableApi } {
+  if ('environment' in scopes && 'collection' in scopes) {
+    const s = scopes as ScriptVariableScope;
+    const noop: ScriptVariableApi = {
+      get: () => undefined,
+      set: () => {},
+      has: () => false,
+      unset: () => {},
+    };
+    return { ...s, globals: s.globals ?? noop };
+  }
   const api = scopes as ScriptVariableApi;
-  return { environment: api, collection: api };
+  return { environment: api, collection: api, globals: api };
 }
 
 function buildPm(
@@ -53,7 +63,7 @@ function buildPm(
   errors: string[],
   testResults: ScriptRunResult['testResults']
 ) {
-  const { environment, collection } = normalizeScopes(scopes);
+  const { environment, collection, globals } = normalizeScopes(scopes);
   const pm = {
     request: {
       get url() {
@@ -96,6 +106,7 @@ function buildPm(
     variables: environment,
     environment,
     collectionVariables: collection,
+    globals,
     response: response
       ? {
           code: response.status,

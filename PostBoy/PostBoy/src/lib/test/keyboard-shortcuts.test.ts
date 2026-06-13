@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { matchesGlobalsShortcut, matchesEnvironmentsShortcut } from '$lib/utils/platform';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(() => Promise.resolve(() => {})) }));
@@ -562,6 +563,52 @@ describe('Keyboard Shortcuts', () => {
       }
 
       expect(selectedType).toBe('');
+    });
+  });
+
+  describe('Tools panel Ctrl+Shift shortcuts', () => {
+    /** Canonical list — keep in sync with +page.svelte tools handlers. */
+    const toolsShiftShortcuts = [
+      'U', // theme
+      'J', // jwt
+      'E', // encoder
+      'Q', // sql (Control+Shift on macOS)
+      'X', // cookies
+      'V', // environments
+      'Y', // globals
+      'N', // diagnostics
+      'P', // mcp
+      'M', // chatbot
+      'B', // diff
+      'T', // load test
+      'O', // openapi
+      'A', // auth tab
+      'D', // docs toggle
+      'C', // collections sidebar
+      'H', // history sidebar
+      'F', // format body
+      'K', // copy curl
+      'G', // code gen
+      'S', // snapshot
+      'L', // response layout
+    ];
+
+    it('should have no duplicate Ctrl+Shift letter bindings among tools shortcuts', () => {
+      const unique = new Set(toolsShiftShortcuts.map((k) => k.toLowerCase()));
+      expect(unique.size).toBe(toolsShiftShortcuts.length);
+    });
+
+    it('Ctrl+Shift+Y should open globals, not YAML body type (Ctrl+B → Y)', () => {
+      const globalsEvent = makeKeyEvent({ key: 'Y', ctrlKey: true, shiftKey: true });
+      const yamlEvent = makeKeyEvent({ key: 'y', ctrlKey: false, shiftKey: false });
+
+      expect(matchesGlobalsShortcut(globalsEvent)).toBe(true);
+      expect(matchesGlobalsShortcut(yamlEvent)).toBe(false);
+    });
+
+    it('Ctrl+Shift+V should match environments shortcut', () => {
+      const e = makeKeyEvent({ key: 'v', ctrlKey: true, shiftKey: true });
+      expect(matchesEnvironmentsShortcut(e)).toBe(true);
     });
   });
 });

@@ -84,8 +84,26 @@ export const SQL_RUNNER_SHORTCUT = isMac ? 'Control+Shift+Q' : 'Ctrl+Shift+Q';
 /** Toggle light / dark theme. */
 export const THEME_TOGGLE_SHORTCUT = 'Ctrl+Shift+U';
 
+/** Environments panel (request-bar companion). */
+export const ENVIRONMENTS_SHORTCUT = 'Ctrl+Shift+V';
+
+/**
+ * Global variables panel.
+ * Uses Shift+Y so it does not collide with the body-type chord Ctrl+B → Y (YAML),
+ * which only accepts an unmodified Y key.
+ */
+export const GLOBALS_SHORTCUT = 'Ctrl+Shift+Y';
+
 export function matchesSqlRunnerShortcut(e: KeyboardEvent): boolean {
   if (e.altKey || !e.shiftKey || (e.key !== 'Q' && e.key !== 'q')) return false;
   if (isMac) return e.ctrlKey && !e.metaKey;
   return e.ctrlKey;
+}
+
+export function matchesEnvironmentsShortcut(e: KeyboardEvent): boolean {
+  return isPrimaryModifier(e) && e.shiftKey && (e.key === 'V' || e.key === 'v');
+}
+
+export function matchesGlobalsShortcut(e: KeyboardEvent): boolean {
+  return isPrimaryModifier(e) && e.shiftKey && (e.key === 'Y' || e.key === 'y');
 }

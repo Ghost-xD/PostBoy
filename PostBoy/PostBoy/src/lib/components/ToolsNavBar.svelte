@@ -46,6 +46,16 @@
 
   let curX: number | null = null;
   let rafId: number | null = null;
+  let hasSyncedOnce = false;
+  let waveReady = $state(false);
+
+  /** Wait for DOM + layout (modal open needs two frames before tab rects are stable). */
+  async function waitForLayout() {
+    await tick();
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+  }
 
   function getTabEl(key: string): HTMLElement | null {
     if (!navEl) return null;
@@ -123,16 +133,19 @@
   }
 
   async function syncToActive(animated: boolean) {
-    await tick();
+    await waitForLayout();
     const el = getTabEl(value);
     if (!el || !navEl) return;
     const target = centerXOf(el);
-    if (!animated || curX === null) {
+    const shouldAnimate = animated && hasSyncedOnce && curX !== null && Math.abs(curX - target) > 0.5;
+    if (!shouldAnimate) {
       curX = target;
       renderWave(target);
     } else {
       animateTo(target);
     }
+    hasSyncedOnce = true;
+    waveReady = true;
   }
 
   function handleClick(key: string) {
@@ -140,12 +153,10 @@
     dispatch('select', { key });
   }
 
-  // Re-position the wave whenever the active tab changes.
-  // `value` is the controlled-component prop; we sync the wave to whatever
-  // the parent set.
+  // Re-position the wave whenever the active tab or tab list changes.
   run(() => {
-    if (navEl && value) {
-      void syncToActive(true);
+    if (navEl && value && tabs.length) {
+      void syncToActive(hasSyncedOnce);
     }
   });
 
@@ -160,14 +171,13 @@
   });
 
   onMount(() => {
-    // Initial paint without animation, after the tab buttons have laid out.
     void syncToActive(false);
-    // Track nav width so the wave's right-edge fill stays glued to the
-    // edge during resizes (fullscreen toggle, window resize, etc.).
     resizeObserver = new ResizeObserver(() => {
       void syncToActive(false);
     });
     if (navEl) resizeObserver.observe(navEl);
+    const tabsEl = navEl?.querySelector('.tools-nav-tabs');
+    if (tabsEl) resizeObserver.observe(tabsEl);
   });
 
   onDestroy(() => {
@@ -198,6 +208,7 @@
 
   <svg
     class="tools-nav-wave"
+    class:ready={waveReady}
     bind:this={svgEl}
     aria-hidden="true"
     xmlns="http://www.w3.org/2000/svg"
@@ -281,9 +292,15 @@
     pointer-events: none;
     z-index: 5;
     display: block;
+    opacity: 0;
+    transition: opacity 0.12s ease;
     /* Soft blue glow so the wave reads clearly against the pitch-black
        nav background. */
     filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent-color) 55%, transparent))
             drop-shadow(0 -1px 2px color-mix(in srgb, var(--accent-color) 35%, transparent));
+  }
+
+  .tools-nav-wave.ready {
+    opacity: 1;
   }
 </style>

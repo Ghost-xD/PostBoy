@@ -1108,6 +1108,75 @@ pub async fn db_clear_variables(app: AppHandle, collection_id: i64) -> Result<bo
     Ok(true)
 }
 
+// --- Global variable commands ---
+
+#[tauri::command]
+pub async fn db_get_global_variables(app: AppHandle) -> Result<Vec<KeyValue>, String> {
+    let db_path = get_db_path(&app)?;
+    let conn = rusqlite::Connection::open(db_path)
+        .map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare("SELECT key, value FROM global_variables ORDER BY key ASC")
+        .map_err(|e| e.to_string())?;
+
+    let variables = stmt
+        .query_map([], |row| {
+            Ok(KeyValue {
+                key: row.get(0)?,
+                value: row.get(1)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    Ok(variables)
+}
+
+#[tauri::command]
+pub async fn db_set_global_variable(
+    app: AppHandle,
+    key: String,
+    value: String,
+) -> Result<bool, String> {
+    let db_path = get_db_path(&app)?;
+    let conn = rusqlite::Connection::open(db_path)
+        .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO global_variables (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+        rusqlite::params![key, value],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn db_delete_global_variable(app: AppHandle, key: String) -> Result<bool, String> {
+    let db_path = get_db_path(&app)?;
+    let conn = rusqlite::Connection::open(db_path)
+        .map_err(|e| e.to_string())?;
+
+    conn.execute("DELETE FROM global_variables WHERE key = ?", [key])
+        .map_err(|e| e.to_string())?;
+
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn db_clear_global_variables(app: AppHandle) -> Result<bool, String> {
+    let db_path = get_db_path(&app)?;
+    let conn = rusqlite::Connection::open(db_path)
+        .map_err(|e| e.to_string())?;
+
+    conn.execute("DELETE FROM global_variables", [])
+        .map_err(|e| e.to_string())?;
+
+    Ok(true)
+}
+
 // --- Environment Commands ---
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

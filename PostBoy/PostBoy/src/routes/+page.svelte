@@ -39,6 +39,7 @@
   import DiagnosticsPanel from '$lib/components/DiagnosticsPanel.svelte';
   import CookieJarPanel from '$lib/components/CookieJarPanel.svelte';
   import EnvironmentsPanel from '$lib/components/EnvironmentsPanel.svelte';
+  import GlobalsPanel from '$lib/components/GlobalsPanel.svelte';
   import McpServersPanel from '$lib/components/McpServersPanel.svelte';
   import ChatbotScreen from '$lib/components/ChatbotScreen.svelte';
   import ToolsNavBar from '$lib/components/ToolsNavBar.svelte';
@@ -48,8 +49,9 @@
   import SearchPicker from '$lib/components/SearchPicker.svelte';
   import { loadSettings, settings, toggleTheme } from '$lib/stores/settingsStore';
   import { initEnvironments } from '$lib/stores/environmentStore';
+  import { initGlobals } from '$lib/stores/globalVariableStore';
   import { chatbotSupported, chatbotStatus, initChatbotFeature, teardownChatbotFeature, loadDefaultModel } from '$lib/stores/chatbotStore';
-  import { isMac, formatShortcut, matchesSqlRunnerShortcut, SQL_RUNNER_SHORTCUT } from '$lib/utils/platform';
+  import { isMac, formatShortcut, matchesSqlRunnerShortcut, matchesEnvironmentsShortcut, matchesGlobalsShortcut, SQL_RUNNER_SHORTCUT, ENVIRONMENTS_SHORTCUT, GLOBALS_SHORTCUT } from '$lib/utils/platform';
 
   let version = $state('');
   let collections: any[] = $state([]);
@@ -78,7 +80,8 @@
     { key: 'sql', label: 'SQL Runner', title: formatShortcut(SQL_RUNNER_SHORTCUT) },
     { key: 'diagnostics', label: 'Diagnostics', title: formatShortcut('Ctrl+Shift+N') },
     { key: 'cookies', label: 'Cookie Jar', title: formatShortcut('Ctrl+Shift+X') },
-    { key: 'environments', label: 'Environments', title: formatShortcut('Ctrl+Shift+V') },
+    { key: 'environments', label: 'Environments', title: formatShortcut(ENVIRONMENTS_SHORTCUT) },
+    { key: 'globals', label: 'Globals', title: formatShortcut(GLOBALS_SHORTCUT) },
     mcpTabAvailable ? { key: 'mcp', label: 'MCP Servers', title: 'Manage MCP servers' } : null,
     { key: 'settings', label: 'Settings', title: formatShortcut('Ctrl+,') },
   ].filter(Boolean) as ToolsNavTab[]));
@@ -133,6 +136,7 @@
       loadHistory(),
       restoreTabs(),
       initEnvironments(),
+      initGlobals(),
     ]);
     version = appVersion as string;
 
@@ -297,6 +301,7 @@
         await MenuItem.new({ id: 'sql-runner', text: 'SQL Query Runner', accelerator: isMac ? 'Control+Shift+Q' : 'Ctrl+Shift+Q', action: () => showToolsPanel.update(v => v === 'sql' ? false : 'sql') }),
         await MenuItem.new({ id: 'cookie-jar', text: 'Cookie Jar', accelerator: 'CmdOrCtrl+Shift+X', action: () => showToolsPanel.update(v => v === 'cookies' ? false : 'cookies') }),
         await MenuItem.new({ id: 'environments', text: 'Environments', accelerator: 'CmdOrCtrl+Shift+V', action: () => showToolsPanel.update(v => v === 'environments' ? false : 'environments') }),
+        await MenuItem.new({ id: 'globals', text: 'Global Variables', accelerator: 'CmdOrCtrl+Shift+Y', action: () => showToolsPanel.update(v => v === 'globals' ? false : 'globals') }),
         await MenuItem.new({ id: 'diagnostics', text: 'Network Diagnostics', accelerator: 'CmdOrCtrl+Shift+N', action: () => showToolsPanel.update(v => v === 'diagnostics' ? false : 'diagnostics') }),
         await MenuItem.new({ id: 'diff-tool', text: 'Diff / Compare', accelerator: 'CmdOrCtrl+Shift+B', action: () => showDiffTool.update(v => !v) }),
         await MenuItem.new({ id: 'load-test', text: 'Load Test Lab', accelerator: 'CmdOrCtrl+Shift+T', action: () => showLoadTest.update(v => v ? false : { collectionId: null }) }),
@@ -642,9 +647,16 @@
       }
 
       // Ctrl+Shift+V — Environments
-      if (mod && e.shiftKey && e.key === 'V') {
+      if (matchesEnvironmentsShortcut(e)) {
         e.preventDefault();
         showToolsPanel.update(v => v === 'environments' ? false : 'environments');
+        return;
+      }
+
+      // Ctrl+Shift+Y — Global Variables (Shift required; distinct from Ctrl+B → Y for YAML)
+      if (matchesGlobalsShortcut(e)) {
+        e.preventDefault();
+        showToolsPanel.update(v => v === 'globals' ? false : 'globals');
         return;
       }
 
@@ -1556,6 +1568,8 @@
           <CookieJarPanel />
         {:else if $showToolsPanel === 'environments'}
           <EnvironmentsPanel />
+        {:else if $showToolsPanel === 'globals'}
+          <GlobalsPanel />
         {:else if $showToolsPanel === 'mcp' && mcpTabAvailable}
           <McpServersPanel />
         {:else if $showToolsPanel === 'settings'}

@@ -13,7 +13,7 @@
 
 | Area          | Still missing or partial                                                                                                                |
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Environments  | ✅ Named profiles, switcher, initial/current values, Postman env import/export — ❌ global vars, secret type, dynamic `{{$…}}` vars      |
+| Environments  | ✅ Profiles, switcher, env import/export — ❌ secret type, dynamic `{{$…}}` vars (globals ✅) |
 | Auth          | Akamai EdgeGrid, ASAP, inherit-from-folder                                                                                              |
 | Protocols     | GraphQL introspection UI; gRPC streaming & `.proto` import; SOAP, MQTT, Socket.IO                                                       |
 | Scripts       | No `pm.sendRequest`, cookies, crypto libs; HTTP scripts not persisted; WS/SSE scripts in stream body only; no collection/folder scripts |
@@ -87,11 +87,11 @@ Ripple now has **Postman-style named environments** (SQLite `environments` + `en
 
 | Feature                                      | Status                                                                                       |
 | -------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Global variables                             | ✅ **Tools → Globals** (`Ctrl+Shift+Y`) — key/value pairs available in every request |
 | Environment variables (Dev / Staging / Prod) | ✅ Create, rename, duplicate, delete in **Tools → Environments** (`Ctrl+Shift+V`)             |
 | Environment switcher                         | ✅ Request bar dropdown (left of Send); persists active env in settings                       |
 | Initial / current value split                | ✅ Per env var; **Reset values** restores current from initial                                |
-| Variable scopes beyond collection            | ⚠️ Collection + active environment only — no global, local, or data-file scopes             |
-| Global variables                             | ❌                                                                                            |
+| Variable scopes beyond collection            | ⚠️ Global + collection + active environment — no local or data-file scopes                    |
 | Secret variable type                         | ❌ Env vars stored as plain text; sensitive **field names** masked in request UI only       |
 | Dynamic variables (`{{$randomInt}}`, etc.)   | ❌                                                                                            |
 | Postman environment import / export          | ✅ `.postman_environment.json` via Environments panel                                       |
@@ -191,7 +191,8 @@ Ripple now has **Postman-style named environments** (SQLite `environments` + `en
 
 ## Suggested Priority
 
-1. ~~**Environments** — named profiles + switcher~~ ✅ **Done** (remaining: global vars, secret type, dynamic vars)
+1. ~~**Environments** — named profiles + switcher~~ ✅ **Done** (remaining: secret type, dynamic vars)
+1b. ~~**Global variables**~~ ✅ **Done** via **Tools → Globals**
 2. **Persist HTTP scripts & gRPC fields** — save/load on collection + Postman `event` import (stream scripts already persist via `bodyType: stream`)
 3. **Richer script runtime** — `pm.sendRequest`, cookies, crypto helpers
 4. **gRPC streaming** + `.proto` import

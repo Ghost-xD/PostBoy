@@ -88,6 +88,8 @@
       { keys: 'Ctrl + D', label: 'Toggle Encode / Decode', sub: true },
       { keys: 'Ctrl + M', label: 'Toggle Base64 / URL mode', sub: true },
       { keys: 'Ctrl + Shift + X', label: 'Cookie Jar' },
+      { keys: 'Ctrl + Shift + V', label: 'Environments' },
+      { keys: 'Ctrl + Shift + Y', label: 'Global Variables' },
       { keys: 'Ctrl + Shift + N', label: 'Network Diagnostics' },
       { keys: 'Ctrl + Shift + B', label: 'Diff / Compare Tool' },
       { keys: 'Option + N', label: 'Next diff change (in Diff Tool)', sub: true },
