@@ -102,6 +102,7 @@
     ]},
     { title: 'General', items: [
       { keys: 'Ctrl + ,', label: 'Settings' },
+      { keys: 'Ctrl + Shift + U', label: 'Toggle light / dark theme' },
       { keys: 'Ctrl + /', label: 'Toggle this panel' },
       { keys: 'Ctrl + Shift + [', label: 'Collapse / expand collections panel' },
       { keys: 'Ctrl + Shift + ]', label: 'Collapse / expand response panel' },

@@ -1,9 +1,10 @@
-/* CSS Variables - Pitch-Black + Blue Theme
+/* CSS Variables - Pitch-Black + Blue Theme (dark) / Ripple Blue Mirror (light)
    --bg-primary and --bg-secondary are both pure black so every primary
    surface (body editor, response panel, sidebar, JSON viewers) reads as
    pitch black. --bg-tertiary keeps a subtle blue tint so hover/active
    states (tab highlights, dropdown rows) remain visible. */
-:root {
+:root,
+[data-theme="dark"] {
   --bg-primary: #000000;
   --bg-secondary: #000000;
   --bg-tertiary: #0c1626;
@@ -35,6 +36,23 @@
   --font-family-mono: 'SF Pro Display', 'Inter', 'Segoe UI', 'Roboto', sans-serif;
 }
 
+/* Palette A — Ripple Blue Mirror (light) */
+[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --bg-tertiary: #eef2ff;
+  --text-primary: #1a2332;
+  --text-secondary: #64748b;
+  --border-color: #e2e8f0;
+  --accent-color: #4d8df6;
+  --accent-hover: #3b7ae8;
+  --accent-glow: rgba(77, 141, 246, 0.25);
+  --success-color: #22c55e;
+  --error-color: #ef4444;
+  --warning-color: #eab308;
+  --shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -45,7 +63,7 @@ html, body {
   margin: 0;
   padding: 0;
   background-color: var(--bg-primary) !important;
-  color: white;
+  color: var(--text-primary);
   height: 100%;
 }
 

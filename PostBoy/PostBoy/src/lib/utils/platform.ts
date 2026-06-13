@@ -81,6 +81,9 @@ export function isPrimaryModifier(e: KeyboardEvent): boolean {
 /** SQL Runner chord. On macOS ⌘⇧Q is reserved for Log Out, so we bind ⌃⇧Q instead. */
 export const SQL_RUNNER_SHORTCUT = isMac ? 'Control+Shift+Q' : 'Ctrl+Shift+Q';
 
+/** Toggle light / dark theme. */
+export const THEME_TOGGLE_SHORTCUT = 'Ctrl+Shift+U';
+
 export function matchesSqlRunnerShortcut(e: KeyboardEvent): boolean {
   if (e.altKey || !e.shiftKey || (e.key !== 'Q' && e.key !== 'q')) return false;
   if (isMac) return e.ctrlKey && !e.metaKey;

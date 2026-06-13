@@ -931,7 +931,7 @@
     flex: 1;
     overflow: auto;
     padding: 8px 4px;
-    background: #000000;
+    background: var(--bg-primary);
   }
 
   .graph-fullscreen-overlay {

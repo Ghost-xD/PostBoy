@@ -44,7 +44,7 @@
   import DiffTool from '$lib/components/DiffTool.svelte';
   import LoadTestScreen from '$lib/components/LoadTestScreen.svelte';
   import SearchPicker from '$lib/components/SearchPicker.svelte';
-  import { loadSettings, settings } from '$lib/stores/settingsStore';
+  import { loadSettings, settings, toggleTheme } from '$lib/stores/settingsStore';
   import { chatbotSupported, chatbotStatus, initChatbotFeature, teardownChatbotFeature, loadDefaultModel } from '$lib/stores/chatbotStore';
   import { isMac, formatShortcut, matchesSqlRunnerShortcut, SQL_RUNNER_SHORTCUT } from '$lib/utils/platform';
 
@@ -597,6 +597,13 @@
       if (mod && (e.key === '/' || e.key === '?')) {
         e.preventDefault();
         showShortcuts.update(v => !v);
+        return;
+      }
+
+      // Ctrl+Shift+U — toggle light / dark theme
+      if (mod && e.shiftKey && (e.key === 'U' || e.key === 'u')) {
+        e.preventDefault();
+        void toggleTheme();
         return;
       }
 

@@ -2,6 +2,8 @@
   import { run } from 'svelte/legacy';
 
   import { onMount, onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
+  import { settings } from '$lib/stores/settingsStore';
 
   interface Props {
     data: any;
@@ -58,10 +60,12 @@
       root = createRoot(container);
     }
 
+    const graphTheme = get(settings).theme === 'light' ? 'light' : 'dark';
+
     root.render(
       React.createElement(JSONCrack, {
         json: data,
-        theme: 'dark',
+        theme: graphTheme,
         layoutDirection: 'RIGHT',
         showControls: true,
         showGrid: true,
@@ -100,6 +104,7 @@
 
   run(() => {
     if (mounted && data) {
+      $settings.theme;
       renderReact();
     }
   });

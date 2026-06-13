@@ -1,5 +1,7 @@
 <script lang="ts">
   import { settings, updateSetting, resetSettings } from '$lib/stores/settingsStore';
+  import type { ThemeMode } from '$lib/utils/theme';
+  import { shortcutTitle, THEME_TOGGLE_SHORTCUT } from '$lib/utils/platform';
 
   let saved = $state(false);
   let savedTimeout: ReturnType<typeof setTimeout>;
@@ -19,9 +21,44 @@
     await resetSettings();
     showSaved();
   }
+
+  async function setTheme(theme: ThemeMode) {
+    await handleUpdate('theme', theme);
+  }
 </script>
 
 <div class="settings-panel">
+  <div class="settings-section">
+    <h4>Appearance</h4>
+
+    <div class="setting-row">
+      <label for="theme-light" title={shortcutTitle('Toggle theme', THEME_TOGGLE_SHORTCUT)}>Theme</label>
+      <div class="setting-control theme-toggle">
+        <button
+          id="theme-light"
+          type="button"
+          class="theme-option"
+          class:active={$settings.theme === 'light'}
+          onclick={() => setTheme('light')}
+          aria-pressed={$settings.theme === 'light'}
+          title={shortcutTitle('Light theme', THEME_TOGGLE_SHORTCUT)}
+        >
+          Light
+        </button>
+        <button
+          type="button"
+          class="theme-option"
+          class:active={$settings.theme === 'dark'}
+          onclick={() => setTheme('dark')}
+          aria-pressed={$settings.theme === 'dark'}
+          title={shortcutTitle('Dark theme', THEME_TOGGLE_SHORTCUT)}
+        >
+          Dark
+        </button>
+      </div>
+    </div>
+  </div>
+
   <div class="settings-section">
     <h4>Request</h4>
 
@@ -222,6 +259,38 @@
     height: 16px;
     accent-color: var(--accent-color, #5865f2);
     cursor: pointer;
+  }
+
+  .theme-toggle {
+    gap: 0;
+    border: 1px solid var(--border-color, #3f4147);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .theme-option {
+    padding: 6px 14px;
+    background: var(--bg-primary, #1e1f22);
+    color: var(--text-secondary, #b5bac1);
+    border: none;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .theme-option + .theme-option {
+    border-left: 1px solid var(--border-color, #3f4147);
+  }
+
+  .theme-option.active {
+    background: var(--accent-color, #5865f2);
+    color: #fff;
+    font-weight: 600;
+  }
+
+  .theme-option:not(.active):hover {
+    background: var(--bg-tertiary, #3f4147);
+    color: var(--text-primary, #f2f3f5);
   }
 
   .setting-unit, .setting-hint {

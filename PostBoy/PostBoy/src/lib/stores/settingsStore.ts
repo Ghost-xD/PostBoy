@@ -1,7 +1,9 @@
 import { writable, get } from 'svelte/store';
 import { db } from '$lib/api/tauri';
+import { applyTheme, type ThemeMode } from '$lib/utils/theme';
 
 export interface AppSettings {
+  theme: ThemeMode;
   requestTimeout: number;
   proxyEnabled: boolean;
   proxyUrl: string;
@@ -22,6 +24,7 @@ export interface AppSettings {
 }
 
 const DEFAULTS: AppSettings = {
+  theme: 'dark',
   requestTimeout: 30,
   proxyEnabled: false,
   proxyUrl: '',
@@ -40,19 +43,28 @@ export async function loadSettings(): Promise<void> {
       const parsed = typeof saved === 'string' ? JSON.parse(saved) : saved;
       settings.set({ ...DEFAULTS, ...parsed });
     }
+    applyTheme(get(settings).theme);
   } catch {
     settings.set({ ...DEFAULTS });
+    applyTheme(DEFAULTS.theme);
   }
 }
 
 export async function updateSetting<K extends keyof AppSettings>(key: K, value: AppSettings[K]): Promise<void> {
   settings.update(s => ({ ...s, [key]: value }));
   const current = get(settings);
+  if (key === 'theme') applyTheme(current.theme);
   await db.setSetting('app_settings', JSON.stringify(current));
+}
+
+export async function toggleTheme(): Promise<void> {
+  const next: ThemeMode = get(settings).theme === 'dark' ? 'light' : 'dark';
+  await updateSetting('theme', next);
 }
 
 export async function resetSettings(): Promise<void> {
   settings.set({ ...DEFAULTS });
+  applyTheme(DEFAULTS.theme);
   await db.setSetting('app_settings', JSON.stringify(DEFAULTS));
 }
 

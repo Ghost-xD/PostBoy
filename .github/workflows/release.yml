@@ -5,12 +5,18 @@ on:
     tags:
       - 'v*.*.*'
 
+# Don't cancel an in-flight release when a tag is re-pushed.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
 jobs:
   build-windows:
     runs-on: windows-latest
+    timeout-minutes: 60
     permissions:
       contents: write
 
@@ -25,17 +31,6 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Vulkan SDK
-        uses: jakoch/install-vulkan-sdk-action@v1
-        with:
-          cache: true
-
-      - name: Enable Windows long paths
-        shell: pwsh
-        run: |
-          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1 -Type DWord
-          git config --system core.longpaths true
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -55,72 +50,72 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           UPDATE_TOKEN: ${{ secrets.UPDATE_TOKEN }}
-          # llama.cpp's Vulkan shader build creates very deeply nested MSBuild
-          # paths. Opt MSBuild's CPPTasks into long-path filesystem APIs so the
-          # build doesn't fail on MAX_PATH (our local tauri-env.cjs wrapper does
-          # the same, but it doesn't run under tauri-action in CI).
-          COMPlus_AppContextSwitchOverrides: 'Switch.System.IO.UseLegacyPathHandling=false;Switch.System.IO.BlockLongPaths=false'
         with:
           projectPath: PostBoy/PostBoy
           tagName: ${{ github.ref_name }}
           releaseName: 'PostBoy ${{ github.ref_name }}'
-          releaseBody: 'Download the installer for your platform below.'
+          releaseBody: |
+            Download the installer for your platform below.
+
+            **Note:** This Windows build excludes the on-device chatbot (no llama.cpp / Vulkan).
           releaseDraft: false
           prerelease: false
+          # Skip llama-cpp-2 / Vulkan on Windows — see Cargo.toml `chatbot` feature.
+          args: -- --no-default-features
 
-  build-macos:
-    strategy:
-      matrix:
-        include:
-          - runner: macos-latest
-            target: aarch64-apple-darwin
-          # Intel macOS (legacy) — re-enable if you need x86_64 builds
-          # - runner: macos-15-intel
-          #   target: x86_64-apple-darwin
-    runs-on: ${{ matrix.runner }}
-    permissions:
-      contents: write
+  # build-macos:
+  #   strategy:
+  #     matrix:
+  #       include:
+  #         - runner: macos-latest
+  #           target: aarch64-apple-darwin
+  #         # Intel macOS (legacy) — re-enable if you need x86_64 builds
+  #         # - runner: macos-15-intel
+  #         #   target: x86_64-apple-darwin
+  #   runs-on: ${{ matrix.runner }}
+  #   permissions:
+  #     contents: write
 
-    steps:
-      - uses: actions/checkout@v5
+  #   steps:
+  #     - uses: actions/checkout@v5
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: '22'
-          package-manager-cache: false
+  #     - name: Setup Node.js
+  #       uses: actions/setup-node@v5
+  #       with:
+  #         node-version: '22'
+  #         package-manager-cache: false
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+  #     - name: Install Rust
+  #       uses: dtolnay/rust-toolchain@stable
+  #       with:
+  #         targets: ${{ matrix.target }}
 
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: PostBoy/PostBoy/src-tauri -> target
-          save-if: true
-          shared-key: release-${{ matrix.target }}
+  #     - name: Rust cache
+  #       uses: swatinem/rust-cache@v2
+  #       with:
+  #         workspaces: PostBoy/PostBoy/src-tauri -> target
+  #         save-if: true
+  #         shared-key: release-${{ matrix.target }}
 
-      - name: Install frontend dependencies
-        working-directory: PostBoy/PostBoy
-        run: yarn install --frozen-lockfile
+  #     - name: Install frontend dependencies
+  #       working-directory: PostBoy/PostBoy
+  #       run: yarn install --frozen-lockfile
 
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          UPDATE_TOKEN: ${{ secrets.UPDATE_TOKEN }}
-          # llama.cpp 0.1.146 uses std::filesystem, which clang marks unavailable
-          # below macOS 10.15. Apple Silicon's floor is 11.0, so target that.
-          MACOSX_DEPLOYMENT_TARGET: '11.0'
-        with:
-          projectPath: PostBoy/PostBoy
-          tagName: ${{ github.ref_name }}
-          releaseName: 'PostBoy ${{ github.ref_name }}'
-          releaseBody: 'Download the installer for your platform below.'
-          releaseDraft: false
-          prerelease: false
-          args: --target ${{ matrix.target }}
+  #     - name: Build Tauri app
+  #       uses: tauri-apps/tauri-action@v0
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #         TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+  #         TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+  #         UPDATE_TOKEN: ${{ secrets.UPDATE_TOKEN }}
+  #         # llama.cpp 0.1.146 uses std::filesystem, which clang marks unavailable
+  #         # below macOS 10.15. Apple Silicon's floor is 11.0, so target that.
+  #         MACOSX_DEPLOYMENT_TARGET: '11.0'
+  #       with:
+  #         projectPath: PostBoy/PostBoy
+  #         tagName: ${{ github.ref_name }}
+  #         releaseName: 'PostBoy ${{ github.ref_name }}'
+  #         releaseBody: 'Download the installer for your platform below.'
+  #         releaseDraft: false
+  #         prerelease: false
+  #         args: --target ${{ matrix.target }}

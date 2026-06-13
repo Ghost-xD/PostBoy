@@ -1,12 +1,13 @@
 <script lang="ts">
   import { run } from 'svelte/legacy';
 
-  import { onMount, onDestroy } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { EditorView, basicSetup } from 'codemirror';
   import { json } from '@codemirror/lang-json';
-  import { oneDark } from '@codemirror/theme-one-dark';
   import { EditorState } from '@codemirror/state';
   import { autocompletion, type CompletionContext } from '@codemirror/autocomplete';
+  import { settings } from '$lib/stores/settingsStore';
+  import { buildJsonEditorShellTheme, codeMirrorSyntaxTheme } from '$lib/utils/codemirrorTheme';
   import { variables } from '$lib/stores/variableStore';
   import { filterVariableSuggestions, maskVariableValue } from '$lib/utils/variableAutocomplete';
   import {
@@ -37,7 +38,7 @@
   }: Props = $props();
 
   let editorDiv: HTMLDivElement | undefined = $state();
-  let view: EditorView | undefined = $state();
+  let view: EditorView | undefined;
   let activeCollectionId = $state<number | null>(null);
 
   let secretsByKey = new Map<string, string>();
@@ -94,13 +95,23 @@
     }
   }
 
-  onMount(() => {
+  function destroyEditor() {
+    hideSensitiveValuePopover();
+    if (view) {
+      view.destroy();
+      view = undefined;
+    }
+  }
+
+  function createEditor(theme: 'dark' | 'light') {
+    if (!editorDiv) return;
+
     const displayDoc = prepareDisplayDoc(value);
 
     const extensions = [
       basicSetup,
       json(),
-      oneDark,
+      codeMirrorSyntaxTheme(theme),
       autocompletion({ override: [variableCompletionSource] }),
       jsonSensitiveValueHoverExtension(() => sensitiveMatches, {
         resolveSecret: (match) => defaultMaskedSecretResolver(match, secretsByKey),
@@ -143,52 +154,7 @@
           return false;
         },
       }),
-      EditorView.theme({
-        '&': {
-          fontSize: '13px',
-          border: '1px solid var(--border-color)',
-          borderRadius: '4px',
-          backgroundColor: '#000000',
-        },
-        '.cm-scroller': {
-          fontFamily: 'Consolas, Monaco, Courier New, monospace',
-          lineHeight: '1.6',
-          minHeight: '300px',
-          overflow: 'auto',
-          backgroundColor: '#000000',
-        },
-        '.cm-content': {
-          caretColor: '#4d8df6',
-        },
-        '.cm-gutters': {
-          backgroundColor: '#000000 !important',
-          color: '#5c6370',
-          border: 'none',
-          borderRight: 'none',
-        },
-        '.cm-gutter': {
-          backgroundColor: '#000000',
-        },
-        '.cm-lineNumbers .cm-gutterElement': {
-          backgroundColor: '#000000',
-        },
-        '.cm-activeLineGutter': {
-          backgroundColor: '#000000',
-          color: '#7b8398',
-        },
-        '.cm-activeLine': {
-          backgroundColor: 'transparent',
-        },
-        '.cm-foldGutter': {
-          backgroundColor: '#000000',
-        },
-        '&.cm-focused .cm-cursor': {
-          borderLeftColor: '#4d8df6',
-        },
-        '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground': {
-          backgroundColor: '#3584e4 !important',
-        },
-      }),
+      buildJsonEditorShellTheme(theme),
     ];
 
     if (wordWrap) {
@@ -204,13 +170,18 @@
       state: startState,
       parent: editorDiv,
     });
+  }
+
+  $effect(() => {
+    const theme = $settings.theme;
+    if (!editorDiv) return;
+    destroyEditor();
+    untrack(() => createEditor(theme));
+    return () => destroyEditor();
   });
 
   onDestroy(() => {
-    hideSensitiveValuePopover();
-    if (view) {
-      view.destroy();
-    }
+    destroyEditor();
   });
 
   let lastExternalValue = $state('');
@@ -250,13 +221,5 @@
 
   :global(.json-editor-container .cm-content) {
     background-color: transparent !important;
-  }
-
-  :global(.json-editor-container .cm-editor.cm-focused .cm-selectionLayer .cm-selectionBackground) {
-    background-color: #3584e4 !important;
-  }
-
-  :global(.json-editor-container .cm-selectionLayer .cm-selectionBackground) {
-    background-color: #264f78 !important;
   }
 </style>

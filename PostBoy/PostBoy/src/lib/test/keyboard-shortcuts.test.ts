@@ -27,6 +27,7 @@ interface ShortcutDef {
 
 const globalShortcuts: ShortcutDef[] = [
   { key: '/', ctrl: true, description: 'Toggle keyboard shortcuts', action: 'showShortcuts' },
+  { key: 'U', ctrl: true, shift: true, description: 'Toggle light / dark theme', action: 'toggleTheme' },
   { key: 'J', ctrl: true, shift: true, description: 'JWT Decoder', action: 'showToolsPanel:jwt' },
   { key: 'E', ctrl: true, shift: true, description: 'Base64/URL Encoder', action: 'showToolsPanel:encoder' },
   { key: 'Escape', description: 'Close topmost overlay', action: 'closeOverlay' },

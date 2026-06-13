@@ -1,7 +1,7 @@
 <script lang="ts">
   import { run } from 'svelte/legacy';
 
-  import { onMount, onDestroy } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { EditorView } from 'codemirror';
   import {
     gutter,
@@ -16,7 +16,6 @@
   } from '@codemirror/view';
   import { RangeSetBuilder } from '@codemirror/state';
   import { json } from '@codemirror/lang-json';
-  import { oneDark } from '@codemirror/theme-one-dark';
   import { EditorState } from '@codemirror/state';
   import {
     foldGutter,
@@ -41,6 +40,8 @@
     jsonSensitiveValueHoverExtension,
     hideSensitiveValuePopover,
   } from '$lib/utils/codemirrorSensitiveJson';
+  import { settings } from '$lib/stores/settingsStore';
+  import { buildResponseViewerShellTheme, codeMirrorSyntaxTheme } from '$lib/utils/codemirrorTheme';
 
   // basicSetup minus highlightActiveLine / highlightActiveLineGutter,
   // which mis-highlight a line in this read-only viewer (no real cursor).
@@ -92,7 +93,7 @@
   }: Props = $props();
 
   let editorDiv: HTMLDivElement | undefined = $state();
-  let view: EditorView | undefined = $state();
+  let view: EditorView | undefined;
   let showingFull = $state(false);
   let loadingFull = $state(false);
   let copiesByLine = new Map<number, string>();
@@ -198,8 +199,18 @@
     findPrevious(view);
   }
 
-  onMount(() => {
-    const displayValue = computeDisplayValue(value, showingFull);
+  function destroyView() {
+    hideSensitiveValuePopover();
+    if (view) {
+      view.destroy();
+      view = undefined;
+    }
+  }
+
+  function createView(theme: 'dark' | 'light') {
+    if (!editorDiv) return;
+
+    const doc = computeDisplayValue(value, showingFull);
 
     if (fieldMode && language === 'json') {
       try {
@@ -209,91 +220,14 @@
       }
     }
 
-    sensitiveMatches = findSensitiveJsonMatches(displayValue);
+    sensitiveMatches = findSensitiveJsonMatches(doc);
 
     const extensions = [
       ...buildReadOnlySetup(fieldMode),
       search({ top: false, literal: true }),
       EditorView.editable.of(false),
-      oneDark,
-      EditorView.theme({
-        '&': {
-          fontSize: '13px',
-          border: '1px solid var(--border-color)',
-          borderRadius: '4px',
-          backgroundColor: '#000000',
-          height: '100%',
-        },
-        '.cm-scroller': {
-          fontFamily: 'Consolas, Monaco, Courier New, monospace',
-          lineHeight: '1.6',
-          height: '100%',
-          overflow: 'auto',
-          backgroundColor: '#000000',
-        },
-        '.cm-content': {
-          caretColor: 'transparent',
-        },
-        '.cm-gutters': {
-          backgroundColor: '#000000 !important',
-          color: '#5c6370',
-          border: 'none',
-          borderRight: 'none',
-        },
-        '.cm-gutter': {
-          backgroundColor: '#000000',
-        },
-        '.cm-lineNumbers .cm-gutterElement': {
-          backgroundColor: '#000000',
-        },
-        '.cm-activeLineGutter': {
-          backgroundColor: '#000000',
-        },
-        '.cm-activeLine': {
-          backgroundColor: 'transparent',
-        },
-        '.cm-foldGutter': {
-          backgroundColor: '#000000',
-        },
-        '.cm-field-copy-gutter': {
-          width: '28px',
-          backgroundColor: '#000000',
-        },
-        '.cm-field-copy-gutter .cm-gutterElement': {
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '0 2px',
-        },
-        '.cm-field-copy-btn': {
-          background: 'none',
-          border: 'none',
-          color: '#7b8398',
-          cursor: 'pointer',
-          fontSize: '12px',
-          lineHeight: '1',
-          padding: '0',
-        },
-        '.cm-field-copy-btn:hover': {
-          color: '#abb2bf',
-        },
-        '.cm-searchMatch': {
-          backgroundColor: 'rgba(240, 177, 50, 0.3) !important',
-          borderRadius: '2px',
-        },
-        '.cm-searchMatch-selected': {
-          backgroundColor: 'rgba(88, 101, 242, 0.5) !important',
-        },
-        '.cm-search.cm-panel': {
-          display: 'none !important',
-        },
-        '.cm-selectionBackground': {
-          backgroundColor: '#264f78 !important',
-        },
-        '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground': {
-          backgroundColor: '#3584e4 !important',
-        },
-      }),
+      codeMirrorSyntaxTheme(theme),
+      buildResponseViewerShellTheme(theme),
     ];
 
     if (language === 'json') {
@@ -322,7 +256,7 @@
     }
 
     const startState = EditorState.create({
-      doc: displayValue,
+      doc,
       extensions,
     });
 
@@ -330,13 +264,23 @@
       state: startState,
       parent: editorDiv,
     });
+
+    if (searchQuery) {
+      const q = new SearchQuery({ search: searchQuery, caseSensitive: false });
+      view.dispatch({ effects: setSearchQuery.of(q) });
+    }
+  }
+
+  $effect(() => {
+    const theme = $settings.theme;
+    if (!editorDiv) return;
+    destroyView();
+    untrack(() => createView(theme));
+    return () => destroyView();
   });
 
   onDestroy(() => {
-    hideSensitiveValuePopover();
-    if (view) {
-      view.destroy();
-    }
+    destroyView();
   });
 
   let isLarge = $derived(value.length > LARGE_RESPONSE_THRESHOLD);
