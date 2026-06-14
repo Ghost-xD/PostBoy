@@ -11,23 +11,23 @@ if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
 }
 
 const root = path.resolve(__dirname, '..');
-const postboy = path.join(root, 'PostBoy', 'PostBoy');
+const appRoot = path.join(root, 'Ripple');
 
 const files = [
   {
-    path: path.join(postboy, 'package.json'),
+    path: path.join(appRoot, 'package.json'),
     update(content) {
       return content.replace(/"version":\s*"[^"]*"/, `"version": "${version}"`);
     }
   },
   {
-    path: path.join(postboy, 'src-tauri', 'tauri.conf.json'),
+    path: path.join(appRoot, 'src-tauri', 'tauri.conf.json'),
     update(content) {
       return content.replace(/"version":\s*"[^"]*"/, `"version": "${version}"`);
     }
   },
   {
-    path: path.join(postboy, 'src-tauri', 'Cargo.toml'),
+    path: path.join(appRoot, 'src-tauri', 'Cargo.toml'),
     update(content) {
       return content.replace(/^version\s*=\s*"[^"]*"/m, `version = "${version}"`);
     }

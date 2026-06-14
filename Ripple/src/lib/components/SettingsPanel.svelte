@@ -1,0 +1,342 @@
+<script lang="ts">
+  import { settings, updateSetting, resetSettings } from '$lib/stores/settingsStore';
+  import type { ThemeMode } from '$lib/utils/theme';
+  import { shortcutTitle, THEME_TOGGLE_SHORTCUT } from '$lib/utils/platform';
+
+  let saved = $state(false);
+  let savedTimeout: ReturnType<typeof setTimeout>;
+
+  function showSaved() {
+    saved = true;
+    if (savedTimeout) clearTimeout(savedTimeout);
+    savedTimeout = setTimeout(() => { saved = false; }, 1200);
+  }
+
+  async function handleUpdate<K extends keyof typeof $settings>(key: K, value: (typeof $settings)[K]) {
+    await updateSetting(key, value);
+    showSaved();
+  }
+
+  async function handleReset() {
+    await resetSettings();
+    showSaved();
+  }
+
+  async function setTheme(theme: ThemeMode) {
+    await handleUpdate('theme', theme);
+  }
+</script>
+
+<div class="settings-panel">
+  <div class="settings-section">
+    <h4>Appearance</h4>
+
+    <div class="setting-row">
+      <label for="theme-light" title={shortcutTitle('Toggle theme', THEME_TOGGLE_SHORTCUT)}>Theme</label>
+      <div class="setting-control theme-toggle">
+        <button
+          id="theme-light"
+          type="button"
+          class="theme-option"
+          class:active={$settings.theme === 'light'}
+          onclick={() => setTheme('light')}
+          aria-pressed={$settings.theme === 'light'}
+          title={shortcutTitle('Light theme', THEME_TOGGLE_SHORTCUT)}
+        >
+          Light
+        </button>
+        <button
+          type="button"
+          class="theme-option"
+          class:active={$settings.theme === 'dark'}
+          onclick={() => setTheme('dark')}
+          aria-pressed={$settings.theme === 'dark'}
+          title={shortcutTitle('Dark theme', THEME_TOGGLE_SHORTCUT)}
+        >
+          Dark
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <h4>Request</h4>
+
+    <div class="setting-row">
+      <label for="timeout">Request Timeout</label>
+      <div class="setting-control">
+        <input
+          id="timeout"
+          type="number"
+          min="1"
+          max="300"
+          value={$settings.requestTimeout}
+          onchange={(e) => handleUpdate('requestTimeout', parseInt(e.currentTarget.value) || 30)}
+        />
+        <span class="setting-unit">seconds</span>
+      </div>
+    </div>
+
+    <div class="setting-row">
+      <label for="follow-redirects">Follow Redirects</label>
+      <div class="setting-control">
+        <input
+          id="follow-redirects"
+          type="checkbox"
+          checked={$settings.followRedirects}
+          onchange={(e) => handleUpdate('followRedirects', e.currentTarget.checked)}
+        />
+        {#if $settings.followRedirects}
+          <input
+            type="number"
+            min="1"
+            max="50"
+            value={$settings.maxRedirects}
+            onchange={(e) => handleUpdate('maxRedirects', parseInt(e.currentTarget.value) || 10)}
+            class="small-input"
+            title="Max redirects"
+          />
+          <span class="setting-unit">max</span>
+        {/if}
+      </div>
+    </div>
+
+    <div class="setting-row">
+      <label for="ssl">SSL Certificate Verification</label>
+      <div class="setting-control">
+        <input
+          id="ssl"
+          type="checkbox"
+          checked={$settings.sslVerification}
+          onchange={(e) => handleUpdate('sslVerification', e.currentTarget.checked)}
+        />
+        <span class="setting-hint">{$settings.sslVerification ? 'Enabled' : 'Disabled (accepts self-signed)'}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <h4>Proxy</h4>
+
+    <div class="setting-row">
+      <label for="proxy-enabled">Use Proxy</label>
+      <div class="setting-control">
+        <input
+          id="proxy-enabled"
+          type="checkbox"
+          checked={$settings.proxyEnabled}
+          onchange={(e) => handleUpdate('proxyEnabled', e.currentTarget.checked)}
+        />
+      </div>
+    </div>
+
+    {#if $settings.proxyEnabled}
+      <div class="setting-row">
+        <label for="proxy-url">Proxy URL</label>
+        <div class="setting-control">
+          <input
+            id="proxy-url"
+            type="text"
+            value={$settings.proxyUrl}
+            onchange={(e) => handleUpdate('proxyUrl', e.currentTarget.value)}
+            placeholder="http://proxy.example.com:8080"
+            class="wide-input"
+          />
+        </div>
+      </div>
+    {/if}
+  </div>
+
+  <div class="settings-section">
+    <h4>AI Assistant</h4>
+
+    <div class="setting-row">
+      <label for="chatbot-enabled">Enable Son of Anton</label>
+      <div class="setting-control">
+        <input
+          id="chatbot-enabled"
+          type="checkbox"
+          checked={$settings.chatbotEnabled}
+          onchange={(e) => handleUpdate('chatbotEnabled', e.currentTarget.checked)}
+        />
+        <span class="setting-hint">
+          {#if $settings.chatbotEnabled}
+            Enabled — model loads in the background at startup
+          {:else}
+            Disabled — UI hidden and no model is loaded (faster startup, less memory)
+          {/if}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="settings-footer">
+    <button class="reset-btn" onclick={handleReset}>Reset to Defaults</button>
+    {#if saved}
+      <span class="saved-indicator">Saved</span>
+    {/if}
+  </div>
+</div>
+
+<style>
+  .settings-panel {
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    height: 100%;
+    overflow-y: auto;
+  }
+
+  .settings-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .settings-section h4 {
+    margin: 0;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary, #f2f3f5);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-color, #3f4147);
+  }
+
+  .setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0;
+    gap: 16px;
+  }
+
+  .setting-row label {
+    font-size: 0.82rem;
+    color: var(--text-secondary, #b5bac1);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .setting-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .setting-control input[type="number"] {
+    width: 64px;
+    padding: 5px 8px;
+    background: var(--bg-primary, #1e1f22);
+    color: var(--text-primary, #f2f3f5);
+    border: 1px solid var(--border-color, #3f4147);
+    border-radius: 4px;
+    font-size: 0.82rem;
+    text-align: center;
+  }
+
+  .setting-control input[type="text"] {
+    padding: 5px 10px;
+    background: var(--bg-primary, #1e1f22);
+    color: var(--text-primary, #f2f3f5);
+    border: 1px solid var(--border-color, #3f4147);
+    border-radius: 4px;
+    font-size: 0.82rem;
+  }
+
+  .wide-input {
+    width: 280px;
+  }
+
+  .small-input {
+    width: 48px !important;
+  }
+
+  .setting-control input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent-color, #5865f2);
+    cursor: pointer;
+  }
+
+  .theme-toggle {
+    gap: 0;
+    border: 1px solid var(--border-color, #3f4147);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .theme-option {
+    padding: 6px 14px;
+    background: var(--bg-primary, #1e1f22);
+    color: var(--text-secondary, #b5bac1);
+    border: none;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .theme-option + .theme-option {
+    border-left: 1px solid var(--border-color, #3f4147);
+  }
+
+  .theme-option.active {
+    background: var(--accent-color, #5865f2);
+    color: #fff;
+    font-weight: 600;
+  }
+
+  .theme-option:not(.active):hover {
+    background: var(--bg-tertiary, #3f4147);
+    color: var(--text-primary, #f2f3f5);
+  }
+
+  .setting-unit, .setting-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted, #6d6f78);
+  }
+
+  .settings-footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color, #3f4147);
+  }
+
+  .reset-btn {
+    padding: 6px 14px;
+    background: transparent;
+    color: var(--text-secondary, #b5bac1);
+    border: 1px solid var(--border-color, #3f4147);
+    border-radius: 4px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .reset-btn:hover {
+    background: rgba(255, 107, 107, 0.1);
+    color: #ff6b6b;
+    border-color: rgba(255, 107, 107, 0.3);
+  }
+
+  .saved-indicator {
+    font-size: 0.78rem;
+    color: #57f287;
+    font-weight: 500;
+    animation: fadeIn 0.2s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  input[type="number"]:focus,
+  input[type="text"]:focus {
+    outline: none;
+    border-color: var(--accent-color, #5865f2);
+  }
+</style>
