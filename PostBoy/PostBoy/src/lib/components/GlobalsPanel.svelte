@@ -1,16 +1,19 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { globalVariables } from '$lib/stores/globalVariableStore';
+  import { globalVariables, type GlobalVariable } from '$lib/stores/globalVariableStore';
   import { addLog } from '$lib/stores/consoleStore';
   import * as modalManager from '$lib/utils/modalManager.svelte';
-  import type { Variable } from '$lib/stores/variableStore';
+  import { registerEditEscapeCancel } from '$lib/utils/editEscape';
 
-  let vars = $state<Variable[]>([]);
+  let vars = $state<GlobalVariable[]>([]);
   let addingVar = $state(false);
   let newVarKey = $state('');
   let newVarValue = $state('');
+  let newVarSecret = $state(false);
   let editingKey = $state<string | null>(null);
   let editValue = $state('');
+  let editVarSecret = $state(false);
+  let revealedSecrets = $state<Set<string>>(new Set());
 
   function focusInput(node: HTMLInputElement, selectAll = false) {
     tick().then(() => {
@@ -22,6 +25,21 @@
 
   function focusNewKey(node: HTMLInputElement) {
     return focusInput(node, false);
+  }
+
+  function toggleRevealSecret(key: string) {
+    if (revealedSecrets.has(key)) {
+      revealedSecrets.delete(key);
+    } else {
+      revealedSecrets.add(key);
+    }
+    revealedSecrets = new Set(revealedSecrets); // Trigger reactivity
+  }
+
+  function formatSecretValue(value: string, isSecret: boolean, key: string): string {
+    if (!isSecret) return value || '—';
+    if (revealedSecrets.has(key)) return value || '—';
+    return '••••••••';
   }
 
   onMount(() => {
@@ -42,28 +60,31 @@
     addingVar = true;
     newVarKey = '';
     newVarValue = '';
+    newVarSecret = false;
   }
 
   async function saveNewVar() {
     const key = newVarKey.trim();
     if (!key) return;
-    await globalVariables.set(key, newVarValue);
+    await globalVariables.set(key, newVarValue, newVarSecret);
     addingVar = false;
     newVarKey = '';
     newVarValue = '';
+    newVarSecret = false;
     vars = globalVariables.getAll();
     addLog(`✓ Added global variable {{${key}}}`, 'system');
   }
 
-  function startEdit(v: Variable) {
+  function startEdit(v: GlobalVariable) {
     addingVar = false;
     editingKey = v.key;
     editValue = v.value;
+    editVarSecret = v.is_secret;
   }
 
   async function saveEdit() {
     if (!editingKey) return;
-    await globalVariables.set(editingKey, editValue);
+    await globalVariables.set(editingKey, editValue, editVarSecret);
     editingKey = null;
     vars = globalVariables.getAll();
     addLog(`✓ Updated global variable {{${editingKey}}}`, 'system');
@@ -80,6 +101,18 @@
     vars = globalVariables.getAll();
     addLog(`✗ Deleted global variable {{${key}}}`, 'system');
   }
+
+  function cancelInlineEdits() {
+    addingVar = false;
+    editingKey = null;
+  }
+
+  const isInlineEditing = $derived(addingVar || editingKey !== null);
+
+  $effect(() => {
+    if (!isInlineEditing) return;
+    return registerEditEscapeCancel(cancelInlineEdits);
+  });
 
   async function clearAll() {
     if (vars.length === 0) return;
@@ -118,6 +151,7 @@
         <tr>
           <th>Name</th>
           <th>Value</th>
+          <th>Secret</th>
           <th></th>
         </tr>
       </thead>
@@ -139,6 +173,18 @@
                 onkeydown={(e) => e.key === 'Enter' && saveNewVar()}
               />
             </td>
+            <td class="secret-cell">
+              <div class="secret-toggle">
+                <input
+                  type="checkbox"
+                  id="new-var-secret"
+                  bind:checked={newVarSecret}
+                />
+                <label for="new-var-secret" title="Mark as secret variable">
+                  {#if newVarSecret}🔒{:else}🔓{/if}
+                </label>
+              </div>
+            </td>
             <td class="row-actions">
               <button class="action-btn primary" onclick={saveNewVar}>Save</button>
               <button class="action-btn muted" onclick={() => (addingVar = false)}>Cancel</button>
@@ -159,6 +205,18 @@
                   }}
                 />
               </td>
+              <td class="secret-cell">
+                <div class="secret-toggle">
+                  <input
+                    type="checkbox"
+                    id="edit-var-secret-{v.key}"
+                    bind:checked={editVarSecret}
+                  />
+                  <label for="edit-var-secret-{v.key}" title="Mark as secret variable">
+                    {#if editVarSecret}🔒{:else}🔓{/if}
+                  </label>
+                </div>
+              </td>
               <td class="row-actions">
                 <button class="action-btn primary" onclick={saveEdit}>Save</button>
                 <button class="action-btn muted" onclick={() => (editingKey = null)}>Cancel</button>
@@ -167,7 +225,30 @@
           {:else}
             <tr>
               <td><code>{'{{' + v.key + '}}'}</code></td>
-              <td class="value-cell">{v.value || '—'}</td>
+              <td class="value-cell" class:secret-value={v.is_secret && !revealedSecrets.has(v.key)}>
+                {#if v.is_secret && !revealedSecrets.has(v.key)}
+                  <button 
+                    class="masked-value" 
+                    onclick={() => toggleRevealSecret(v.key)} 
+                    onkeydown={(e) => e.key === 'Enter' && toggleRevealSecret(v.key)}
+                    title="Click to reveal"
+                    aria-label="Reveal secret value"
+                  >
+                    {formatSecretValue(v.value, v.is_secret, v.key)}
+                  </button>
+                {:else}
+                  <span>
+                    {formatSecretValue(v.value, v.is_secret, v.key)}
+                  </span>
+                {/if}
+              </td>
+              <td class="secret-cell">
+                {#if v.is_secret}
+                  <span class="secret-indicator" title="Secret variable">🔒</span>
+                {:else}
+                  <span class="secret-indicator">🔓</span>
+                {/if}
+              </td>
               <td class="row-actions">
                 <button class="action-btn muted" onclick={() => startEdit(v)}>Edit</button>
                 <button class="action-btn danger" onclick={() => deleteVar(v.key)}>Delete</button>
@@ -336,5 +417,73 @@
     margin: 0;
     font-size: 0.75rem;
     color: var(--text-muted, #6d6f78);
+  }
+
+  .secret-cell {
+    width: 60px;
+    text-align: center;
+    padding: 6px !important;
+  }
+
+  .secret-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .secret-toggle input[type="checkbox"] {
+    display: none;
+  }
+
+  .secret-toggle label {
+    cursor: pointer;
+    font-size: 14px;
+    user-select: none;
+    padding: 2px;
+    border-radius: 2px;
+    transition: background-color 0.2s;
+  }
+
+  .secret-toggle label:hover {
+    background-color: var(--bg-hover);
+  }
+
+  .secret-icon {
+    font-size: 12px;
+    opacity: 0.7;
+  }
+
+  .secret-indicator {
+    font-size: 14px;
+    opacity: 0.6;
+  }
+
+  .masked-value {
+    cursor: pointer;
+    font-family: monospace;
+    letter-spacing: 1px;
+    opacity: 0.6;
+    user-select: none;
+    background: transparent;
+    border: none;
+    padding: 0;
+    font-size: inherit;
+    color: inherit;
+    text-align: left;
+  }
+
+  .masked-value:hover {
+    opacity: 0.8;
+  }
+
+  .masked-value:focus {
+    opacity: 0.8;
+    outline: 1px dotted var(--accent-color);
+    outline-offset: 2px;
+  }
+
+  .secret-value {
+    font-style: italic;
   }
 </style>

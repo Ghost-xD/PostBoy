@@ -308,9 +308,18 @@ pub fn get_migrations() -> Vec<Migration> {
             version: 15,
             description: "add_secret_variable_support",
             sql: "
-                ALTER TABLE environment_variables 
-                ADD COLUMN is_secret INTEGER NOT NULL DEFAULT 0;
-            ",
+        ALTER TABLE environment_variables 
+        ADD COLUMN is_secret INTEGER NOT NULL DEFAULT 0;
+    ",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 16,
+            description: "add_secret_global_variable_support",
+            sql: "
+        ALTER TABLE global_variables 
+        ADD COLUMN is_secret INTEGER NOT NULL DEFAULT 0;
+    ",
             kind: MigrationKind::Up,
         },
     ]
@@ -576,6 +585,10 @@ pub fn initialize_database(db_path: PathBuf) -> Result<(), String> {
         "),
         (15, "add_secret_variable_support", "
             ALTER TABLE environment_variables 
+            ADD COLUMN is_secret INTEGER NOT NULL DEFAULT 0;
+        "),
+        (16, "add_secret_global_variable_support", "
+            ALTER TABLE global_variables 
             ADD COLUMN is_secret INTEGER NOT NULL DEFAULT 0;
         "),
     ];

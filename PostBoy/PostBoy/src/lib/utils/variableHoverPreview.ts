@@ -62,8 +62,8 @@ export function getInputIndexFromMouseEvent(
   const rect = el.getBoundingClientRect();
 
   if (el instanceof HTMLTextAreaElement && clientY !== undefined) {
-    if (typeof document.caretPositionFromPoint === 'function') {
-      const pos = document.caretPositionFromPoint(clientX, clientY);
+    if (typeof (document as any).caretPositionFromPoint === 'function') {
+      const pos = (document as any).caretPositionFromPoint(clientX, clientY);
       if (pos?.offsetNode === el) {
         return Math.min(pos.offset, el.value.length);
       }

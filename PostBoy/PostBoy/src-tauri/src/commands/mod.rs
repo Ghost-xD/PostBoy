@@ -1110,21 +1110,29 @@ pub async fn db_clear_variables(app: AppHandle, collection_id: i64) -> Result<bo
 
 // --- Global variable commands ---
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GlobalVariableRow {
+    pub key: String,
+    pub value: String,
+    pub is_secret: bool,
+}
+
 #[tauri::command]
-pub async fn db_get_global_variables(app: AppHandle) -> Result<Vec<KeyValue>, String> {
+pub async fn db_get_global_variables(app: AppHandle) -> Result<Vec<GlobalVariableRow>, String> {
     let db_path = get_db_path(&app)?;
     let conn = rusqlite::Connection::open(db_path)
         .map_err(|e| e.to_string())?;
 
     let mut stmt = conn
-        .prepare("SELECT key, value FROM global_variables ORDER BY key ASC")
+        .prepare("SELECT key, value, COALESCE(is_secret, 0) as is_secret FROM global_variables ORDER BY key ASC")
         .map_err(|e| e.to_string())?;
 
     let variables = stmt
         .query_map([], |row| {
-            Ok(KeyValue {
+            Ok(GlobalVariableRow {
                 key: row.get(0)?,
                 value: row.get(1)?,
+                is_secret: row.get::<_, i64>(2)? != 0,
             })
         })
         .map_err(|e| e.to_string())?
@@ -1139,14 +1147,22 @@ pub async fn db_set_global_variable(
     app: AppHandle,
     key: String,
     value: String,
+    is_secret: Option<bool>,
 ) -> Result<bool, String> {
     let db_path = get_db_path(&app)?;
     let conn = rusqlite::Connection::open(db_path)
         .map_err(|e| e.to_string())?;
 
+    let is_secret_val = is_secret.unwrap_or(false);
+    
     conn.execute(
-        "INSERT OR REPLACE INTO global_variables (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
-        rusqlite::params![key, value],
+        "INSERT INTO global_variables (key, value, is_secret, created_at, updated_at) 
+         VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+         ON CONFLICT(key) DO UPDATE SET 
+         value = excluded.value,
+         is_secret = excluded.is_secret,
+         updated_at = CURRENT_TIMESTAMP",
+        rusqlite::params![key, value, if is_secret_val { 1 } else { 0 }],
     )
     .map_err(|e| e.to_string())?;
 
@@ -1193,6 +1209,7 @@ pub struct EnvironmentVariableRow {
     pub value: String,
     pub initial_value: String,
     pub enabled: bool,
+    pub is_secret: bool,
 }
 
 #[tauri::command]
@@ -1279,8 +1296,8 @@ pub async fn db_duplicate_environment(app: AppHandle, id: i64) -> Result<i64, St
     let new_id = conn.last_insert_rowid();
 
     conn.execute(
-        "INSERT INTO environment_variables (environment_id, key, value, initial_value, enabled)
-         SELECT ?, key, value, initial_value, enabled FROM environment_variables WHERE environment_id = ?",
+        "INSERT INTO environment_variables (environment_id, key, value, initial_value, enabled, is_secret)
+         SELECT ?, key, value, initial_value, enabled, is_secret FROM environment_variables WHERE environment_id = ?",
         rusqlite::params![new_id, id],
     )
     .map_err(|e| e.to_string())?;
@@ -1297,7 +1314,7 @@ pub async fn db_get_environment_variables(
     let conn = rusqlite::Connection::open(db_path).map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare(
-            "SELECT key, value, initial_value, enabled FROM environment_variables
+            "SELECT key, value, initial_value, enabled, is_secret FROM environment_variables
              WHERE environment_id = ? ORDER BY key ASC",
         )
         .map_err(|e| e.to_string())?;
@@ -1309,6 +1326,7 @@ pub async fn db_get_environment_variables(
                 value: row.get(1)?,
                 initial_value: row.get(2)?,
                 enabled: row.get::<_, i64>(3)? != 0,
+                is_secret: row.get::<_, i64>(4)? != 0,
             })
         })
         .map_err(|e| e.to_string())?
@@ -1325,22 +1343,25 @@ pub async fn db_set_environment_variable(
     key: String,
     value: String,
     initial_value: Option<String>,
+    is_secret: Option<bool>,
 ) -> Result<bool, String> {
     let db_path = get_db_path(&app)?;
     let conn = rusqlite::Connection::open(db_path).map_err(|e| e.to_string())?;
 
     let initial = initial_value.unwrap_or_else(|| value.clone());
+    let secret = is_secret.unwrap_or(false);
     conn.execute(
-        "INSERT INTO environment_variables (environment_id, key, value, initial_value, enabled, updated_at)
-         VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+        "INSERT INTO environment_variables (environment_id, key, value, initial_value, enabled, is_secret, updated_at)
+         VALUES (?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
          ON CONFLICT(environment_id, key) DO UPDATE SET
            value = excluded.value,
            initial_value = CASE
              WHEN excluded.initial_value != '' THEN excluded.initial_value
              ELSE environment_variables.initial_value
            END,
+           is_secret = excluded.is_secret,
            updated_at = CURRENT_TIMESTAMP",
-        rusqlite::params![environment_id, key, value, initial],
+        rusqlite::params![environment_id, key, value, initial, secret],
     )
     .map_err(|e| e.to_string())?;
 

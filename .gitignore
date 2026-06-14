@@ -118,3 +118,5 @@ token.txt
 /target
 ~/.tauri/
 deploy/
+docs/superpowers/*
+.superpowers/*

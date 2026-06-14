@@ -1,7 +1,5 @@
 # Postman Features Missing in Ripple
 
-> Gap analysis as of June 2026. Ripple is a **local-first desktop API client** (Tauri + SvelteKit).
->
 > This document lists **only what Postman has that Ripple lacks or partially covers**. For what Ripple actually ships (with caveats), see [Ripple differentiators](#ripple-differentiators-local-first) and [Ripple capabilities](#ripple-capabilities-implemented).
 >
 > **Out of scope:** cloud sync, hosted mocks, monitors, published documentation, Postman Flows, and Enterprise SSO.
@@ -13,7 +11,7 @@
 
 | Area          | Still missing or partial                                                                                                                |
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Environments  | ✅ Profiles, switcher, env import/export — ❌ secret type, dynamic `{{$…}}` vars (globals ✅) |
+| Environments  | ✅ Profiles, switcher, env import/export, secret variables, dynamic `{{$…}}` vars, globals |
 | Auth          | Akamai EdgeGrid, ASAP, inherit-from-folder                                                                                              |
 | Protocols     | GraphQL introspection UI; gRPC streaming & `.proto` import; SOAP, MQTT, Socket.IO                                                       |
 | Scripts       | No `pm.sendRequest`, cookies, crypto libs; HTTP scripts not persisted; WS/SSE scripts in stream body only; no collection/folder scripts |
@@ -92,8 +90,8 @@ Ripple now has **Postman-style named environments** (SQLite `environments` + `en
 | Environment switcher                         | ✅ Request bar dropdown (left of Send); persists active env in settings                       |
 | Initial / current value split                | ✅ Per env var; **Reset values** restores current from initial                                |
 | Variable scopes beyond collection            | ⚠️ Global + collection + active environment — no local or data-file scopes                    |
-| Secret variable type                         | ❌ Env vars stored as plain text; sensitive **field names** masked in request UI only       |
-| Dynamic variables (`{{$randomInt}}`, etc.)   | ❌                                                                                            |
+| Secret variable type                         | ✅ Complete: UI toggle, masking (••••), click-to-reveal, works in interpolation |
+| Dynamic variables (`{{$randomInt}}`, etc.)   | ✅ Full Postman compatibility — 25+ generators with fresh values on each request           |
 | Postman environment import / export          | ✅ `.postman_environment.json` via Environments panel                                       |
 | Chain run environment selection              | ✅ **▶** on a chain prompts for environment; sets active env before run                       |
 | Auto-sync extracted tokens to environment    | ⚠️ Chain steps and token refresh write to collection **and** active env when one is selected |
@@ -191,14 +189,10 @@ Ripple now has **Postman-style named environments** (SQLite `environments` + `en
 
 ## Suggested Priority
 
-1. ~~**Environments** — named profiles + switcher~~ ✅ **Done** (remaining: secret type, dynamic vars)
-1b. ~~**Global variables**~~ ✅ **Done** via **Tools → Globals**
-2. **Persist HTTP scripts & gRPC fields** — save/load on collection + Postman `event` import (stream scripts already persist via `bodyType: stream`)
-3. **Richer script runtime** — `pm.sendRequest`, cookies, crypto helpers
-4. **gRPC streaming** + `.proto` import
-5. **OpenAPI export**
-6. **Newman-style CLI**
-7. **Light theme**
+1. **Persist HTTP scripts & gRPC fields** — save/load on collection + Postman `event` import (stream scripts already persist via `bodyType: stream`)
+2. **Richer script runtime** — `pm.sendRequest`, cookies, crypto helpers
+3. **gRPC streaming** + `.proto` import
+4. **OpenAPI export**
 
 ---
 

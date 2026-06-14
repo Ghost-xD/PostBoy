@@ -389,7 +389,14 @@
   }
 </script>
 
-<div class="chain-overlay" role="dialog" tabindex="-1" use:portal onclick={onClose} onkeydown={(e) => { if (e.key === 'Escape') onClose(); }}>
+<div class="chain-overlay" role="dialog" tabindex="-1" use:portal onclick={onClose} onkeydown={(e) => {
+  if (e.key !== 'Escape') return;
+  if (editingName) {
+    editingName = false;
+    return;
+  }
+  onClose();
+}}>
   <div class="chain-modal" role="presentation" onclick={stopPropagation(bubble('click'))} onkeypress={stopPropagation(bubble('keypress'))}>
     <!-- HEADER -->
     <div class="cm-header">

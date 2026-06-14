@@ -13,6 +13,7 @@
   import { exportPostmanEnvironment, importPostmanEnvironment } from '$lib/utils/environmentImporter';
   import { addLog } from '$lib/stores/consoleStore';
   import * as modalManager from '$lib/utils/modalManager.svelte';
+  import { registerEditEscapeCancel } from '$lib/utils/editEscape';
 
   let selectedId = $state<number | null>(null);
   let envList = $state<Environment[]>([]);
@@ -23,9 +24,12 @@
   let newVarKey = $state('');
   let newVarInitial = $state('');
   let newVarCurrent = $state('');
+  let newVarSecret = $state(false);
   let editingVarKey = $state<string | null>(null);
   let editVarInitial = $state('');
   let editVarCurrent = $state('');
+  let editVarSecret = $state(false);
+  let revealedSecrets = $state<Set<string>>(new Set());
   let rev = $state(0);
   let activeId = $state<number | null>(null);
 
@@ -103,6 +107,8 @@
     renamingSidebarId = null;
     addingVar = false;
     editingVarKey = null;
+    revealedSecrets.clear();
+    revealedSecrets = new Set();
     await loadVars();
   }
 
@@ -135,6 +141,21 @@
   function cancelRename() {
     renamingSidebarId = null;
   }
+
+  function cancelInlineEdits() {
+    addingVar = false;
+    editingVarKey = null;
+    cancelRename();
+  }
+
+  const isInlineEditing = $derived(
+    addingVar || editingVarKey !== null || renamingSidebarId !== null
+  );
+
+  $effect(() => {
+    if (!isInlineEditing) return;
+    return registerEditEscapeCancel(cancelInlineEdits);
+  });
 
   async function saveSidebarRename(envId: number) {
     if (!sidebarNameDraft.trim()) {
@@ -191,12 +212,13 @@
     const key = newVarKey.trim();
     const initial = newVarInitial;
     const current = newVarCurrent || initial;
-    await envVariables.set(selectedId, key, current, initial);
+    await envVariables.set(selectedId, key, current, initial, newVarSecret);
     await loadVars();
     addingVar = false;
     newVarKey = '';
     newVarInitial = '';
     newVarCurrent = '';
+    newVarSecret = false;
     addLog(`✓ Added env variable {{${key}}}`, 'system');
   }
 
@@ -204,14 +226,16 @@
     editingVarKey = v.key;
     editVarInitial = v.initial_value;
     editVarCurrent = v.value;
+    editVarSecret = v.is_secret;
   }
 
   async function saveEditVar() {
     if (!selectedId || !editingVarKey) return;
-    await envVariables.set(selectedId, editingVarKey, editVarCurrent, editVarInitial);
+    const key = editingVarKey;
+    await envVariables.set(selectedId, key, editVarCurrent, editVarInitial, editVarSecret);
     await loadVars();
     editingVarKey = null;
-    addLog(`✓ Updated env variable {{${editingVarKey}}}`, 'system');
+    addLog(`✓ Updated env variable {{${key}}}`, 'system');
   }
 
   async function deleteVar(key: string) {
@@ -257,7 +281,7 @@
     if (!id) return;
 
     for (const v of parsed.variables) {
-      await envVariables.set(id, v.key, v.value, v.initial_value);
+      await envVariables.set(id, v.key, v.value, v.initial_value, false);
     }
 
     await refreshList();
@@ -281,9 +305,25 @@
       defaultPath: `${selectedEnv.name.replace(/[^a-z0-9-_]/gi, '_')}.postman_environment.json`,
       filters: ['.json'],
     });
-    if (!savePath) return;
+    if (!savePath || typeof savePath !== 'string') return;
     await fileOps.writeFile(savePath, json);
     addLog(`✓ Exported environment "${selectedEnv.name}"`, 'system');
+  }
+
+  function toggleRevealSecret(key: string) {
+    if (revealedSecrets.has(key)) {
+      revealedSecrets.delete(key);
+    } else {
+      revealedSecrets.add(key);
+    }
+    revealedSecrets = new Set(revealedSecrets);
+  }
+
+  function formatSecretValue(value: string, isSecret: boolean, key: string, isEditing = false) {
+    if (!isSecret || isEditing || revealedSecrets.has(key)) {
+      return value || '—';
+    }
+    return value ? '••••••••' : '—';
   }
 </script>
 
@@ -381,6 +421,7 @@
               <th>Key</th>
               <th>Initial value</th>
               <th>Current value</th>
+              <th>Secret</th>
               <th></th>
             </tr>
           </thead>
@@ -390,6 +431,12 @@
                 <td><input bind:value={newVarKey} placeholder="variable_name" use:focusNewVarKeyInput /></td>
                 <td><input bind:value={newVarInitial} placeholder="initial" /></td>
                 <td><input bind:value={newVarCurrent} placeholder="current (defaults to initial)" /></td>
+                <td class="secret-cell">
+                  <label class="secret-toggle">
+                    <input type="checkbox" bind:checked={newVarSecret} />
+                    <span class="secret-icon" title={newVarSecret ? 'Secret variable' : 'Make secret'}>🔒</span>
+                  </label>
+                </td>
                 <td class="row-actions">
                   <button class="action-btn primary" onclick={saveNewVar}>Save</button>
                   <button class="action-btn muted" onclick={() => (addingVar = false)}>Cancel</button>
@@ -400,8 +447,14 @@
               {#if editingVarKey === v.key}
                 <tr class="edit-row">
                   <td><code>{v.key}</code></td>
-                  <td><input bind:value={editVarInitial} /></td>
+                  <td><input bind:value={editVarInitial} use:focusNewVarKeyInput /></td>
                   <td><input bind:value={editVarCurrent} /></td>
+                  <td class="secret-cell">
+                    <label class="secret-toggle">
+                      <input type="checkbox" bind:checked={editVarSecret} />
+                      <span class="secret-icon" title={editVarSecret ? 'Secret variable' : 'Make secret'}>🔒</span>
+                    </label>
+                  </td>
                   <td class="row-actions">
                     <button class="action-btn primary" onclick={saveEditVar}>Save</button>
                     <button class="action-btn muted" onclick={() => (editingVarKey = null)}>Cancel</button>
@@ -410,8 +463,45 @@
               {:else}
                 <tr>
                   <td><code>{v.key}</code></td>
-                  <td class="value-cell">{v.initial_value || '—'}</td>
-                  <td class="value-cell">{v.value || '—'}</td>
+                  <td class="value-cell" class:secret-value={v.is_secret && !revealedSecrets.has(v.key)}>
+                    {#if v.is_secret && !revealedSecrets.has(v.key)}
+                      <button 
+                        class="masked-value" 
+                        onclick={() => toggleRevealSecret(v.key)} 
+                        onkeydown={(e) => e.key === 'Enter' && toggleRevealSecret(v.key)}
+                        title="Click to reveal"
+                        aria-label="Reveal secret value"
+                      >
+                        {formatSecretValue(v.initial_value, v.is_secret, v.key)}
+                      </button>
+                    {:else}
+                      <span>
+                        {formatSecretValue(v.initial_value, v.is_secret, v.key)}
+                      </span>
+                    {/if}
+                  </td>
+                  <td class="value-cell" class:secret-value={v.is_secret && !revealedSecrets.has(v.key)}>
+                    {#if v.is_secret && !revealedSecrets.has(v.key)}
+                      <button 
+                        class="masked-value" 
+                        onclick={() => toggleRevealSecret(v.key)} 
+                        onkeydown={(e) => e.key === 'Enter' && toggleRevealSecret(v.key)}
+                        title="Click to reveal"
+                        aria-label="Reveal secret value"
+                      >
+                        {formatSecretValue(v.value, v.is_secret, v.key)}
+                      </button>
+                    {:else}
+                      <span>
+                        {formatSecretValue(v.value, v.is_secret, v.key)}
+                      </span>
+                    {/if}
+                  </td>
+                  <td class="secret-cell">
+                    <span class="secret-indicator" class:active={v.is_secret} title={v.is_secret ? 'Secret variable' : 'Regular variable'}>
+                      🔒
+                    </span>
+                  </td>
                   <td class="row-actions">
                     <button class="action-btn muted" onclick={() => startEditVar(v)}>Edit</button>
                     <button class="action-btn danger" onclick={() => deleteVar(v.key)}>Delete</button>
@@ -621,15 +711,6 @@
     font-weight: 600;
   }
 
-  .name-input {
-    padding: 6px 10px;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    font-size: 0.9rem;
-    min-width: 180px;
-  }
 
   .header-actions {
     display: flex;
@@ -778,5 +859,89 @@
     justify-content: center;
     gap: 12px;
     color: var(--text-secondary);
+  }
+
+  .secret-cell {
+    width: 60px;
+    text-align: center;
+  }
+
+  .secret-toggle {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    position: relative;
+  }
+
+  .secret-toggle input {
+    opacity: 0;
+    position: absolute;
+    width: 0;
+    height: 0;
+  }
+
+  .secret-icon {
+    font-size: 14px;
+    opacity: 0.4;
+    transition: opacity 0.15s;
+    user-select: none;
+  }
+
+  .secret-toggle:hover .secret-icon {
+    opacity: 0.7;
+  }
+
+  .secret-toggle input:checked + .secret-icon {
+    opacity: 1;
+  }
+
+  .secret-indicator {
+    font-size: 12px;
+    opacity: 0.25;
+    transition: opacity 0.15s;
+  }
+
+  .secret-indicator.active {
+    opacity: 1;
+  }
+
+  .masked-value {
+    cursor: pointer;
+    font-family: monospace;
+    letter-spacing: 1px;
+    opacity: 0.6;
+    user-select: none;
+    background: transparent;
+    border: none;
+    padding: 0;
+    font-size: inherit;
+    color: inherit;
+    text-align: left;
+  }
+
+  .masked-value:hover {
+    opacity: 0.8;
+  }
+
+  .masked-value:focus {
+    opacity: 0.8;
+    outline: 1px dotted var(--accent-color);
+    outline-offset: 2px;
+  }
+
+  .secret-value {
+    position: relative;
+  }
+
+  .secret-value .masked-value::after {
+    content: ' 👁';
+    opacity: 0;
+    font-size: 10px;
+    margin-left: 4px;
+    transition: opacity 0.15s;
+  }
+
+  .secret-value:hover .masked-value::after {
+    opacity: 0.5;
   }
 </style>

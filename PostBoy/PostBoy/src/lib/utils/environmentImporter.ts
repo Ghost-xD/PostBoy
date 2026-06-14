@@ -61,6 +61,7 @@ export function importPostmanEnvironment(raw: string): EnvironmentImportResult {
       value,
       initial_value: value,
       enabled,
+      is_secret: false,
     });
   }
 

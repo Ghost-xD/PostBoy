@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { db } from '$lib/api/tauri';
   import { isExpired } from '$lib/stores/cookieStore';
+  import { registerEditEscapeCancel } from '$lib/utils/editEscape';
 
   interface CookieRow {
     id: number;
@@ -29,6 +30,12 @@
   let searchFilter = $state('');
   let editingCookie: Partial<CookieRow> | null = $state(null);
   let showAddForm = $state(false);
+  let cookieNameInputEl = $state<HTMLInputElement | null>(null);
+
+  async function focusNameInput() {
+    await tick();
+    cookieNameInputEl?.focus();
+  }
 
   let filteredCookies = $derived(searchFilter
     ? cookies.filter(c =>
@@ -89,11 +96,13 @@
       same_site: 'Lax',
     };
     showAddForm = true;
+    void focusNameInput();
   }
 
   function startEdit(cookie: CookieRow) {
     editingCookie = { ...cookie };
     showAddForm = true;
+    void focusNameInput();
   }
 
   async function saveCookie() {
@@ -119,6 +128,11 @@
     showAddForm = false;
     editingCookie = null;
   }
+
+  $effect(() => {
+    if (!showAddForm) return;
+    return registerEditEscapeCancel(cancelEdit);
+  });
 
   function formatExpiry(expires: string | null): string {
     if (!expires) return 'Session';
@@ -163,7 +177,7 @@
       <div class="form-row">
         <label>
           <span>Name</span>
-          <input type="text" bind:value={editingCookie.name} placeholder="cookie_name" />
+          <input type="text" bind:this={cookieNameInputEl} bind:value={editingCookie.name} placeholder="cookie_name" />
         </label>
         <label>
           <span>Value</span>

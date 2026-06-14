@@ -13,6 +13,7 @@ export interface EnvironmentVariable {
   value: string;
   initial_value: string;
   enabled: boolean;
+  is_secret: boolean;
 }
 
 const environmentsList = writable<Environment[]>([]);
@@ -141,19 +142,21 @@ export const envVariables = {
     environmentId: number,
     key: string,
     value: string,
-    initialValue?: string
+    initialValue?: string,
+    isSecret?: boolean
   ): Promise<boolean> {
     try {
-      await db.setEnvironmentVariable(environmentId, key, value, initialValue);
+      await db.setEnvironmentVariable(environmentId, key, value, initialValue, isSecret);
       envVariablesMap.update((map) => {
         const existing = map.get(environmentId) || [];
         const idx = existing.findIndex((v) => v.key === key);
         const initial = initialValue ?? existing[idx]?.initial_value ?? value;
+        const secret = isSecret ?? existing[idx]?.is_secret ?? false;
         const updated = [...existing];
         if (idx >= 0) {
-          updated[idx] = { key, value, initial_value: initial, enabled: true };
+          updated[idx] = { key, value, initial_value: initial, enabled: true, is_secret: secret };
         } else {
-          updated.push({ key, value, initial_value: initial, enabled: true });
+          updated.push({ key, value, initial_value: initial, enabled: true, is_secret: secret });
         }
         const next = new Map(map);
         next.set(

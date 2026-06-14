@@ -4,8 +4,8 @@ import { exportPostmanEnvironment, importPostmanEnvironment } from './environmen
 describe('environmentImporter', () => {
   it('exports Postman-compatible environment JSON', () => {
     const json = exportPostmanEnvironment('Dev', [
-      { key: 'baseUrl', value: 'https://dev.api.com', initial_value: 'https://dev.api.com', enabled: true },
-      { key: 'token', value: 'secret', initial_value: '', enabled: true },
+      { key: 'baseUrl', value: 'https://dev.api.com', initial_value: 'https://dev.api.com', enabled: true, is_secret: false },
+      { key: 'token', value: 'secret', initial_value: '', enabled: true, is_secret: false },
     ]);
     const parsed = JSON.parse(json);
     expect(parsed.name).toBe('Dev');

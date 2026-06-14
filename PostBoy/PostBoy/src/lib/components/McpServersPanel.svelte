@@ -12,7 +12,7 @@
   // updates into via `mcp-status` events — so a connect that takes 10s
   // doesn't freeze the UI.
 
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import {
     mcpServers,
     mcpToolCap,
@@ -38,6 +38,7 @@
   } from '$lib/stores/mcpStore';
   import type { McpServerInput, McpServerView } from '$lib/api/tauri';
   import type { CatalogEntry } from '$lib/stores/mcpStore';
+  import { registerEditEscapeCancel } from '$lib/utils/editEscape';
 
   // ---------------------------------------------------------------------
   // Local UI state
@@ -84,6 +85,12 @@
   };
   let form = $state<FormState>({ ...EMPTY_FORM });
   let formError = $state('');
+  let nameInputEl = $state<HTMLInputElement | null>(null);
+
+  async function focusNameInput() {
+    await tick();
+    nameInputEl?.focus();
+  }
 
   // ---------------------------------------------------------------------
   // Boot
@@ -111,6 +118,7 @@
     editingId = null;
     form = formFromInput(prefill);
     formError = '';
+    void focusNameInput();
   }
 
   function openEdit(server: McpServerView) {
@@ -118,6 +126,7 @@
     editingId = server.config.id;
     form = formFromServer(server);
     formError = '';
+    void focusNameInput();
   }
 
   function closeForm() {
@@ -126,6 +135,27 @@
     form = { ...EMPTY_FORM };
     formError = '';
   }
+
+  function cancelImportForm() {
+    showImportForm = false;
+    importText = '';
+    importError = '';
+  }
+
+  function cancelInlineEdits() {
+    if (showImportForm) {
+      cancelImportForm();
+      return;
+    }
+    if (showAddForm) closeForm();
+  }
+
+  const isInlineEditing = $derived(showAddForm || showImportForm);
+
+  $effect(() => {
+    if (!isInlineEditing) return;
+    return registerEditEscapeCancel(cancelInlineEdits);
+  });
 
   function formFromInput(input?: McpServerInput): FormState {
     if (!input) return { ...EMPTY_FORM };
@@ -436,7 +466,7 @@
       <h3>{editingId ? 'Edit server' : 'Add server'}</h3>
       <div class="mcp-field">
         <label for="mcp-name">Display name</label>
-        <input id="mcp-name" class="mcp-input" type="text" bind:value={form.name} />
+        <input id="mcp-name" class="mcp-input" type="text" bind:this={nameInputEl} bind:value={form.name} />
       </div>
       <div class="mcp-field">
         <label for="mcp-transport">Transport</label>

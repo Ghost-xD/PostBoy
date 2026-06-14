@@ -376,11 +376,6 @@
     cursor: not-allowed;
   }
 
-  .auth-planned p {
-    margin: 0 0 0.5rem;
-    color: var(--text-primary);
-    line-height: 1.5;
-  }
 
   .auth-field label {
     display: block;

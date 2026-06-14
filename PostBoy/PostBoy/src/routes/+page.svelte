@@ -15,6 +15,7 @@
   import { wsConnect, wsDisconnect, clearWsMessages } from '$lib/stores/wsStore';
   import { sseConnect, sseDisconnect, clearSseMessages } from '$lib/stores/sseStore';
   import { activeModals, closeModal } from '$lib/utils/modalManager.svelte';
+  import { cancelActiveEdit } from '$lib/utils/editEscape';
   import { addLog } from '$lib/stores/consoleStore';
   import { variables } from '$lib/stores/variableStore';
   import * as modalManager from '$lib/utils/modalManager.svelte';
@@ -765,8 +766,12 @@
         return;
       }
 
-      // Escape — close the topmost overlay/modal/panel (priority order)
+      // Escape — cancel inline edits first, then close the topmost overlay/modal/panel
       if (e.key === 'Escape') {
+        if (cancelActiveEdit()) {
+          e.preventDefault();
+          return;
+        }
         const modals = $activeModals;
         if (modals.length > 0) {
           const topModal = modals[modals.length - 1];
@@ -1541,7 +1546,15 @@
     role="dialog"
     tabindex="-1"
     onclick={() => showToolsPanel.set(false)}
-    onkeydown={(e) => { if (e.key === 'Escape') showToolsPanel.set(false); }}
+    onkeydown={(e) => {
+      if (e.key === 'Escape') {
+        if (cancelActiveEdit()) {
+          e.preventDefault();
+          return;
+        }
+        showToolsPanel.set(false);
+      }
+    }}
   >
     <div class="tools-modal" class:tools-fullscreen={$toolsFullscreen} role="presentation" onclick={stopPropagation(bubble('click'))} onkeydown={stopPropagation(bubble('keydown'))}>
       <ToolsNavBar

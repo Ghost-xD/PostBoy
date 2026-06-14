@@ -1,8 +1,13 @@
 import { writable, get } from 'svelte/store';
 import { db } from '$lib/api/tauri';
-import type { Variable } from './variableStore';
 
-const globalsList = writable<Variable[]>([]);
+export interface GlobalVariable {
+  key: string;
+  value: string;
+  is_secret: boolean;
+}
+
+const globalsList = writable<GlobalVariable[]>([]);
 const globalsRev = writable(0);
 
 function bumpGlobalsRev() {
@@ -14,9 +19,9 @@ export { globalsRev };
 export const globalVariables = {
   subscribe: globalsList.subscribe,
 
-  async load(): Promise<Variable[]> {
+  async load(): Promise<GlobalVariable[]> {
     try {
-      const vars = (await db.getGlobalVariables()) as Variable[];
+      const vars = (await db.getGlobalVariables()) as GlobalVariable[];
       const list = vars || [];
       globalsList.set(list);
       bumpGlobalsRev();
@@ -29,16 +34,16 @@ export const globalVariables = {
     }
   },
 
-  async set(key: string, value: string): Promise<boolean> {
+  async set(key: string, value: string, isSecret: boolean = false): Promise<boolean> {
     try {
-      await db.setGlobalVariable(key, value);
+      await db.setGlobalVariable(key, value, isSecret);
       globalsList.update((existing) => {
         const idx = existing.findIndex((v) => v.key === key);
         const updated = [...existing];
         if (idx >= 0) {
-          updated[idx] = { key, value };
+          updated[idx] = { key, value, is_secret: isSecret };
         } else {
-          updated.push({ key, value });
+          updated.push({ key, value, is_secret: isSecret });
         }
         return updated.sort((a, b) => a.key.localeCompare(b.key));
       });
@@ -62,7 +67,7 @@ export const globalVariables = {
     }
   },
 
-  getAll(): Variable[] {
+  getAll(): GlobalVariable[] {
     return get(globalsList);
   },
 };

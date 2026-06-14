@@ -83,8 +83,8 @@ export const db = {
   getGlobalVariables: async () => {
     return await invoke('db_get_global_variables');
   },
-  setGlobalVariable: async (key: string, value: string) => {
-    return await invoke('db_set_global_variable', { key, value });
+  setGlobalVariable: async (key: string, value: string, isSecret?: boolean) => {
+    return await invoke('db_set_global_variable', { key, value, is_secret: isSecret });
   },
   deleteGlobalVariable: async (key: string) => {
     return await invoke('db_delete_global_variable', { key });
@@ -114,13 +114,15 @@ export const db = {
     environmentId: number,
     key: string,
     value: string,
-    initialValue?: string
+    initialValue?: string,
+    isSecret?: boolean
   ) => {
     return await invoke('db_set_environment_variable', {
       environmentId,
       key,
       value,
       initialValue: initialValue ?? null,
+      isSecret: isSecret ?? null,
     });
   },
   deleteEnvironmentVariable: async (environmentId: number, key: string) => {

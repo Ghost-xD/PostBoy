@@ -357,6 +357,8 @@
   class:masked-value={maskFieldDisplay}
   class:revealed={fieldRevealed}
   onmouseleave={handleWrapMouseLeave}
+  role="region"
+  aria-label="Variable input with popup"
 >
   {#if multiline}
     <textarea

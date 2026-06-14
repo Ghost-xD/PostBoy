@@ -6,6 +6,7 @@ import {
   environmentsRev,
 } from './environmentStore';
 import { globalVariables, globalsRev } from './globalVariableStore';
+import { generateDynamicVariable, isDynamicVariable } from '$lib/utils/dynamicVariables';
 
 export interface Variable {
   key: string;
@@ -270,6 +271,16 @@ export function interpolate(
 
   return text.replace(VARIABLE_REGEX, (match, varName) => {
     const trimmed = varName.trim();
+    
+    // Check for dynamic variables first
+    if (trimmed.startsWith('$')) {
+      const dynamicValue = generateDynamicVariable(trimmed);
+      if (dynamicValue !== undefined) {
+        return dynamicValue;
+      }
+    }
+    
+    // Fall back to regular variables
     return varMap.has(trimmed) ? varMap.get(trimmed)! : match;
   });
 }
@@ -292,9 +303,19 @@ export function interpolateJson(
 
   return text.replace(VARIABLE_REGEX, (match, varName) => {
     const trimmed = varName.trim();
+    
+    // Check for dynamic variables first
+    if (trimmed.startsWith('$')) {
+      const dynamicValue = generateDynamicVariable(trimmed);
+      if (dynamicValue !== undefined) {
+        // JSON.stringify produces a quoted, fully-escaped string; strip the
+        // surrounding quotes since the template already supplies them.
+        return JSON.stringify(dynamicValue).slice(1, -1);
+      }
+    }
+    
+    // Fall back to regular variables
     if (!varMap.has(trimmed)) return match;
-    // JSON.stringify produces a quoted, fully-escaped string; strip the
-    // surrounding quotes since the template already supplies them.
     return JSON.stringify(varMap.get(trimmed)!).slice(1, -1);
   });
 }
