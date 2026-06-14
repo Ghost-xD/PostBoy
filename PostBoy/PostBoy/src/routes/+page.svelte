@@ -300,8 +300,6 @@
           await MenuItem.new({ id: 'resp-console', text: 'Console', accelerator: 'Alt+3', action: () => activeResponseTab.set('console') }),
           await MenuItem.new({ id: 'resp-diff', text: 'Diff', accelerator: 'Alt+4', action: () => activeResponseTab.set('diff') }),
           await PredefinedMenuItem.new({ item: 'Separator' }),
-          await MenuItem.new({ id: 'resp-tree', text: 'Tree View', accelerator: 'Alt+T', action: () => setPreviewMode('tree') }),
-          await MenuItem.new({ id: 'resp-raw', text: 'Raw View', accelerator: 'Alt+R', action: () => setPreviewMode('raw') }),
           await MenuItem.new({ id: 'resp-graph', text: 'Graph View', accelerator: 'Alt+G', action: () => setPreviewMode('graph') }),
           await PredefinedMenuItem.new({ item: 'Separator' }),
           await MenuItem.new({ id: 'export-snapshot', text: 'Export as HTML Snapshot', accelerator: 'CmdOrCtrl+Shift+S', action: () => responsePanelRef?.exportSnapshot() }),
@@ -514,8 +512,6 @@
       Digit2: () => activeResponseTab.set('headers'),
       Digit3: () => activeResponseTab.set('console'),
       Digit4: () => activeResponseTab.set('diff'),
-      KeyT: () => setPreviewMode('tree'),
-      KeyR: () => setPreviewMode('raw'),
       KeyG: () => setPreviewMode('graph'),
     };
 
@@ -524,6 +520,7 @@
 
     e.preventDefault();
     e.stopPropagation();
+    e.stopImmediatePropagation();
     action();
     return true;
   }
@@ -590,7 +587,7 @@
     setTimeout(() => (document.querySelector('.tab-pane.active .body-input, .tab-pane.active .cm-content') as HTMLElement | null)?.focus(), 50);
   }
 
-  function setPreviewMode(mode: 'tree' | 'raw' | 'graph') {
+  function setPreviewMode(mode: 'graph') {
     activeResponseTab.set('preview');
     window.dispatchEvent(new CustomEvent('set-preview-mode', { detail: mode }));
   }
@@ -614,7 +611,7 @@
         return;
       }
 
-      // Option/Alt response shortcuts (⌥1–4, ⌥T/R/G on macOS).
+      // Option/Alt response shortcuts (⌥1–4, ⌥G on macOS).
       if (handleOptionShortcut(e)) return;
 
       // Ctrl/Cmd+/ — toggle keyboard shortcuts panel
@@ -702,8 +699,9 @@
           toolsTabCurrentIndex = (toolsTabCurrentIndex + delta + toolsTabKeys.length) % toolsTabKeys.length;
           
           showToolsPanel.set(toolsTabKeys[toolsTabCurrentIndex] as Exclude<typeof $showToolsPanel, false>);
+          return;
         }
-        return;
+        // Don't return here - let it fall through to main tab switching if tools panel is closed
       }
 
       // Ctrl+Shift+Enter — toggle Tools panel fullscreen (only when the

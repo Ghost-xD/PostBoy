@@ -46,7 +46,12 @@ export function applyVariableSelection(
   varName: string
 ): { value: string; cursor: number } {
   const insertion = buildVariableInsertion(varName);
-  const value = text.slice(0, context.start) + insertion + text.slice(context.end);
+  let end = context.end;
+  // Monaco auto-closes `{` inside strings; drop trailing `}` so we don't get `{{name}}}}`.
+  while (end < text.length && text[end] === '}' && end - context.end < 2) {
+    end++;
+  }
+  const value = text.slice(0, context.start) + insertion + text.slice(end);
   return { value, cursor: context.start + insertion.length };
 }
 

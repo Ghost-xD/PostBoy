@@ -35,6 +35,26 @@ describe('jsonRawLines', () => {
     const lines = buildJsonRawLines(formatted);
     expect(lines.find((line) => line.text.trim() === '{')?.copyValue).toBeUndefined();
     expect(lines.find((line) => line.key === 'nested')?.copyValue).toBeUndefined();
+    expect(lines.find((line) => line.key === 'a')?.copyValue).toBe('1');
+  });
+
+  it('maps copy values for nested leaf fields at any depth', () => {
+    const body = JSON.stringify({
+      username: 'user@example.com',
+      profile: {
+        idToken: 'eyJhbGciOi' + 'x'.repeat(200),
+        nested: { count: 42 },
+      },
+      tags: ['alpha', 'beta'],
+    });
+    const { text, copiesByLine } = buildFieldModeDocument(body);
+    const lineFor = (needle: string) => text.split('\n').findIndex((l) => l.includes(needle)) + 1;
+
+    expect(copiesByLine.get(lineFor('"username"'))).toBe('user@example.com');
+    expect(copiesByLine.get(lineFor('"idToken"'))).toContain('eyJhbGci');
+    expect(copiesByLine.get(lineFor('"count"'))).toBe('42');
+    expect(copiesByLine.get(lineFor('"alpha"'))).toBe('alpha');
+    expect(copiesByLine.get(lineFor('"beta"'))).toBe('beta');
   });
 
   it('masks sensitive JSON keys in field mode document text', () => {

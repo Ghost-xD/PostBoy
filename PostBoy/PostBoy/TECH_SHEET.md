@@ -33,7 +33,7 @@ splashscreen handle startup.
 | Desktop shell | **Tauri 2.0** (`@tauri-apps/api ^2`, CLI `^2.10.1`) |
 | Frontend framework | **SvelteKit ^2.9** running **Svelte 5** (runes) |
 | Frontend build | Vite `^6.0`, TypeScript `~5.6` |
-| Editor | CodeMirror 6 (`@codemirror/*`), `svelte-jsoneditor` |
+| Code editor | **Monaco Editor** (`monaco-editor`) — request JSON body, scripts, response preview |
 | JSON graph view | `jsoncrack-react` (React 19 island, embedded via root) |
 | Markdown rendering | Custom renderer in `src/lib/utils/markdownRenderer.ts` |
 | Diffing | `diff ^9` + custom side-by-side engine in `diffEngine.ts` |
@@ -68,11 +68,11 @@ splashscreen handle startup.
 ### Request bodies (10 modes)
 | Mode | Notes |
 | --- | --- |
-| **JSON** | CodeMirror + auto-format (`Ctrl+Shift+F`) + syntax highlighting |
-| **XML** | CodeMirror, auto-format |
-| **YAML** | CodeMirror |
-| **HTML** | CodeMirror, auto-format |
-| **JavaScript** | CodeMirror |
+| **JSON** | Monaco (`JsonEditor.svelte`) — syntax highlighting, `{{variable}}` autocomplete, sensitive-field masking, auto-format on paste/blur, format button (`Ctrl+Shift+F`) |
+| **XML** | `VariableInput` textarea, auto-format |
+| **YAML** | `VariableInput` textarea |
+| **HTML** | `VariableInput` textarea, auto-format |
+| **JavaScript** | `VariableInput` textarea |
 | **Plain text** | Raw textarea |
 | **Form Data** (`multipart/form-data`) | Per-row `text` or `file` type; file paths are dialog-picked and read on the Rust side |
 | **Form URL Encoded** | Key/value editor, encoded server-side |
@@ -100,7 +100,8 @@ splashscreen handle startup.
   `responseUtils.ts` (`LARGE_RESPONSE_THRESHOLD`/`TRUNCATED_PREVIEW_SIZE`)
   with a "show full" toggle.
 - **In-response search:** `Ctrl+F` opens `ResponseSearchBar` with
-  next/previous match navigation backed by CodeMirror's search package.
+  next/previous match navigation via Monaco's find controller
+  (`ResponseViewer.svelte`).
 - **Response diff:** side-by-side diff of the current response vs a
   saved comparison (`ResponseDiff.svelte`).
 - **Console tab:** logs from `consoleStore` capturing request/response

@@ -1,7 +1,10 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onDestroy } from 'svelte';
   import * as monaco from 'monaco-editor';
   import { settings } from '$lib/stores/settingsStore';
+  import { registerMonacoThemes, monacoThemeName } from '$lib/utils/monacoTheme';
+
+  registerMonacoThemes();
 
   // Disable Monaco workers to avoid 404 errors
   if (typeof window !== 'undefined') {
@@ -44,38 +47,11 @@
   function createEditor(theme: 'dark' | 'light') {
     if (!editorDiv || !monaco) return;
 
-    // Create custom dark theme with black background
-    if (theme === 'dark') {
-      monaco.editor.defineTheme('black-theme', {
-        base: 'vs-dark',
-        inherit: true,
-        rules: [
-          { token: 'keyword', foreground: 'C586C0' },
-          { token: 'string', foreground: 'CE9178' },
-          { token: 'number', foreground: 'B5CEA8' },
-          { token: 'comment', foreground: '6A9955' },
-          { token: 'identifier', foreground: '9CDCFE' },
-          { token: 'type', foreground: '4EC9B0' },
-        ],
-        colors: {
-          'editor.background': '#000000',
-          'editor.foreground': '#D4D4D4',
-          'editorLineNumber.foreground': '#858585',
-          'editorLineNumber.activeForeground': '#C6C6C6',
-          'editor.selectionBackground': '#264F78',
-          'editorCursor.foreground': '#AEAFAD',
-        }
-      });
-      monaco.editor.setTheme('black-theme');
-    } else {
-      monaco.editor.setTheme('vs');
-    }
-
     // Create the editor
     editor = monaco.editor.create(editorDiv, {
       value,
       language: 'javascript',
-      theme: theme === 'dark' ? 'black-theme' : 'vs',
+      theme: monacoThemeName(theme),
       minimap: { enabled: false },
       lineNumbers: 'on',
       wordWrap: 'on',
@@ -115,38 +91,11 @@
     if (!editorDiv) return;
     
     if (editor && monaco) {
-      // Update theme if editor exists
-      if (theme === 'dark') {
-        monaco.editor.defineTheme('black-theme', {
-          base: 'vs-dark',
-          inherit: true,
-          rules: [
-            { token: 'keyword', foreground: 'C586C0' },
-            { token: 'string', foreground: 'CE9178' },
-            { token: 'number', foreground: 'B5CEA8' },
-            { token: 'comment', foreground: '6A9955' },
-            { token: 'identifier', foreground: '9CDCFE' },
-            { token: 'type', foreground: '4EC9B0' },
-          ],
-          colors: {
-            'editor.background': '#000000',
-            'editor.foreground': '#D4D4D4',
-            'editorLineNumber.foreground': '#858585',
-            'editorLineNumber.activeForeground': '#C6C6C6',
-            'editor.selectionBackground': '#264F78',
-            'editorCursor.foreground': '#AEAFAD',
-          }
-        });
-        monaco.editor.setTheme('black-theme');
-      } else {
-        monaco.editor.setTheme('vs');
-      }
+      monaco.editor.setTheme(monacoThemeName(theme));
     } else {
       // Create editor if it doesn't exist
       createEditor(theme);
     }
-
-    return () => destroyEditor();
   });
 
   // React to external value changes
@@ -169,5 +118,12 @@
     border: 1px solid var(--border-color);
     border-radius: 4px;
     overflow: hidden;
+  }
+
+  /* Match the app background; syntax colors come from the shared Monaco theme */
+  :global(.script-editor-container .monaco-editor),
+  :global(.script-editor-container .monaco-editor .margin),
+  :global(.script-editor-container .monaco-editor-background) {
+    background-color: var(--bg-primary) !important;
   }
 </style>

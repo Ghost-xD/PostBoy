@@ -5,5 +5,11 @@
 // shims keep svelte-check happy while allowing the dynamic imports
 // to work at runtime.
 
+declare module '*.svelte' {
+  import type { Component } from 'svelte';
+  const component: Component;
+  export default component;
+}
+
 declare module 'react';
 declare module 'react-dom/client';

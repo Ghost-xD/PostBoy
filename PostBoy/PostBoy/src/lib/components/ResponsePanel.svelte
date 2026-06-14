@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { run, createBubbler, stopPropagation } from 'svelte/legacy';
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
 
   const bubble = createBubbler();
   import { onMount, onDestroy } from 'svelte';
@@ -10,7 +10,6 @@
   import { addLog } from '$lib/stores/consoleStore';
   import ResponseViewer from './ResponseViewer.svelte';
   import ResponseDiff from './ResponseDiff.svelte';
-  import JsonTreeViewer from './JsonTreeViewer.svelte';
   import JsonGraphViewer from './JsonGraphViewer.svelte';
   import BinaryPreview from './BinaryPreview.svelte';
   import ResponseSearchBar from './ResponseSearchBar.svelte';
@@ -54,7 +53,6 @@
   let variableName = $state('');
   let targetCollectionId: number | null = $state(null);
   let searchFilter = $state('');
-  let previewMode: 'tree' | 'raw' | 'graph' = $state('raw');
   let rawFullView = $state(false);
   let graphFullscreen = $state(false);
   let graphFullscreenVisible = $state(false);
@@ -98,68 +96,31 @@
 
   function handleSearch(e: CustomEvent<string>) {
     searchQuery = e.detail;
-    if (previewMode === 'raw' && responseViewerRef) {
+    if (responseViewerRef) {
       requestAnimationFrame(() => {
         searchMatchCount = responseViewerRef?.getMatchCount() ?? 0;
         searchCurrentMatch = searchMatchCount > 0 ? 1 : 0;
       });
-    } else if (previewMode === 'tree') {
-      countTreeMatches(searchQuery);
     }
   }
 
   function handleSearchNext() {
-    if (previewMode === 'raw' && responseViewerRef) {
+    if (responseViewerRef) {
       responseViewerRef.goToNext();
       if (searchMatchCount > 0) {
         searchCurrentMatch = searchCurrentMatch >= searchMatchCount ? 1 : searchCurrentMatch + 1;
       }
-    } else if (previewMode === 'tree') {
-      scrollToNextTreeMatch(1);
     }
   }
 
   function handleSearchPrev() {
-    if (previewMode === 'raw' && responseViewerRef) {
+    if (responseViewerRef) {
       responseViewerRef.goToPrevious();
       if (searchMatchCount > 0) {
         searchCurrentMatch = searchCurrentMatch <= 1 ? searchMatchCount : searchCurrentMatch - 1;
       }
-    } else if (previewMode === 'tree') {
-      scrollToNextTreeMatch(-1);
     }
   }
-
-  let treeMatchIndex = -1;
-
-  function countTreeMatches(query: string) {
-    if (!query) { searchMatchCount = 0; searchCurrentMatch = 0; return; }
-    requestAnimationFrame(() => {
-      const container = document.querySelector('.tree-view-container');
-      if (!container) { searchMatchCount = 0; searchCurrentMatch = 0; return; }
-      const marks = container.querySelectorAll('.tree-search-match');
-      searchMatchCount = marks.length;
-      searchCurrentMatch = marks.length > 0 ? 1 : 0;
-      treeMatchIndex = marks.length > 0 ? 0 : -1;
-      if (marks.length > 0) marks[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
-    });
-  }
-
-  function scrollToNextTreeMatch(direction: number) {
-    const container = document.querySelector('.tree-view-container');
-    if (!container) return;
-    const marks = container.querySelectorAll('.tree-search-match');
-    if (marks.length === 0) return;
-    treeMatchIndex = (treeMatchIndex + direction + marks.length) % marks.length;
-    searchCurrentMatch = treeMatchIndex + 1;
-    marks[treeMatchIndex].scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }
-
-  run(() => {
-    if (searchQuery && previewMode === 'tree') {
-      countTreeMatches(searchQuery);
-    }
-  });
 
   async function copyResponseBody() {
     if (!responseBody) return;
@@ -346,12 +307,20 @@
     setTimeout(() => { graphFullscreen = false; }, 350);
   }
 
+  function showRawView() {
+    if (graphFullscreen) closeGraphFullscreen();
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.closest('.response-viewer-container')) {
+      active.blur();
+    }
+  }
+
   function handlePreviewMode(e: Event) {
     const mode = (e as CustomEvent).detail;
     if (mode === 'graph') {
       openGraphFullscreen();
-    } else if (mode === 'tree' || mode === 'raw') {
-      previewMode = mode;
+    } else if (graphFullscreen) {
+      closeGraphFullscreen();
     }
   }
 
@@ -529,12 +498,10 @@
               <div class="resp-preview-toolbar">
                 <div class="toolbar-left">
                   <div class="view-toggle">
-                    <button class="view-toggle-btn {previewMode === 'tree' ? 'active' : ''}" onclick={() => previewMode = 'tree'} disabled={!parsedJson} title={shortcutTitle('Tree view', 'Alt+T')}>Tree</button>
-                    <button class="view-toggle-btn {previewMode === 'raw' ? 'active' : ''}" onclick={() => previewMode = 'raw'} title={shortcutTitle('Raw view', 'Alt+R')}>Raw</button>
+                    <button class="view-toggle-btn {!graphFullscreen ? 'active' : ''}" onclick={showRawView} title="Raw view">Raw</button>
                     <button class="view-toggle-btn {graphFullscreen ? 'active' : ''}" onclick={openGraphFullscreen} disabled={!parsedJson} title={shortcutTitle('Graph view', 'Alt+G')}>Graph</button>
                   </div>
-                  {#if previewMode === 'raw'}
-                    <div class="raw-full-toggle" title={rawFullView ? 'Switch to compact raw view' : 'Switch to full editor view'}>
+                  <div class="raw-full-toggle" title={rawFullView ? 'Switch to compact raw view' : 'Switch to full editor view'}>
                       <button
                         type="button"
                         class="mac-toggle"
@@ -547,7 +514,6 @@
                         <span class="mac-toggle-knob"></span>
                       </button>
                     </div>
-                  {/if}
                 </div>
                 <div class="toolbar-actions">
                   {#if responseContentType}
@@ -605,21 +571,15 @@
                   on:close={closeSearch}
                 />
               {/if}
-              {#if previewMode === 'tree' && parsedJson}
-                <div class="tree-view-container">
-                  <JsonTreeViewer data={parsedJson} lineCounter={{ current: 1 }} {searchQuery} />
-                </div>
-              {:else}
-                {#key `${rawFullView}-${responseBody}`}
-                  <ResponseViewer
-                    bind:this={responseViewerRef}
-                    value={responseBody}
-                    language="json"
-                    {searchQuery}
-                    fieldMode={previewMode === 'raw' && !rawFullView && !!parsedJson}
-                  />
-                {/key}
-              {/if}
+              {#key `${rawFullView}-${responseBody}`}
+                <ResponseViewer
+                  bind:this={responseViewerRef}
+                  value={responseBody}
+                  language="json"
+                  {searchQuery}
+                  fieldMode={!rawFullView && !!parsedJson}
+                />
+              {/key}
             {/if}
           {:else}
             <div class="resp-empty">
@@ -925,13 +885,6 @@
 
   .mac-toggle.on .mac-toggle-knob {
     transform: translateX(16px);
-  }
-
-  .tree-view-container {
-    flex: 1;
-    overflow: auto;
-    padding: 8px 4px;
-    background: var(--bg-primary);
   }
 
   .graph-fullscreen-overlay {

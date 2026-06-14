@@ -38,9 +38,14 @@ export function scheduleHideSensitiveValuePopover() {
 export function showSensitiveValuePopover(
   anchor: PopoverAnchor,
   label: string,
-  value: string
+  value: string,
+  options?: { unresolved?: boolean; showReveal?: boolean }
 ) {
-  if (activeKey === label && activeValue === value && activeMount) {
+  const unresolved = options?.unresolved ?? false;
+  const showReveal = options?.showReveal ?? true;
+  const cacheKey = `${label}\0${value}\0${unresolved}\0${showReveal}`;
+
+  if (activeKey === cacheKey && activeMount) {
     const el = activeHost?.firstElementChild as HTMLElement | null;
     if (el) {
       el.style.left = `${Math.max(8, anchor.left)}px`;
@@ -50,7 +55,7 @@ export function showSensitiveValuePopover(
   }
 
   removePopover();
-  activeKey = label;
+  activeKey = cacheKey;
   activeValue = value;
 
   activeHost = document.createElement('div');
@@ -61,6 +66,8 @@ export function showSensitiveValuePopover(
     props: {
       label,
       value,
+      unresolved,
+      showReveal,
       placement: 'fixed',
       left: Math.max(8, anchor.left),
       top: anchor.bottom + 4,

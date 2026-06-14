@@ -40,7 +40,7 @@ export function shouldMaskFieldValue(options: {
   return isSensitiveFieldKey(key) || isSensitiveHeaderName(key);
 }
 
-/** Placeholder shown in JSON editors (plain text — no CodeMirror text-security). */
+/** Placeholder shown in masked JSON editor values. */
 export function maskSecret(value: string): string {
   if (!value) return '';
   return MASK_CHAR.repeat(Math.min(Math.max(value.length, 8), 32));
@@ -147,6 +147,17 @@ export function unmaskSensitiveJsonText(
   }
 
   return { text: result, secretsByKey: nextSecrets };
+}
+
+/** Resolve the real secret when the document shows a mask placeholder. */
+export function defaultMaskedSecretResolver(
+  match: SensitiveJsonMatch,
+  secretsByKey: Map<string, string>
+): string {
+  if (isMaskPlaceholder(match.value)) {
+    return secretsByKey.get(match.key) ?? match.value;
+  }
+  return match.value;
 }
 
 export function formatJsonBody(text: string): string {

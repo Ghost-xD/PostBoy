@@ -59,8 +59,6 @@ const responseShortcuts: ShortcutDef[] = [
   { key: '2', alt: true, description: 'Headers tab', action: 'activeResponseTab:headers' },
   { key: '3', alt: true, description: 'Console tab', action: 'activeResponseTab:console' },
   { key: '4', alt: true, description: 'Diff tab', action: 'activeResponseTab:diff' },
-  { key: 't', alt: true, description: 'Tree view', action: 'previewMode:tree' },
-  { key: 'r', alt: true, description: 'Raw view', action: 'previewMode:raw' },
   { key: 'g', alt: true, description: 'Graph view', action: 'previewMode:graph' },
 ];
 

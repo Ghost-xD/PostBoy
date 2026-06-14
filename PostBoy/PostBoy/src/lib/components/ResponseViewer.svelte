@@ -1,78 +1,29 @@
 <script lang="ts">
-  import { run } from 'svelte/legacy';
-
   import { onDestroy, untrack } from 'svelte';
-  import { EditorView } from 'codemirror';
-  import {
-    gutter,
-    GutterMarker,
-    lineNumbers,
-    highlightSpecialChars,
-    drawSelection,
-    dropCursor,
-    rectangularSelection,
-    crosshairCursor,
-    keymap,
-  } from '@codemirror/view';
-  import { RangeSetBuilder } from '@codemirror/state';
-  import { json } from '@codemirror/lang-json';
-  import { EditorState } from '@codemirror/state';
-  import {
-    foldGutter,
-    indentOnInput,
-    syntaxHighlighting,
-    defaultHighlightStyle,
-    bracketMatching,
-    foldKeymap,
-  } from '@codemirror/language';
-  import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
-  import { closeBrackets, autocompletion, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete';
-  import { lintKeymap } from '@codemirror/lint';
-  import { SearchQuery, setSearchQuery, findNext, findPrevious, search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
+  import * as monaco from 'monaco-editor';
   import { LARGE_RESPONSE_THRESHOLD, TRUNCATED_PREVIEW_SIZE, formatBytes } from '$lib/utils/responseUtils';
   import { buildFieldModeDocument } from '$lib/utils/jsonRawLines';
   import {
     findSensitiveJsonMatches,
+    findSensitiveMatchAtPos,
     isMaskPlaceholder,
     type SensitiveJsonMatch,
   } from '$lib/utils/sensitiveData';
   import {
-    jsonSensitiveValueHoverExtension,
+    showSensitiveValuePopover,
+    scheduleHideSensitiveValuePopover,
     hideSensitiveValuePopover,
-  } from '$lib/utils/codemirrorSensitiveJson';
+  } from '$lib/utils/sensitiveValuePopoverHost';
   import { settings } from '$lib/stores/settingsStore';
-  import { buildResponseViewerShellTheme, codeMirrorSyntaxTheme } from '$lib/utils/codemirrorTheme';
+  import { registerMonacoThemes, monacoThemeName } from '$lib/utils/monacoTheme';
 
-  // basicSetup minus highlightActiveLine / highlightActiveLineGutter,
-  // which mis-highlight a line in this read-only viewer (no real cursor).
-  // Field mode skips highlightSpecialChars — special-char widgets break position mapping.
-  function buildReadOnlySetup(fieldMode: boolean) {
-    return [
-      lineNumbers(),
-      ...(fieldMode ? [] : [highlightSpecialChars()]),
-      history(),
-      foldGutter(),
-      drawSelection(),
-      dropCursor(),
-      EditorState.allowMultipleSelections.of(true),
-      indentOnInput(),
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-      bracketMatching(),
-      closeBrackets(),
-      autocompletion(),
-      rectangularSelection(),
-      crosshairCursor(),
-      highlightSelectionMatches(),
-      keymap.of([
-        ...closeBracketsKeymap,
-        ...defaultKeymap,
-        ...searchKeymap,
-        ...historyKeymap,
-        ...foldKeymap,
-        ...completionKeymap,
-        ...lintKeymap,
-      ]),
-    ];
+  registerMonacoThemes();
+
+  if (typeof window !== 'undefined') {
+    (window as any).MonacoEnvironment = {
+      getWorker: () =>
+        new Worker(URL.createObjectURL(new Blob([''], { type: 'application/javascript' }))),
+    };
   }
 
   interface Props {
@@ -93,54 +44,83 @@
   }: Props = $props();
 
   let editorDiv: HTMLDivElement | undefined = $state();
-  let view: EditorView | undefined;
+  let editor: monaco.editor.IStandaloneCodeEditor | undefined;
   let showingFull = $state(false);
   let loadingFull = $state(false);
-  let copiesByLine = new Map<number, string>();
+  let copiesByLine = $state(new Map<number, string>());
+  let copyButtonTops = $state(new Map<number, number>());
+  let copiedLineNumber = $state<number | null>(null);
+  let copiedLineTimeout: ReturnType<typeof setTimeout> | null = null;
   let sensitiveMatches: SensitiveJsonMatch[] = [];
+  let previewShortcutCleanup: (() => void) | undefined;
 
-  class CopyGutterMarker extends GutterMarker {
-    copyValue: string;
+  /** Alt+1–4/G — app preview shortcuts; swallow before Monaco tries to insert macOS alternate chars. */
+  const PREVIEW_ALT_CODES = new Set(['KeyG', 'Digit1', 'Digit2', 'Digit3', 'Digit4']);
 
-    constructor(copyValue: string) {
-      super();
-      this.copyValue = copyValue;
-    }
+  function attachPreviewShortcutGuards(domNode: HTMLElement) {
+    let swallowNextInput = false;
 
-    toDOM() {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'cm-field-copy-btn';
-      btn.textContent = '⧉';
-      btn.title = 'Copy value';
-      btn.addEventListener('mousedown', (e) => e.preventDefault());
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        void navigator.clipboard.writeText(this.copyValue);
-        btn.textContent = '✓';
-        setTimeout(() => {
-          btn.textContent = '⧉';
-        }, 1200);
-      });
-      return btn;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      if (!PREVIEW_ALT_CODES.has(e.code)) return;
+      swallowNextInput = true;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    };
+
+    const onBeforeInput = (e: Event) => {
+      if (!swallowNextInput) return;
+      e.preventDefault();
+      swallowNextInput = false;
+    };
+
+    domNode.addEventListener('keydown', onKeyDown, true);
+    domNode.addEventListener('beforeinput', onBeforeInput, true);
+
+    return () => {
+      domNode.removeEventListener('keydown', onKeyDown, true);
+      domNode.removeEventListener('beforeinput', onBeforeInput, true);
+    };
+  }
+
+  function swallowPreviewShortcut(e: monaco.IKeyboardEvent) {
+    const ev = e.browserEvent;
+    if (!ev.altKey || ev.metaKey || ev.ctrlKey || ev.shiftKey) return;
+    if (!PREVIEW_ALT_CODES.has(ev.code)) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  let copyGutterEntries = $derived.by(() => [...copiesByLine.entries()]);
+  let showCopyGutter = $derived(fieldMode && copiesByLine.size > 0);
+
+  function destroyEditor() {
+    hideSensitiveValuePopover();
+    previewShortcutCleanup?.();
+    previewShortcutCleanup = undefined;
+    if (copiedLineTimeout) clearTimeout(copiedLineTimeout);
+    copiedLineTimeout = null;
+    if (editor) {
+      editor.dispose();
+      editor = undefined;
     }
   }
 
-  function copyGutter(copiesByLine: Map<number, string>) {
-    return gutter({
-      class: 'cm-field-copy-gutter',
-      markers(view) {
-        const builder = new RangeSetBuilder<GutterMarker>();
-        for (let lineNum = 1; lineNum <= view.state.doc.lines; lineNum++) {
-          const copyValue = copiesByLine.get(lineNum);
-          if (!copyValue) continue;
-          const line = view.state.doc.line(lineNum);
-          builder.add(line.from, line.from, new CopyGutterMarker(copyValue));
-        }
-        return builder.finish();
-      },
-    });
+  function getMonacoLanguage(lang: string): string {
+    switch (lang) {
+      case 'json':
+        return 'json';
+      case 'html':
+        return 'html';
+      case 'xml':
+        return 'xml';
+      case 'text':
+      default:
+        return 'plaintext';
+    }
   }
 
   function computeDisplayValue(raw: string, full: boolean): string {
@@ -172,6 +152,200 @@
     return working;
   }
 
+  function mapsEqual(a: Map<number, string>, b: Map<number, string>): boolean {
+    if (a.size !== b.size) return false;
+    for (const [key, val] of a) {
+      if (b.get(key) !== val) return false;
+    }
+    return true;
+  }
+
+  function numberMapsEqual(a: Map<number, number>, b: Map<number, number>): boolean {
+    if (a.size !== b.size) return false;
+    for (const [key, val] of a) {
+      if (b.get(key) !== val) return false;
+    }
+    return true;
+  }
+
+  function syncCopiesByLine() {
+    let next: Map<number, string>;
+    if (fieldMode && language === 'json') {
+      try {
+        next = buildFieldModeDocument(value).copiesByLine;
+      } catch {
+        next = new Map();
+      }
+    } else {
+      next = new Map();
+    }
+    if (!mapsEqual(copiesByLine, next)) {
+      copiesByLine = next;
+    }
+  }
+
+  function updateCopyButtonPositions() {
+    if (!editor || !fieldMode || copiesByLine.size === 0) {
+      if (copyButtonTops.size > 0) copyButtonTops = new Map();
+      return;
+    }
+
+    const next = new Map<number, number>();
+    copiesByLine.forEach((_copyValue, lineNumber) => {
+      const coords = editor!.getScrolledVisiblePosition({ lineNumber, column: 1 });
+      if (coords) next.set(lineNumber, coords.top);
+    });
+    if (!numberMapsEqual(copyButtonTops, next)) {
+      copyButtonTops = next;
+    }
+  }
+
+  async function copyLineValue(lineNumber: number) {
+    const copyValue = copiesByLine.get(lineNumber);
+    if (!copyValue) return;
+    await navigator.clipboard.writeText(copyValue);
+    copiedLineNumber = lineNumber;
+    if (copiedLineTimeout) clearTimeout(copiedLineTimeout);
+    copiedLineTimeout = setTimeout(() => {
+      copiedLineNumber = null;
+    }, 1200);
+  }
+
+  function resolveSensitiveSecret(match: SensitiveJsonMatch): string {
+    if (fieldMode && isMaskPlaceholder(match.value)) {
+      return copiesByLine.get(match.line) ?? match.value;
+    }
+    return match.value;
+  }
+
+  function isMonacoCanceled(err: unknown): boolean {
+    const message =
+      typeof err === 'object' && err !== null && 'message' in err
+        ? String((err as { message: unknown }).message)
+        : String(err);
+    return message === 'Canceled' || message.includes('Canceled');
+  }
+
+  function startFindSearch(query: string) {
+    if (!editor) return;
+    const findController = editor.getContribution('editor.contrib.findController') as {
+      start?: (opts: object) => Promise<void> | void;
+      closeFindWidget?: () => void;
+    } | null;
+    if (!findController) return;
+
+    if (!query) {
+      findController.closeFindWidget?.();
+      return;
+    }
+
+    const start = findController.start;
+    if (!start) return;
+
+    try {
+      const result = start({
+        searchString: query,
+        isRegex: false,
+        matchCase: false,
+        matchWholeWord: false,
+      });
+      void Promise.resolve(result).catch((err) => {
+        if (!isMonacoCanceled(err)) console.error(err);
+      });
+    } catch (err) {
+      if (!isMonacoCanceled(err)) throw err;
+    }
+  }
+
+  function handleEditorMouseMove(e: monaco.editor.IEditorMouseEvent) {
+    if (!editor?.getModel() || !e.target.position) {
+      scheduleHideSensitiveValuePopover();
+      return;
+    }
+
+    const model = editor.getModel()!;
+    const offset = model.getOffsetAt(e.target.position);
+    const match = findSensitiveMatchAtPos(sensitiveMatches, offset);
+    if (!match) {
+      scheduleHideSensitiveValuePopover();
+      return;
+    }
+
+    const secret = resolveSensitiveSecret(match);
+    if (!secret) {
+      scheduleHideSensitiveValuePopover();
+      return;
+    }
+
+    const mouseEvent = e.event.browserEvent;
+    let bottom = mouseEvent.clientY + 12;
+    try {
+      const coords = editor.getScrolledVisiblePosition(e.target.position);
+      const editorDom = editor.getDomNode()?.getBoundingClientRect();
+      if (coords && editorDom) {
+        bottom = editorDom.top + coords.top + coords.height;
+      }
+    } catch {
+      /* use fallback */
+    }
+
+    showSensitiveValuePopover({ left: mouseEvent.clientX, bottom }, `"${match.key}"`, secret);
+  }
+
+  function createEditor(theme: 'dark' | 'light') {
+    if (!editorDiv || !monaco) return;
+
+    const doc = computeDisplayValue(value, showingFull);
+    syncCopiesByLine();
+    sensitiveMatches = findSensitiveJsonMatches(doc);
+
+    editor = monaco.editor.create(editorDiv, {
+      value: doc,
+      language: getMonacoLanguage(language),
+      theme: monacoThemeName(theme),
+      readOnly: true,
+      minimap: { enabled: false },
+      lineNumbers: 'on',
+      wordWrap: wordWrap ? 'on' : 'off',
+      automaticLayout: true,
+      fontSize: 13,
+      fontFamily: 'Consolas, Monaco, Courier New, monospace',
+      scrollBeyondLastLine: false,
+      renderWhitespace: 'none',
+      tabSize: 2,
+      insertSpaces: true,
+      detectIndentation: false,
+      folding: true,
+      foldingStrategy: 'indentation',
+      foldingHighlight: true,
+      showFoldingControls: 'always',
+      unfoldOnClickAfterEndOfLine: true,
+      find: {
+        autoFindInSelection: 'never',
+        seedSearchStringFromSelection: 'never',
+      },
+      fixedOverflowWidgets: true,
+    });
+
+    editor.onDidScrollChange(() => updateCopyButtonPositions());
+    editor.onDidLayoutChange(() => updateCopyButtonPositions());
+    editor.onMouseMove(handleEditorMouseMove);
+    editor.onMouseLeave(() => scheduleHideSensitiveValuePopover());
+    editor.onKeyDown(swallowPreviewShortcut);
+
+    const domNode = editor.getDomNode();
+    if (domNode) {
+      previewShortcutCleanup?.();
+      previewShortcutCleanup = attachPreviewShortcutGuards(domNode);
+    }
+
+    updateCopyButtonPositions();
+
+    if (searchQuery) {
+      startFindSearch(searchQuery);
+    }
+  }
+
   function showFullResponse() {
     loadingFull = true;
     requestAnimationFrame(() => {
@@ -181,146 +355,71 @@
   }
 
   export function getMatchCount(): number {
-    if (!view || !searchQuery) return 0;
-    const query = new SearchQuery({ search: searchQuery, caseSensitive: false });
-    const cursor = query.getCursor(view.state.doc);
-    let count = 0;
-    while (!cursor.next().done) count++;
-    return count;
+    if (!editor || !searchQuery) return 0;
+    const findController = editor.getContribution('editor.contrib.findController') as any;
+    if (findController && findController.getState()?.matchesCount) {
+      return findController.getState().matchesCount;
+    }
+    return 0;
   }
 
   export function goToNext() {
-    if (!view) return;
-    findNext(view);
+    if (!editor) return;
+    const findController = editor.getContribution('editor.contrib.findController') as any;
+    findController?.moveToNextMatch();
   }
 
   export function goToPrevious() {
-    if (!view) return;
-    findPrevious(view);
-  }
-
-  function destroyView() {
-    hideSensitiveValuePopover();
-    if (view) {
-      view.destroy();
-      view = undefined;
-    }
-  }
-
-  function createView(theme: 'dark' | 'light') {
-    if (!editorDiv) return;
-
-    const doc = computeDisplayValue(value, showingFull);
-
-    if (fieldMode && language === 'json') {
-      try {
-        copiesByLine = buildFieldModeDocument(value).copiesByLine;
-      } catch {
-        copiesByLine = new Map();
-      }
-    }
-
-    sensitiveMatches = findSensitiveJsonMatches(doc);
-
-    const extensions = [
-      ...buildReadOnlySetup(fieldMode),
-      search({ top: false, literal: true }),
-      EditorView.editable.of(false),
-      codeMirrorSyntaxTheme(theme),
-      buildResponseViewerShellTheme(theme),
-    ];
-
-    if (language === 'json') {
-      extensions.splice(1, 0, json());
-    }
-
-    if (fieldMode && copiesByLine.size > 0) {
-      extensions.splice(1, 0, copyGutter(copiesByLine));
-    }
-
-    if (language === 'json') {
-      extensions.push(
-        jsonSensitiveValueHoverExtension(() => sensitiveMatches, {
-          resolveSecret: (match) => {
-            if (fieldMode && isMaskPlaceholder(match.value)) {
-              return copiesByLine.get(match.line) ?? match.value;
-            }
-            return match.value;
-          },
-        })
-      );
-    }
-
-    if (wordWrap) {
-      extensions.push(EditorView.lineWrapping);
-    }
-
-    const startState = EditorState.create({
-      doc,
-      extensions,
-    });
-
-    view = new EditorView({
-      state: startState,
-      parent: editorDiv,
-    });
-
-    if (searchQuery) {
-      const q = new SearchQuery({ search: searchQuery, caseSensitive: false });
-      view.dispatch({ effects: setSearchQuery.of(q) });
-    }
+    if (!editor) return;
+    const findController = editor.getContribution('editor.contrib.findController') as any;
+    findController?.moveToPrevMatch();
   }
 
   $effect(() => {
     const theme = $settings.theme;
     if (!editorDiv) return;
-    destroyView();
-    untrack(() => createView(theme));
-    return () => destroyView();
+    if (editor && monaco) {
+      monaco.editor.setTheme(monacoThemeName(theme));
+    } else {
+      createEditor(theme);
+    }
   });
 
-  onDestroy(() => {
-    destroyView();
+  $effect(() => {
+    if (!editor) return;
+    fieldMode;
+    language;
+    showingFull;
+    const newDoc = computeDisplayValue(value, showingFull);
+    syncCopiesByLine();
+    if (language === 'json') {
+      sensitiveMatches = findSensitiveJsonMatches(newDoc);
+    }
+    if (newDoc !== editor.getValue()) {
+      editor.setValue(newDoc);
+      if (searchQuery) {
+        startFindSearch(searchQuery);
+      }
+    }
+    untrack(() => updateCopyButtonPositions());
   });
+
+  $effect(() => {
+    if (!editor || searchQuery === undefined) return;
+    startFindSearch(searchQuery);
+  });
+
+  $effect(() => {
+    if (editor) {
+      editor.updateOptions({ wordWrap: wordWrap ? 'on' : 'off' });
+    }
+  });
+
+  onDestroy(() => destroyEditor());
 
   let isLarge = $derived(value.length > LARGE_RESPONSE_THRESHOLD);
-  run(() => {
-    if (!isLarge) {
-      showingFull = false;
-    }
-  });
-  let displayValue = $derived(computeDisplayValue(value, showingFull));
-  run(() => {
-    if (view && searchQuery !== undefined) {
-      const q = searchQuery
-        ? new SearchQuery({ search: searchQuery, caseSensitive: false })
-        : new SearchQuery({ search: '' });
-      view.dispatch({ effects: setSearchQuery.of(q) });
-    }
-  });
-  run(() => {
-    if (view) {
-      const newDoc = displayValue;
-      if (fieldMode && language === 'json') {
-        try {
-          copiesByLine = buildFieldModeDocument(value).copiesByLine;
-        } catch {
-          copiesByLine = new Map();
-        }
-      }
-      if (language === 'json') {
-        sensitiveMatches = findSensitiveJsonMatches(newDoc);
-      }
-      if (newDoc !== view.state.doc.toString()) {
-        view.dispatch({
-          changes: {
-            from: 0,
-            to: view.state.doc.length,
-            insert: newDoc,
-          },
-        });
-      }
-    }
+  $effect(() => {
+    if (!isLarge) showingFull = false;
   });
 </script>
 
@@ -338,34 +437,87 @@
     </button>
   </div>
 {/if}
-<div bind:this={editorDiv} class="response-viewer-container"></div>
+
+<div class="response-viewer-wrap">
+  <div bind:this={editorDiv} class="response-viewer-container"></div>
+  {#if showCopyGutter}
+    <div class="field-copy-overlay" aria-hidden="true">
+      {#each copyGutterEntries as [lineNumber] (lineNumber)}
+        {@const top = copyButtonTops.get(lineNumber)}
+        {#if top !== undefined}
+          <button
+            type="button"
+            class="field-copy-btn"
+            class:copied={copiedLineNumber === lineNumber}
+            style:top="{top}px"
+            title="Copy value"
+            onmousedown={(e) => e.preventDefault()}
+            onclick={() => void copyLineValue(lineNumber)}
+          >
+            {copiedLineNumber === lineNumber ? '✓' : '⧉'}
+          </button>
+        {/if}
+      {/each}
+    </div>
+  {/if}
+</div>
 
 <style>
-  .response-viewer-container {
+  .response-viewer-wrap {
+    position: relative;
     width: 100%;
     height: 100%;
     min-height: 300px;
     flex: 1;
   }
 
-  :global(.response-viewer-container .cm-editor) {
+  .response-viewer-container {
+    width: 100%;
     height: 100%;
-  }
-
-  :global(.response-viewer-container .cm-scroller) {
     min-height: 300px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    overflow: hidden;
   }
 
-  :global(.response-viewer-container .cm-content) {
-    background-color: transparent !important;
+  .field-copy-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 2;
   }
 
-  :global(.response-viewer-container .cm-editor.cm-focused .cm-selectionLayer .cm-selectionBackground) {
-    background-color: #3584e4 !important;
+  .field-copy-btn {
+    position: absolute;
+    left: 34px;
+    width: 24px;
+    height: 18px;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    color: #7b8398;
+    font-size: 12px;
+    line-height: 18px;
+    cursor: pointer;
+    pointer-events: auto;
+    border-radius: 3px;
   }
 
-  :global(.response-viewer-container .cm-selectionLayer .cm-selectionBackground) {
-    background-color: #264f78 !important;
+  .field-copy-btn:hover {
+    color: #abb2bf;
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .field-copy-btn.copied {
+    color: var(--accent-color, #58a6ff);
+  }
+
+  :global(.response-viewer-container .monaco-editor),
+  :global(.response-viewer-container .monaco-editor .margin),
+  :global(.response-viewer-container .monaco-editor-background) {
+    background-color: var(--bg-primary) !important;
   }
 
   .large-response-banner {

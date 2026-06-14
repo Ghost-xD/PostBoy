@@ -191,6 +191,7 @@
     display: flex;
     align-items: center;
     gap: 2px;
+    justify-self: center;
   }
 
   .zoom-slider {

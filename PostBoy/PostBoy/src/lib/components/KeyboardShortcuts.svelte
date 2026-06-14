@@ -59,8 +59,6 @@
       { keys: 'Option + 2', label: 'Headers' },
       { keys: 'Option + 3', label: 'Console' },
       { keys: 'Option + 4', label: 'Diff' },
-      { keys: 'Option + T', label: 'Tree view (Preview)' },
-      { keys: 'Option + R', label: 'Raw view (Preview)' },
       { keys: 'Option + G', label: 'Graph view (Preview)' },
     ]},
     { title: 'Graph View', items: [

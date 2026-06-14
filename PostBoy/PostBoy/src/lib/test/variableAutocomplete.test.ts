@@ -57,6 +57,13 @@ describe('applyVariableSelection', () => {
     expect(result.cursor).toBe('https://{{host}}'.length);
   });
 
+  it('strips auto-inserted closing braces after partial {{', () => {
+    const text = '"apiKey": "{{}}';
+    const ctx = getVariableContext(text, 13)!;
+    const result = applyVariableSelection(text, ctx, 'apiKey');
+    expect(result.value).toBe('"apiKey": "{{apiKey}}');
+  });
+
   it('buildVariableInsertion wraps the name', () => {
     expect(buildVariableInsertion('apiToken')).toBe('{{apiToken}}');
   });
