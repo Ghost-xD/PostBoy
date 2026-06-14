@@ -57,7 +57,7 @@ export function displayKey(token: string): string {
 export function formatShortcut(combo: string): string {
   const parts = combo.split('+').map((p) => p.trim()).filter(Boolean);
   if (isMac) {
-    return parts.map((p) => displayKey(p)).join('');
+    return parts.map((p) => displayKey(p)).join(' ');
   }
   return parts
     .map((p) => {
@@ -68,7 +68,7 @@ export function formatShortcut(combo: string): string {
     .join('+');
 }
 
-/** Tooltip helper: `"Preview" + "Alt+1"` → `"Preview (⌥1)"` on macOS. */
+/** Tooltip helper: `"Preview" + "Alt+1"` → `"Preview (⌥+1)"` on macOS. */
 export function shortcutTitle(label: string, combo: string): string {
   return `${label} (${formatShortcut(combo)})`;
 }
@@ -93,6 +93,9 @@ export const ENVIRONMENTS_SHORTCUT = 'Ctrl+Shift+V';
  * which only accepts an unmodified Y key.
  */
 export const GLOBALS_SHORTCUT = 'Ctrl+Shift+Y';
+
+/** Request builder Scripts tab (pre-request / test scripts). */
+export const SCRIPTS_TAB_SHORTCUT = 'Ctrl+Shift+R';
 
 export function matchesSqlRunnerShortcut(e: KeyboardEvent): boolean {
   if (e.altKey || !e.shiftKey || (e.key !== 'Q' && e.key !== 'q')) return false;

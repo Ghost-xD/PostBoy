@@ -54,24 +54,26 @@ describe('codeGenerator auth', () => {
 });
 
 describe('requestScriptRunner', () => {
-  it('runs pre-request script and mutates headers', () => {
+  it('runs pre-request script and mutates headers', async () => {
     const vars = { get: () => undefined, set: () => {}, has: () => false, unset: () => {} };
-    const result = runPreRequestScript(
+    const result = await runPreRequestScript(
       `pm.request.headers.upsert({ key: 'X-Test', value: '1' });`,
       { method: 'GET', url: 'https://api.test', headers: {} },
-      vars
+      vars,
+      1 // collectionId
     );
     expect(result.request.headers['X-Test']).toBe('1');
     expect(result.errors).toHaveLength(0);
   });
 
-  it('runs test script assertions', () => {
+  it('runs test script assertions', async () => {
     const vars = { get: () => undefined, set: () => {}, has: () => false, unset: () => {} };
-    const result = runTestScript(
+    const result = await runTestScript(
       `pm.test('status ok', () => { pm.expect(pm.response.code).to.equal(200); });`,
       { method: 'GET', url: 'https://api.test', headers: {} },
       { status: 200, statusText: 'OK', headers: {}, body: '{}', responseTime: 10 },
-      vars
+      vars,
+      1 // collectionId
     );
     expect(result.testResults[0]?.passed).toBe(true);
   });

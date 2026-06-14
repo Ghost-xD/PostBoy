@@ -35,6 +35,10 @@ function pushMessage(tabId: string, msg: WsMessage) {
 }
 
 function runOnMessageScript(tabId: string, message: WsMessage) {
+  void runOnMessageScriptAsync(tabId, message);
+}
+
+async function runOnMessageScriptAsync(tabId: string, message: WsMessage) {
   const tab = get(tabs).find((t) => t.id === tabId);
   if (!tab?.wsOnMessageScript?.trim()) return;
 
@@ -44,7 +48,7 @@ function runOnMessageScript(tabId: string, message: WsMessage) {
   }
 
   const variableApi = createScriptVariableContext(tab.collectionId);
-  const result = runStreamOnMessageScript(
+  const result = await runStreamOnMessageScript(
     tab.wsOnMessageScript,
     { method: tab.method, url: tab.url, headers, collectionId: tab.collectionId },
     {
@@ -116,7 +120,7 @@ export async function wsConnect(tabId: string, url: string, headers?: Record<str
 
   if (tab.preRequestScript?.trim()) {
     const variableApi = createScriptVariableContext(tab.collectionId);
-    const pre = runStreamPreConnectScript(
+    const pre = await runStreamPreConnectScript(
       tab.preRequestScript,
       { method: tab.method, url: connectUrl, headers: connectHeaders, collectionId: tab.collectionId },
       variableApi

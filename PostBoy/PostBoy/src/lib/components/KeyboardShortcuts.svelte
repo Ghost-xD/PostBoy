@@ -2,7 +2,7 @@
   import { run, createBubbler, stopPropagation } from 'svelte/legacy';
   import { settings } from '$lib/stores/settingsStore';
   import { chatbotSupported } from '$lib/stores/chatbotStore';
-  import { isMac, displayKey } from '$lib/utils/platform';
+  import { displayKey } from '$lib/utils/platform';
 
   const bubble = createBubbler();
   interface Props {
@@ -36,6 +36,7 @@
       { keys: 'Ctrl + B', label: 'Body tab' },
       { keys: 'Ctrl + P', label: 'Params tab' },
       { keys: 'Ctrl + Shift + A', label: 'Auth tab' },
+      { keys: 'Ctrl + Shift + R', label: 'Scripts tab' },
       { keys: 'Ctrl + Shift + C', label: 'Collections sidebar' },
       { keys: 'Ctrl + Shift + H', label: 'History sidebar' },
       { keys: 'Tab', label: 'Navigate between fields' },
@@ -176,7 +177,7 @@
             <div class="shortcut-item" class:sub-shortcut={item.sub}>
               <div class="shortcut-keys">
                 {#each item.keys.split(' + ') as part, i}
-                  {#if i > 0 && !isMac}<span class="key-sep">+</span>{/if}
+                  {#if i > 0}<span class="key-sep">+</span>{/if}
                   {#if part.includes(' then ')}
                     {@const [before, after] = part.split(' then ')}
                     <kbd>{displayKey(before)}</kbd><span class="key-sep">then</span><kbd>{displayKey(after)}</kbd>

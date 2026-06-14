@@ -45,6 +45,7 @@ const requestShortcuts: ShortcutDef[] = [
   { key: 'b', ctrl: true, description: 'Body tab', action: 'activeRequestTab:body' },
   { key: 'p', ctrl: true, description: 'Params tab', action: 'activeRequestTab:params' },
   { key: 'A', ctrl: true, shift: true, description: 'Auth tab', action: 'activeRequestTab:auth' },
+  { key: 'R', ctrl: true, shift: true, description: 'Scripts tab', action: 'activeRequestTab:scripts' },
   { key: 'C', ctrl: true, shift: true, description: 'Collections sidebar', action: 'activeSidebarTab:collections' },
   { key: 'H', ctrl: true, shift: true, description: 'History sidebar', action: 'activeSidebarTab:history' },
   { key: 'F', ctrl: true, shift: true, description: 'Format body', action: 'formatBody' },
@@ -609,6 +610,22 @@ describe('Keyboard Shortcuts', () => {
     it('Ctrl+Shift+V should match environments shortcut', () => {
       const e = makeKeyEvent({ key: 'v', ctrlKey: true, shiftKey: true });
       expect(matchesEnvironmentsShortcut(e)).toBe(true);
+    });
+  });
+
+  describe('Save vs HTML snapshot export', () => {
+    function resolveSaveOrExport(e: KeyboardEvent, isMac = false): 'save' | 'export' | null {
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+      if (mod && e.shiftKey && e.key.toLowerCase() === 's') return 'export';
+      if (mod && !e.shiftKey && e.key.toLowerCase() === 's') return 'save';
+      return null;
+    }
+
+    it('should distinguish Ctrl+S from Ctrl+Shift+S even when key reports lowercase s', () => {
+      expect(resolveSaveOrExport(makeKeyEvent({ key: 's', ctrlKey: true }))).toBe('save');
+      expect(resolveSaveOrExport(makeKeyEvent({ key: 's', ctrlKey: true, shiftKey: true }))).toBe('export');
+      expect(resolveSaveOrExport(makeKeyEvent({ key: 'S', ctrlKey: true, shiftKey: true }))).toBe('export');
+      expect(resolveSaveOrExport(makeKeyEvent({ key: 's', metaKey: true, shiftKey: true }), true)).toBe('export');
     });
   });
 });

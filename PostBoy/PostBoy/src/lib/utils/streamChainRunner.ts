@@ -237,7 +237,7 @@ export async function executeStreamChainStep(
 
   const preScript = config.wsPreRequestScript?.trim();
   if (preScript) {
-    const pre = runStreamPreConnectScript(
+    const pre = await runStreamPreConnectScript(
       preScript,
       { method: input.method, url, headers, collectionId },
       variableApi

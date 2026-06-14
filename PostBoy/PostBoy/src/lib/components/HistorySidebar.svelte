@@ -110,13 +110,12 @@
     }
   }
 
-  function truncateUrl(url: string): string {
+  function displayUrl(url: string): string {
     try {
       const parsed = new URL(url);
-      const path = parsed.pathname + parsed.search;
-      return parsed.host + (path.length > 40 ? path.substring(0, 40) + '...' : path);
+      return parsed.host + parsed.pathname + parsed.search;
     } catch {
-      return url.length > 60 ? url.substring(0, 60) + '...' : url;
+      return url;
     }
   }
 </script>
@@ -174,22 +173,28 @@
     </div>
   {:else}
     {#each filteredHistory as item}
-      <div class="history-item" role="button" tabindex="0" onclick={() => onHistoryClick(item)} onkeypress={(e) => e.key === 'Enter' && onHistoryClick(item)}>
-        <div class="history-item-top">
+      <div
+        class="history-item"
+        role="button"
+        tabindex="0"
+        onclick={() => onHistoryClick(item)}
+        onkeypress={(e) => e.key === 'Enter' && onHistoryClick(item)}
+      >
+        <div class="history-item-row">
           <span class="method {item.method.toLowerCase()}">{item.method}</span>
           <span class="status {isHistorySuccessStatus(item.status_code) ? 'success' : 'error'}">
             {item.status_code ?? 'ERR'}
           </span>
+          {#if item.executed_at || item.created_at}
+            <span class="history-item-time">{getTimeAgo(item.executed_at || item.created_at)}</span>
+          {/if}
           <button
             class="history-delete-btn"
             onclick={(e) => deleteHistoryItem(e, item)}
             title="Delete this item"
           >×</button>
         </div>
-        <div class="history-item-url">{truncateUrl(item.url)}</div>
-        {#if item.executed_at || item.created_at}
-          <div class="history-item-time">{getTimeAgo(item.executed_at || item.created_at)}</div>
-        {/if}
+        <div class="history-item-url" title={item.url}>{displayUrl(item.url)}</div>
       </div>
     {/each}
   {/if}
@@ -197,12 +202,12 @@
 
 <style>
   .history-toolbar {
-    padding: 0.5rem 0.75rem;
+    padding: 0.35rem 0.6rem;
     border-bottom: 1px solid var(--border-color);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.35rem;
   }
 
   .history-toolbar-actions {
@@ -223,9 +228,9 @@
     background: none;
     border: 1px solid var(--border-color);
     border-radius: 4px;
-    padding: 0.2rem 0.5rem;
+    padding: 0.15rem 0.4rem;
     cursor: pointer;
-    font-size: 0.75rem;
+    font-size: 0.68rem;
     color: var(--text-secondary);
     background-color: var(--bg-primary);
     transition: all 0.2s ease;
@@ -250,20 +255,20 @@
 
   .history-filter {
     display: flex;
-    gap: 6px;
-    padding: 6px 0.75rem;
+    gap: 4px;
+    padding: 4px 0.6rem;
     border-bottom: 1px solid var(--border-color);
   }
 
   .search-input {
     flex: 1;
     min-width: 0;
-    padding: 5px 8px;
+    padding: 3px 6px;
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
     border-radius: 4px;
     color: var(--text-primary, #dbdee1);
-    font-size: 0.75rem;
+    font-size: 0.68rem;
   }
 
   .search-input:focus {
@@ -273,24 +278,24 @@
 
   .method-filter,
   .status-filter {
-    padding: 5px 4px;
+    padding: 3px 3px;
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
     border-radius: 4px;
     color: var(--text-primary, #dbdee1);
-    font-size: 0.7rem;
-    min-width: 55px;
-    max-width: 88px;
+    font-size: 0.65rem;
+    min-width: 48px;
+    max-width: 76px;
   }
 
   .status-filter {
-    max-width: 96px;
+    max-width: 84px;
   }
 
   .history-list {
     flex: 1;
     overflow-y: auto;
-    padding: 0.5rem;
+    padding: 0.35rem;
     min-height: 0;
   }
 
@@ -312,11 +317,11 @@
   }
 
   .history-item {
-    padding: 0.6rem 0.75rem;
-    margin-bottom: 0.35rem;
+    padding: 0.35rem 0.5rem;
+    margin-bottom: 0.2rem;
     background-color: var(--bg-primary);
     border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border-radius: 4px;
     cursor: pointer;
     transition: all 0.15s ease;
     position: relative;
@@ -327,37 +332,43 @@
     border-color: var(--accent-color);
   }
 
-  .history-item-top {
+  .history-item-row {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.3rem;
+    gap: 0.35rem;
+    min-width: 0;
   }
 
   .history-item-url {
-    font-size: 0.8rem;
+    font-size: 0.72rem;
     color: var(--text-secondary);
-    word-break: break-all;
-    line-height: 1.3;
+    line-height: 1.25;
+    margin-top: 0.15rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .history-item-time {
-    font-size: 0.7rem;
+    font-size: 0.62rem;
     color: var(--text-secondary);
-    opacity: 0.6;
-    margin-top: 0.25rem;
+    opacity: 0.65;
+    margin-left: auto;
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 
   .method {
     display: inline-block;
-    padding: 0.15rem 0.4rem;
+    padding: 0.1rem 0.3rem;
     border-radius: 3px;
-    font-size: 0.65rem;
+    font-size: 0.6rem;
     font-weight: 700;
-    letter-spacing: 0.3px;
-    min-width: 38px;
+    letter-spacing: 0.2px;
+    min-width: 34px;
     text-align: center;
     flex-shrink: 0;
+    line-height: 1.3;
   }
 
   .method.get { background-color: var(--success-color); color: white; }
@@ -369,7 +380,7 @@
   .method.head { background-color: #6c757d; color: white; }
 
   .status {
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     font-weight: 600;
     flex-shrink: 0;
   }
@@ -384,16 +395,15 @@
     cursor: pointer;
     padding: 0;
     border-radius: 3px;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     line-height: 1;
-    width: 20px;
-    height: 20px;
+    width: 16px;
+    height: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
     opacity: 0;
     transition: all 0.15s ease;
-    margin-left: auto;
     flex-shrink: 0;
   }
 

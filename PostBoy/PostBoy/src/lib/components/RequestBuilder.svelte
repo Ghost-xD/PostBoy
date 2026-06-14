@@ -29,6 +29,7 @@
   import { runPreRequestScript, runTestScript } from '$lib/utils/requestScriptRunner';
   import { createScriptVariableContext } from '$lib/utils/scriptVariables';
   import EnvironmentSwitcher from '$lib/components/EnvironmentSwitcher.svelte';
+  import { shortcutTitle, SCRIPTS_TAB_SHORTCUT } from '$lib/utils/platform';
 
   interface Props {
     onHistoryUpdate?: () => Promise<void>;
@@ -592,10 +593,11 @@
 
       // Pre-request script (can mutate url, headers, body)
       if (preRequestScript.trim()) {
-        const scriptResult = runPreRequestScript(
+        const scriptResult = await runPreRequestScript(
           preRequestScript,
           { method, url: requestUrl, headers: headersObj, body: requestBody },
-          createScriptVariableContext(collectionId)
+          createScriptVariableContext(collectionId),
+          collectionId
         );
         for (const line of scriptResult.logs) addLog(`[script] ${line}`, 'info');
         for (const err of scriptResult.errors) addLog(`[script] ${err}`, 'error');
@@ -692,7 +694,7 @@
       addLog(`✓ ${response.status} ${response.statusText || 'OK'} • ${responseTime}ms • ${responseSize}`, 'info');
 
       if (testScript.trim()) {
-        const testResult = runTestScript(
+        const testResult = await runTestScript(
           testScript,
           { method, url: requestUrl, headers: headersObj, body: requestBody },
           {
@@ -702,7 +704,8 @@
             body: response.body || '',
             responseTime,
           },
-          createScriptVariableContext(collectionId)
+          createScriptVariableContext(collectionId),
+          collectionId
         );
         for (const line of testResult.logs) addLog(`[test] ${line}`, 'info');
         for (const err of testResult.errors) addLog(`[test] ${err}`, 'error');
@@ -898,7 +901,7 @@
     </div>
     <EnvironmentSwitcher />
     {#if !isWsMethod && !isSseMethod && !isGrpcMethod}
-    <button id="send-btn" onclick={sendRequest} class="send-btn" disabled={isCurrentTabSending} title="Send Request (Ctrl+Enter)">
+    <button id="send-btn" onclick={sendRequest} class="send-btn" disabled={isCurrentTabSending} title={shortcutTitle('Send Request', 'Ctrl+Enter')}>
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       {isCurrentTabSending ? 'Sending...' : 'Send'}
     </button>
@@ -922,7 +925,7 @@
     <button 
       class="tab-btn {$activeRequestTab === 'params' ? 'active' : ''}" 
       onclick={() => activeRequestTab.set('params')}
-      title="Params (Ctrl+P)"
+      title={shortcutTitle('Params', 'Ctrl+P')}
     >
       Params
       <span class="tab-count">{params.filter(p => p.key).length}</span>
@@ -930,21 +933,21 @@
     <button 
       class="tab-btn {$activeRequestTab === 'body' ? 'active' : ''}"
       onclick={() => activeRequestTab.set('body')}
-      title="Body (Ctrl+B)"
+      title={shortcutTitle('Body', 'Ctrl+B')}
     >
       Body
     </button>
     <button 
       class="tab-btn {$activeRequestTab === 'auth' ? 'active' : ''}"
       onclick={() => activeRequestTab.set('auth')}
-      title="Authorization (Ctrl+Shift+A)"
+      title={shortcutTitle('Authorization', 'Ctrl+Shift+A')}
     >
       Authorization
     </button>
     <button 
       class="tab-btn {$activeRequestTab === 'headers' ? 'active' : ''}"
       onclick={() => activeRequestTab.set('headers')}
-      title="Headers (Ctrl+H)"
+      title={shortcutTitle('Headers', 'Ctrl+H')}
     >
       Headers
       <span class="tab-count">{headers.filter(h => h.key).length}</span>
@@ -952,14 +955,14 @@
     <button
       class="tab-btn {$activeRequestTab === 'scripts' ? 'active' : ''}"
       onclick={() => activeRequestTab.set('scripts')}
-      title="Pre-request & test scripts"
+      title={shortcutTitle('Scripts', SCRIPTS_TAB_SHORTCUT)}
     >
       Scripts
     </button>
     <button
       class="tab-btn {$activeRequestTab === 'docs' ? 'active' : ''}"
       onclick={() => activeRequestTab.set('docs')}
-      title="Documentation (Ctrl+D)"
+      title={shortcutTitle('Documentation', 'Ctrl+D')}
     >
       Docs
       {#if $activeTab.description}<span class="tab-dot"></span>{/if}

@@ -6,7 +6,7 @@
 > **App version:** `0.0.16`
 > **Edition:** Ripple — Tauri 2.0 Edition
 > **Document type:** Business / product overview (paired with `TECH_SHEET.md` for engineering detail)
-> **Last updated:** 2026-06-01
+> **Last updated:** 2026-06-14 (Enhanced script runtime added)
 
 ## Legend
 
@@ -23,12 +23,13 @@
 
 Ripple is a desktop API workbench. In a single application a developer can:
 
-1. Compose and send HTTP requests (REST, GraphQL, file uploads).
-2. Work with real-time protocols (WebSocket, Server-Sent Events).
+1. Compose and send HTTP requests (REST, GraphQL, file uploads) with comprehensive authentication support.
+2. Work with real-time protocols (WebSocket, Server-Sent Events) and gRPC unary calls.
 3. Run SQL against PostgreSQL, MySQL, and SQLite.
-4. Triage responses with built-in tools (JSON tree, graph view, diff, JWT decoder, encode/decode, network diagnostics, snapshots).
-5. Manage saved requests, collections, environments, cookies, and history — all stored locally in a single SQLite file.
-6. *Optionally* drive the entire app by chatting with an on-device LLM ("Son of Anton") that runs offline, with no cloud calls.
+4. Perform load testing with AI-assisted planning and real-time metrics.
+5. Triage responses with built-in tools (JSON tree, graph view, diff, JWT decoder, encode/decode, network diagnostics, snapshots).
+6. Manage saved requests, collections, named environments, global variables, cookies, and history — all stored locally in a single SQLite file.
+7. *Optionally* drive the entire app by chatting with an on-device LLM ("Son of Anton") that runs offline, with optional MCP server integration for extended capabilities.
 
 The product is **local-first**: no account, no sync server, no telemetry pipeline. Distribution is a self-hosted updater or a private GitHub release channel.
 
@@ -58,17 +59,32 @@ The product is **local-first**: no account, no sync server, no telemetry pipelin
 | 16 | GraphQL body (separate `query` and `variables` editors) | Done |
 | 17 | Binary / single-file upload streamed from disk | Done |
 | 18 | "No body" mode | Done |
-| 19 | No Auth, Basic Auth, Bearer Token, API Key (in header or query) | Done |
+| 19 | No Auth, Basic Auth, Bearer Token, API Key (in header or query), Digest Auth (preemptive MD5), OAuth 2.0, AWS Signature V4, Hawk Authentication, NTLM Authentication, Mutual TLS (Client Certificate) | Done |
 | 20 | Configurable request timeout (1–300 s) | Done |
 | 21 | Follow-redirects toggle + max-redirects cap (1–50) | Done |
 | 22 | SSL certificate verification toggle (accept self-signed) | Done |
 | 23 | HTTP/HTTPS proxy support (toggle + URL) | Done |
 
-### 2.2 Response viewer
+### 2.2 Scripts & Automation
 
 | # | Feature | Status |
 | --- | --- | --- |
-| 24 | Status bar: status code, status text, response time, byte size, timestamp | Done |
+| 24 | Pre-request scripts (JavaScript with full async/await support) | Done |
+| 25 | Test scripts (JavaScript with assertions and async support) | Done |
+| 26 | `pm.sendRequest()` - HTTP client for chaining requests within scripts | Done |
+| 27 | `pm.cookies` - Cookie management API (get, set, clear) with domain/path support | Done |
+| 28 | `pm.utils` - Crypto utilities (base64, SHA1/256, MD5, UUID, random generation) | Done |
+| 29 | `pm.variables`, `pm.globals`, `pm.collectionVariables` - Variable management | Done |
+| 30 | `pm.test()` and `pm.expect()` - Test assertion framework | Done |
+| 31 | `pm.console` - Logging with log/warn/error levels | Done |
+| 32 | Stream scripts for WebSocket/SSE (onMessage handlers) | Done |
+| 33 | Script error handling and execution logging | Done |
+
+### 2.3 Response viewer
+
+| # | Feature | Status |
+| --- | --- | --- |
+| 34 | Status bar: status code, status text, response time, byte size, timestamp | Done |
 | 25 | Preview tabs: Preview / Headers / Console / Diff | Done |
 | 26 | Raw preview mode | Done |
 | 27 | Tree preview mode (custom JSON tree viewer) | Done |
@@ -98,7 +114,7 @@ The product is **local-first**: no account, no sync server, no telemetry pipelin
 | 46 | Tools panel with its own fullscreen mode | Done |
 | 47 | Unified search picker (`Ctrl+F`) that jumps to Collections, History, or response search | Done |
 | 48 | Dark theme | Done |
-| 49 | Light theme | **Pending** *(called out in README and tech sheet as a known roadmap item)* |
+| 49 | Light theme | Done |
 
 ### 2.4 Collections, requests, history, variables
 
@@ -306,18 +322,77 @@ The product is **local-first**: no account, no sync server, no telemetry pipelin
 | 167 | Playwright installed for browser automation / integration scaffold | Done |
 | 168 | `BUILDING.md` and `HOW_TO_RUN_TESTS.md` cover the dev workflow | Done |
 
+### 2.21 Environment & Variable Management
+
+| # | Feature | Status |
+| --- | --- | --- |
+| 169 | Named environments with switcher (`Ctrl+E`) | Done |
+| 170 | Global variables accessible across all collections (`Ctrl+Shift+Y`) | Done |
+| 171 | Secret variables with masking in UI | Done |
+| 172 | Dynamic variables with `{{$uuid}}`, `{{$timestamp}}`, etc. (25+ generators) | Done |
+| 173 | Variable precedence: globals → environment → collection | Done |
+| 174 | Postman environment import/export | Done |
+| 175 | Per-collection token refresh configuration | Done |
+
+### 2.22 gRPC Client
+
+| # | Feature | Status |
+| --- | --- | --- |
+| 176 | gRPC unary calls with service/method discovery via reflection | Done |
+| 177 | Proto message composition and response viewing | Done |
+| 178 | Per-tab gRPC session state (not saved to collections) | Done |
+| 179 | Server streaming gRPC calls | **Pending** *(explicitly not supported in current implementation)* |
+
+### 2.23 Load Test Lab
+
+| # | Feature | Status |
+| --- | --- | --- |
+| 180 | Multi-threaded load testing with configurable concurrency and duration | Done |
+| 181 | Collection probe for bulk request execution | Done |
+| 182 | AI-assisted load test plan generation via Son of Anton | Done |
+| 183 | Real-time metrics and response time analysis | Done |
+
+### 2.24 MCP (Model Context Protocol) Servers
+
+| # | Feature | Status |
+| --- | --- | --- |
+| 184 | MCP server management with stdio and remote transports | Optional (Done in default build) |
+| 185 | OAuth authentication for MCP servers | Optional (Done) |
+| 186 | Keychain secrets integration for MCP | Optional (Done) |
+| 187 | Dynamic tool surface extension for Son of Anton chatbot | Optional (Done) |
+
+### 2.25 Extended Data Management
+
+| # | Feature | Status |
+| --- | --- | --- |
+| 188 | HAR import to request history | Done |
+| 189 | Saved response examples per request | Done |
+| 190 | Postman v2.1 format export (in addition to Ripple native) | Done |
+| 191 | Pre-request and test scripts execution with enhanced runtime (`pm.sendRequest`, cookies, crypto) | Done |
+| 192 | Stream scripts for WebSocket/SSE with partial persistence | Done |
+
 ---
 
 ## 3. Status summary
 
 | Status | Count | Examples |
 | --- | --- | --- |
-| **Done** | 150 | HTTP client, response viewer, collections, history, variables, cookies, WebSocket, SSE, SQL runner, diagnostics, diff tool, JWT decoder, encode/decode, import/export, request chains, persistence, updates |
-| **Optional (Done in default build)** | 16 | Entire Son of Anton chatbot stack |
-| **WIP** | 0 | — |
-| **Pending** | 3 | Light theme · README docs for chatbot C++ build deps · Multi-window support |
+| **Done** | 169 | HTTP client, response viewer, collections, history, variables, cookies, WebSocket, SSE, SQL runner, diagnostics, diff tool, JWT decoder, encode/decode, import/export, request chains, persistence, updates, environments, gRPC unary, load testing, extended auth, enhanced HTTP scripts |
+| **Optional (Done in default build)** | 20 | Son of Anton chatbot stack, MCP server management |
+| **WIP** | 0 | |
+| **Pending** | 3 | README docs for chatbot C++ build deps · Multi-window support · gRPC server streaming |
 
-## 4. Out of scope (explicitly not planned)
+## 4. Implementation notes & caveats
+
+While the features marked as "Done" are functionally complete, some have notable limitations:
+
+- **HTTP Script Persistence**: Pre-request and test scripts with full runtime capabilities (`pm.sendRequest`, cookies, crypto) execute perfectly but are not yet persisted when saving requests to collections (session-only).
+- **Digest Authentication**: Only supports preemptive MD5 mode; 401 challenge/response flow is not implemented.
+- **gRPC**: Currently limited to unary calls; server streaming is not supported. gRPC sessions are tab-only and not saved to collections.
+- **WebSocket/SSE Session Logs**: Script settings persist, but live message logs do not survive app restart.
+- **Test Assertions**: Available in console output only; no structured pass/fail reporting panel.
+
+## 5. Out of scope (explicitly not planned)
 
 The following were considered and deliberately excluded from the current product:
 
@@ -330,7 +405,7 @@ The following were considered and deliberately excluded from the current product
 
 ---
 
-## 5. Companion documents
+## 6. Companion documents
 
 - `TECH_SHEET.md` — engineering-level feature sheet (file paths, Rust modules, Tauri commands, DB migrations).
 - `README.md` — user-facing intro, install, shortcuts.

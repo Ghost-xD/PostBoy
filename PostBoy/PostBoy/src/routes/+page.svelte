@@ -282,6 +282,7 @@
           await MenuItem.new({ id: 'tab-body', text: 'Body', accelerator: 'CmdOrCtrl+B', action: () => openRequestTab('body') }),
           await MenuItem.new({ id: 'tab-auth', text: 'Auth', accelerator: 'CmdOrCtrl+Shift+A', action: () => openRequestTab('auth') }),
           await MenuItem.new({ id: 'tab-headers', text: 'Headers', accelerator: 'CmdOrCtrl+H', action: () => openRequestTab('headers') }),
+          await MenuItem.new({ id: 'tab-scripts', text: 'Scripts', accelerator: 'CmdOrCtrl+Shift+R', action: () => openRequestTab('scripts') }),
           await MenuItem.new({ id: 'tab-docs', text: 'Docs', accelerator: 'CmdOrCtrl+D', action: () => openRequestTab('docs') }),
           await MenuItem.new({ id: 'docs-toggle', text: 'Toggle Docs Edit / Preview', accelerator: 'CmdOrCtrl+Shift+D', action: () => toggleDocsEditPreview() }),
           await PredefinedMenuItem.new({ item: 'Separator' }),
@@ -566,7 +567,7 @@
     if (urlInput) { urlInput.focus(); urlInput.select(); }
   }
 
-  function openRequestTab(tab: 'params' | 'body' | 'auth' | 'headers' | 'docs') {
+  function openRequestTab(tab: 'params' | 'body' | 'auth' | 'headers' | 'scripts' | 'docs') {
     activeRequestTab.set(tab);
     const selectors: Partial<Record<typeof tab, string>> = {
       params: '#params-container .key-input',
@@ -859,7 +860,10 @@
       } else if (mod && !e.shiftKey && e.key === 'i') {
         e.preventDefault();
         focusUrlInput();
-      } else if (mod && e.key === 's') {
+      } else if (mod && e.shiftKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        responsePanelRef?.exportSnapshot();
+      } else if (mod && !e.shiftKey && e.key.toLowerCase() === 's') {
         e.preventDefault();
         saveRequest();
       } else if (mod && !e.shiftKey && e.key === 'h') {
@@ -883,6 +887,9 @@
       } else if (mod && e.shiftKey && e.key === 'A') {
         e.preventDefault();
         openRequestTab('auth');
+      } else if (mod && e.shiftKey && (e.key === 'R' || e.key === 'r')) {
+        e.preventDefault();
+        openRequestTab('scripts');
       } else if (mod && e.shiftKey && e.key === 'C') {
         e.preventDefault();
         activeSidebarTab.set('collections');
@@ -898,9 +905,6 @@
       } else if (mod && e.shiftKey && e.key === 'G') {
         e.preventDefault();
         requestBuilderRef?.openCodeGen();
-      } else if (mod && e.shiftKey && e.key === 'S') {
-        e.preventDefault();
-        responsePanelRef?.exportSnapshot();
       } else if (mod && e.shiftKey && e.key === 'L') {
         e.preventDefault();
         toggleResponseLayout();

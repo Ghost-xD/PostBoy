@@ -4,6 +4,7 @@ import {
   type ScriptVariableScope,
   type ScriptRunResult,
 } from './requestScriptRunner';
+import { createPmExpect, runPmTest } from './pmExpect';
 import type { ScriptVariableContext } from './scriptVariables';
 
 export interface StreamScriptContext {
@@ -21,31 +22,33 @@ export interface StreamMessageContext {
   timestamp: number;
 }
 
-export function runStreamPreConnectScript(
+export async function runStreamPreConnectScript(
   script: string,
   ctx: StreamScriptContext,
   scopes: ScriptVariableApi | ScriptVariableScope | ScriptVariableContext
-): ScriptRunResult {
-  return runPreRequestScript(
+): Promise<ScriptRunResult> {
+  return await runPreRequestScript(
     script,
     {
       method: ctx.method,
       url: ctx.url,
       headers: { ...ctx.headers },
     },
-    scopes
+    scopes,
+    ctx.collectionId ?? undefined
   );
 }
 
-export function runStreamOnMessageScript(
+export async function runStreamOnMessageScript(
   script: string,
   ctx: StreamScriptContext,
   message: StreamMessageContext,
   scopes: ScriptVariableApi | ScriptVariableScope | ScriptVariableContext
-): ScriptRunResult {
+): Promise<ScriptRunResult> {
   const logs: string[] = [];
   const errors: string[] = [];
   const testResults: ScriptRunResult['testResults'] = [];
+  const pendingTests: Promise<void>[] = [];
 
   const request = {
     method: ctx.method,
@@ -66,15 +69,21 @@ export function runStreamOnMessageScript(
     responseTime: 0,
   };
 
-  const pm = buildStreamMessagePm(request, response, message, scopes, logs, errors, testResults);
+  const pm = buildStreamMessagePm(request, response, message, scopes, logs, errors, testResults, pendingTests);
 
   if (!script?.trim()) {
     return { request, logs, errors, testResults };
   }
 
   try {
-    const fn = new Function('pm', '"use strict";\n' + script);
-    fn(pm);
+    const asyncFn = new Function('pm', `
+      return (async () => {
+        "use strict";
+        ${script}
+      })();
+    `);
+    await asyncFn(pm);
+    await Promise.all(pendingTests);
   } catch (e: any) {
     errors.push(e.message || String(e));
   }
@@ -95,7 +104,8 @@ function buildStreamMessagePm(
   scopes: ScriptVariableApi | ScriptVariableScope | ScriptVariableContext,
   logs: string[],
   errors: string[],
-  testResults: ScriptRunResult['testResults']
+  testResults: ScriptRunResult['testResults'],
+  pendingTests: Promise<void>[]
 ) {
   const normalized =
     'environment' in scopes && 'collection' in scopes
@@ -160,33 +170,10 @@ function buildStreamMessagePm(
       },
       text: () => response.body,
     },
-    test: (name: string, fn: () => void) => {
-      try {
-        fn();
-        testResults.push({ name, passed: true });
-      } catch (e: any) {
-        testResults.push({ name, passed: false, error: e.message || String(e) });
-      }
+    test: (name: string, fn: () => void | Promise<void>) => {
+      pendingTests.push(runPmTest(name, fn, testResults));
     },
-    expect: (actual: unknown) => ({
-      to: {
-        equal: (expected: unknown) => {
-          if (actual !== expected) {
-            throw new Error(`Expected ${JSON.stringify(expected)} but got ${JSON.stringify(actual)}`);
-          }
-        },
-        eql: (expected: unknown) => {
-          if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-            throw new Error(`Expected ${JSON.stringify(expected)} but got ${JSON.stringify(actual)}`);
-          }
-        },
-        be: {
-          ok: () => {
-            if (!actual) throw new Error(`Expected truthy value but got ${JSON.stringify(actual)}`);
-          },
-        },
-      },
-    }),
+    expect: (actual: unknown) => createPmExpect(actual),
     console: {
       log: (...args: unknown[]) => logs.push(args.map(String).join(' ')),
       warn: (...args: unknown[]) => logs.push('[warn] ' + args.map(String).join(' ')),

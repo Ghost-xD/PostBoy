@@ -1,5 +1,5 @@
 # PostBoy — Development Guide
-
+NEVER USE NPM. USE YARN.
 Follow existing code patterns. When in doubt, look at how a similar feature was built and mirror that approach.
 
 ---

@@ -38,6 +38,10 @@ function pushMessage(tabId: string, msg: SseMessage) {
 }
 
 function runOnMessageScript(tabId: string, message: SseMessage) {
+  void runOnMessageScriptAsync(tabId, message);
+}
+
+async function runOnMessageScriptAsync(tabId: string, message: SseMessage) {
   const tab = get(tabs).find((t) => t.id === tabId);
   if (!tab?.sseOnMessageScript?.trim()) return;
 
@@ -47,7 +51,7 @@ function runOnMessageScript(tabId: string, message: SseMessage) {
   }
 
   const variableApi = createScriptVariableContext(tab.collectionId);
-  const result = runStreamOnMessageScript(
+  const result = await runStreamOnMessageScript(
     tab.sseOnMessageScript,
     { method: tab.method, url: tab.url, headers, collectionId: tab.collectionId },
     {
@@ -143,7 +147,7 @@ export async function sseConnect(
 
   if (tab.preRequestScript?.trim()) {
     const variableApi = createScriptVariableContext(tab.collectionId);
-    const pre = runStreamPreConnectScript(
+    const pre = await runStreamPreConnectScript(
       tab.preRequestScript,
       { method: tab.method, url: connectUrl, headers: connectHeaders, collectionId: tab.collectionId },
       variableApi

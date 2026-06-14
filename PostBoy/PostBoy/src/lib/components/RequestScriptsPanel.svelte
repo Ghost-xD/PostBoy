@@ -1,13 +1,12 @@
 <script lang="ts">
   import { activeTab, updateActiveTab } from '$lib/stores/tabStore';
   import { isStreamMethod } from '$lib/utils/streamConfig';
-  import VariableInput from './VariableInput.svelte';
+  import ScriptEditor from './ScriptEditor.svelte';
 
   let preRequestScript = $derived($activeTab.preRequestScript || '');
   let testScript = $derived($activeTab.testScript || '');
   let wsOnMessageScript = $derived($activeTab.wsOnMessageScript || '');
   let sseOnMessageScript = $derived($activeTab.sseOnMessageScript || '');
-  let collectionId = $derived($activeTab.collectionId);
   let method = $derived($activeTab.method);
   let isStream = $derived(isStreamMethod(method));
   let isWs = $derived(method === 'WS' || method === 'WSS');
@@ -55,38 +54,26 @@ pm.console.log('Event:', pm.message.eventType, pm.message.data);`;
     <p class="scripts-hint">
       Runs before connect{isStream ? '' : ' and send'}. Use <code>pm.request</code>, <code>pm.variables</code>, <code>pm.console.log</code>.
     </p>
-    <VariableInput
-      multiline
-      rows={14}
+    <ScriptEditor
       value={preRequestScript}
-      {collectionId}
-      oninput={(v) => updateActiveTab('preRequestScript', v)}
-      inputClass="script-editor"
       placeholder={preRequestExample}
+      oninput={(v) => updateActiveTab('preRequestScript', v)}
     />
   {:else if scriptSection === 'onmessage' && isStream}
     <p class="scripts-hint">
       Runs on each incoming {isWs ? 'WebSocket' : 'SSE'} message. Use <code>pm.message</code>, <code>pm.response</code>, <code>pm.test</code>, <code>pm.expect</code>.
     </p>
-    <VariableInput
-      multiline
-      rows={14}
+    <ScriptEditor
       value={isWs ? wsOnMessageScript : sseOnMessageScript}
-      {collectionId}
-      oninput={(v) => updateActiveTab(isWs ? 'wsOnMessageScript' : 'sseOnMessageScript', v)}
-      inputClass="script-editor"
       placeholder={onMessageExample}
+      oninput={(v) => updateActiveTab(isWs ? 'wsOnMessageScript' : 'sseOnMessageScript', v)}
     />
   {:else}
     <p class="scripts-hint">Runs after the response. Use <code>pm.response</code>, <code>pm.test</code>, <code>pm.expect</code>.</p>
-    <VariableInput
-      multiline
-      rows={14}
+    <ScriptEditor
       value={testScript}
-      {collectionId}
-      oninput={(v) => updateActiveTab('testScript', v)}
-      inputClass="script-editor"
       placeholder={testExample}
+      oninput={(v) => updateActiveTab('testScript', v)}
     />
   {/if}
 </div>
@@ -126,11 +113,5 @@ pm.console.log('Event:', pm.message.eventType, pm.message.data);`;
 
   .scripts-hint code {
     font-size: 0.8rem;
-  }
-
-  :global(.script-editor) {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 0.85rem;
-    min-height: 280px;
   }
 </style>

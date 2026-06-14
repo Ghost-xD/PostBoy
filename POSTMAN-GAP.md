@@ -12,14 +12,11 @@
 | Area          | Still missing or partial                                                                                                                |
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | Environments  | ✅ Profiles, switcher, env import/export, secret variables, dynamic `{{$…}}` vars, globals |
-| Auth          | Akamai EdgeGrid, ASAP, inherit-from-folder                                                                                              |
 | Protocols     | GraphQL introspection UI; gRPC streaming & `.proto` import; SOAP, MQTT, Socket.IO                                                       |
-| Scripts       | No `pm.sendRequest`, cookies, crypto libs; HTTP scripts not persisted; WS/SSE scripts in stream body only; no collection/folder scripts |
+| Scripts       | ✅ `pm.sendRequest`, cookies, crypto libs; ❌ HTTP scripts not persisted; WS/SSE scripts in stream body only; no collection/folder scripts |
 | Organization  | Tags, versioning, Git sync, API Builder                                                                                                 |
 | Automation    | Newman/CLI, CI integrations, scheduled runs, test pass/fail dashboard                                                                   |
 | Import/export | ✅ Collection + env export (Ripple v2 / Postman v2.1); ❌ OpenAPI/HAR/WSDL/RAML export; no WSDL/RAML import                               |
-| UI            | Light theme, multi-window, web/mobile clients                                                                                           |
-
 
 ---
 
@@ -101,25 +98,12 @@ Ripple now has **Postman-style named environments** (SQLite `environments` + `en
 
 ---
 
-## Authorization
-
-
-| Feature                         | Status             |
-| ------------------------------- | ------------------ |
-| Akamai EdgeGrid                 | ❌                  |
-| ASAP (Atlassian)                | ❌                  |
-| Inherit auth from parent folder | ❌ Per-request only |
-| Kerberos / SPNEGO (beyond NTLM) | ❌                  |
-
-
----
-
 ## Scripts, Tests & Assertions
 
 
 | Feature                                      | Status                                                                               |
 | -------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `pm.sendRequest()`                           | ❌                                                                                    |
+| `pm.sendRequest()`                           | ✅ Complete: Full HTTP client with async/await, cookies API, crypto utils (base64, SHA1/256, UUID, random) |
 | `pm.cookies` in scripts                      | ❌                                                                                    |
 | Snippets library (crypto, lodash, moment, …) | ❌                                                                                    |
 | Visualizer (script-driven response preview)  | ❌                                                                                    |
@@ -144,17 +128,6 @@ Ripple now has **Postman-style named environments** (SQLite `environments` + `en
 | CI/CD integrations                        | ❌                                                                                       |
 | Scheduled collection runs                 | ❌                                                                                       |
 | Structured run history & test analytics   | ❌                                                                                       |
-
-
----
-
-## Performance & Load Testing
-
-
-| Feature                         | Status               |
-| ------------------------------- | -------------------- |
-| Cloud-distributed virtual users | ❌ Local workers only |
-
 
 ---
 
@@ -190,9 +163,8 @@ Ripple now has **Postman-style named environments** (SQLite `environments` + `en
 ## Suggested Priority
 
 1. **Persist HTTP scripts & gRPC fields** — save/load on collection + Postman `event` import (stream scripts already persist via `bodyType: stream`)
-2. **Richer script runtime** — `pm.sendRequest`, cookies, crypto helpers
-3. **gRPC streaming** + `.proto` import
-4. **OpenAPI export**
+2. **gRPC streaming** + `.proto` import  
+3. **OpenAPI export**
 
 ---
 

@@ -180,6 +180,16 @@ export function addTab(): Tab {
   const newTab = createDefaultTab();
   tabs.update(currentTabs => [...currentTabs, newTab]);
   activeTabId.set(newTab.id);
+  
+  // Auto-focus URL input after creating new tab
+  setTimeout(() => {
+    const urlInput = document.getElementById('url-input') as HTMLInputElement | null;
+    if (urlInput) {
+      urlInput.focus();
+      urlInput.select();
+    }
+  }, 50);
+  
   return newTab;
 }
 
