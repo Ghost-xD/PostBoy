@@ -37,7 +37,8 @@
   // sized ~80-160px wide.
   const BUMP_H = 16;
   const BUMP_W = 78;
-  const DURATION = 480;
+  const MIN_DURATION = 240;
+  const MAX_DURATION = 520;
 
   let navEl: HTMLElement | undefined = $state();
   let svgEl: SVGSVGElement | undefined = $state();
@@ -47,14 +48,43 @@
   let curX: number | null = null;
   let rafId: number | null = null;
   let hasSyncedOnce = false;
+  let syncSeq = 0;
   let waveReady = $state(false);
+  let lastSvgW = 0;
+  let lastSvgH = 0;
 
-  /** Wait for DOM + layout (modal open needs two frames before tab rects are stable). */
-  async function waitForLayout() {
+  const attachNav = (node: HTMLElement) => {
+    navEl = node;
+    return () => {
+      if (navEl === node) navEl = undefined;
+    };
+  };
+
+  const attachSvg = (node: SVGSVGElement) => {
+    svgEl = node;
+    return () => {
+      if (svgEl === node) svgEl = undefined;
+    };
+  };
+
+  const attachPath = (node: SVGPathElement) => {
+    pathEl = node;
+    return () => {
+      if (pathEl === node) pathEl = undefined;
+    };
+  };
+
+  /** Wait for DOM + layout. First render needs an extra frame. */
+  async function waitForLayout(twoFrames: boolean) {
     await tick();
     await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      requestAnimationFrame(() => resolve());
     });
+    if (twoFrames) {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+    }
   }
 
   function getTabEl(key: string): HTMLElement | null {
@@ -64,9 +94,22 @@
 
   function centerXOf(el: HTMLElement): number {
     if (!navEl) return 0;
+    // Prefer layout offsets: stable + transform-invariant (modal open uses scale()).
+    // This also avoids subpixel rect jitter during fast tab switches.
+    let x = el.offsetLeft + el.offsetWidth / 2;
+    let parent = el.offsetParent as HTMLElement | null;
+    let hops = 0;
+    while (parent && parent !== navEl && hops++ < 12) {
+      x += parent.offsetLeft;
+      parent = parent.offsetParent as HTMLElement | null;
+    }
+    if (parent === navEl) return x;
+
+    // Fallback for unusual offsetParent trees.
     const navRect = navEl.getBoundingClientRect();
     const elRect = el.getBoundingClientRect();
-    return elRect.left - navRect.left + elRect.width / 2;
+    const scaleX = navRect.width && navEl.clientWidth ? navRect.width / navEl.clientWidth : 1;
+    return (elRect.left - navRect.left + elRect.width / 2) / scaleX;
   }
 
   // Two cubic Bézier halves form a bell curve pushed UP from the bottom
@@ -103,8 +146,15 @@
   function renderWave(cx: number) {
     if (!svgEl || !pathEl || !navEl) return;
     const W = navEl.clientWidth;
-    svgEl.setAttribute('width', String(W));
-    svgEl.setAttribute('height', String(BUMP_H + 1));
+    if (W !== lastSvgW) {
+      svgEl.setAttribute('width', String(W));
+      lastSvgW = W;
+    }
+    const H = BUMP_H + 1;
+    if (H !== lastSvgH) {
+      svgEl.setAttribute('height', String(H));
+      lastSvgH = H;
+    }
     pathEl.setAttribute('d', buildPath(cx));
   }
 
@@ -114,13 +164,19 @@
     return t < 0.5 ? 8 * t ** 4 : 1 - (-2 * t + 2) ** 4 / 2;
   }
 
+  function durationFor(distance: number): number {
+    // Distance-based duration keeps short hops snappy and long hops liquid.
+    return Math.min(MAX_DURATION, Math.max(MIN_DURATION, distance * 1.85));
+  }
+
   function animateTo(target: number) {
     const fromX = curX ?? target;
+    const duration = durationFor(Math.abs(target - fromX));
     if (rafId !== null) cancelAnimationFrame(rafId);
     let startTs: number | null = null;
     const step = (ts: number) => {
       if (startTs === null) startTs = ts;
-      const t = Math.min((ts - startTs) / DURATION, 1);
+      const t = Math.min((ts - startTs) / duration, 1);
       curX = fromX + (target - fromX) * ease(t);
       renderWave(curX);
       if (t < 1) {
@@ -133,8 +189,11 @@
   }
 
   async function syncToActive(animated: boolean) {
-    await waitForLayout();
-    const el = getTabEl(value);
+    const seq = ++syncSeq;
+    const key = value;
+    await waitForLayout(!hasSyncedOnce);
+    if (seq !== syncSeq) return;
+    const el = getTabEl(key);
     if (!el || !navEl) return;
     const target = centerXOf(el);
     const shouldAnimate = animated && hasSyncedOnce && curX !== null && Math.abs(curX - target) > 0.5;
@@ -173,7 +232,9 @@
   onMount(() => {
     void syncToActive(false);
     resizeObserver = new ResizeObserver(() => {
-      void syncToActive(false);
+      // Resize events can happen during tab switches (e.g. font-weight change).
+      // Never "snap" the wave mid-flight — keep it animated once we've synced.
+      void syncToActive(hasSyncedOnce || rafId !== null);
     });
     if (navEl) resizeObserver.observe(navEl);
     const tabsEl = navEl?.querySelector('.tools-nav-tabs');
@@ -186,7 +247,7 @@
   });
 </script>
 
-<nav class="tools-nav" bind:this={navEl}>
+<nav class="tools-nav" {@attach attachNav}>
   <div class="tools-nav-tabs">
     {#each tabs as tab (tab.key)}
       <button
@@ -209,11 +270,11 @@
   <svg
     class="tools-nav-wave"
     class:ready={waveReady}
-    bind:this={svgEl}
+    {@attach attachSvg}
     aria-hidden="true"
     xmlns="http://www.w3.org/2000/svg"
   >
-    <path bind:this={pathEl} fill={waveColor} />
+    <path {@attach attachPath} fill={waveColor} />
   </svg>
 </nav>
 

@@ -60,11 +60,22 @@
   let responsePanelRef: ResponsePanel | undefined = $state();
   let showSearchPicker = $state(false);
   let diffFullscreen = $state(false);
+  let toolsTabKeys: string[] = $state([]); // Frozen tab keys for stable Ctrl+Tab cycling
+  let toolsTabCurrentIndex = $state(0); // Current index in frozen list for rapid cycling
 
   // Reset Tools modal fullscreen each time it opens. (Keeping fullscreen
   // sticky across opens is unintuitive when switching between modal kinds.)
   run(() => {
-    if (!$showToolsPanel) toolsFullscreen.set(false);
+    if (!$showToolsPanel) {
+      toolsFullscreen.set(false);
+      toolsTabKeys = []; // Clear frozen keys when modal closes
+      toolsTabCurrentIndex = 0;
+    } else if (toolsTabKeys.length === 0) {
+      // Freeze current tab list for stable cycling during this modal session
+      toolsTabKeys = toolsNavTabs.map(t => t.key);
+      // Set initial index based on current active tab
+      toolsTabCurrentIndex = Math.max(0, toolsTabKeys.indexOf($showToolsPanel as string));
+    }
   });
 
   // Tools-modal tab list. Order here is the display order in the nav.
@@ -680,16 +691,15 @@
 
       // Ctrl+Tab / Ctrl+Shift+Tab — cycle through the Tools modal tabs
       // (only when the tools panel is open). Wraps around at both ends.
+      // Uses tracked index to handle rapid keypresses perfectly.
       if (e.ctrlKey && e.key === 'Tab') {
-        if ($showToolsPanel) {
+        if ($showToolsPanel && toolsTabKeys.length > 0) {
           e.preventDefault();
-          const tabs = toolsNavTabs;
-          const currentIndex = tabs.findIndex((t) => t.key === $showToolsPanel);
-          if (currentIndex !== -1 && tabs.length > 0) {
-            const delta = e.shiftKey ? -1 : 1;
-            const nextIndex = (currentIndex + delta + tabs.length) % tabs.length;
-            showToolsPanel.set(tabs[nextIndex].key as Exclude<typeof $showToolsPanel, false>);
-          }
+          
+          const delta = e.shiftKey ? -1 : 1;
+          toolsTabCurrentIndex = (toolsTabCurrentIndex + delta + toolsTabKeys.length) % toolsTabKeys.length;
+          
+          showToolsPanel.set(toolsTabKeys[toolsTabCurrentIndex] as Exclude<typeof $showToolsPanel, false>);
         }
         return;
       }

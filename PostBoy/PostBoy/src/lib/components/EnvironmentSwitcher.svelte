@@ -128,6 +128,8 @@
     flex-shrink: 0;
     display: flex;
     align-items: stretch;
+    --env-surface: var(--bg-tertiary);
+    --env-option-hover: var(--border-color);
   }
 
   .env-select-btn {
@@ -139,7 +141,7 @@
     padding: 0 12px;
     border: 1.5px solid var(--border-color);
     border-radius: 12px;
-    background: var(--bg-primary);
+    background: var(--env-surface);
     color: var(--text-primary);
     cursor: pointer;
     font-size: 0.85rem;
@@ -164,7 +166,7 @@
     font-size: 0.65rem;
     padding: 1px 5px;
     border-radius: 10px;
-    background: var(--bg-tertiary);
+    background: var(--env-option-hover);
     color: var(--text-secondary);
   }
 
@@ -181,7 +183,7 @@
     max-width: 280px;
     max-height: 320px;
     overflow-y: auto;
-    background: var(--bg-secondary);
+    background: var(--env-surface);
     border: 1px solid var(--border-color);
     border-radius: 10px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
@@ -203,7 +205,7 @@
   }
 
   .env-option:hover {
-    background: var(--bg-tertiary);
+    background: var(--env-option-hover);
   }
 
   .env-option.selected {
