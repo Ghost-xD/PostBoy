@@ -3,7 +3,7 @@
 ### Build the application:
 
 ```bash
-cd PostBoy/PostBoy
+cd Ripple
 yarn tauri build
 ```
 

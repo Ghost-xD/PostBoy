@@ -26,14 +26,14 @@ describe('Database Schema Tests', () => {
 
     db = new Database(dbPath);
     
-    // Create tables
+    // Create tables (matches Rust migration v1 schema)
     db.exec(`
       CREATE TABLE IF NOT EXISTS collections (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         description TEXT,
-        created_at INTEGER DEFAULT (strftime('%s', 'now')),
-        updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
       CREATE TABLE IF NOT EXISTS requests (
@@ -43,10 +43,13 @@ describe('Database Schema Tests', () => {
         method TEXT NOT NULL,
         url TEXT NOT NULL,
         headers TEXT,
-        body TEXT,
-        description TEXT,
-        created_at INTEGER DEFAULT (strftime('%s', 'now')),
-        updated_at INTEGER DEFAULT (strftime('%s', 'now')),
+        params TEXT,
+        body_type TEXT,
+        body_content TEXT,
+        auth_type TEXT,
+        auth_data TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE
       );
 
@@ -54,19 +57,23 @@ describe('Database Schema Tests', () => {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         method TEXT NOT NULL,
         url TEXT NOT NULL,
-        headers TEXT,
-        body TEXT,
-        status INTEGER,
+        status_code INTEGER,
         response_time INTEGER,
-        response_body TEXT,
+        headers TEXT,
+        params TEXT,
+        body_type TEXT,
+        body_content TEXT,
+        auth_type TEXT,
+        auth_data TEXT,
         response_headers TEXT,
-        timestamp INTEGER DEFAULT (strftime('%s', 'now'))
+        response_body TEXT,
+        executed_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
-        updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+        value TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `);
   });

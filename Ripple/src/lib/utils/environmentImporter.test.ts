@@ -37,6 +37,7 @@ describe('environmentImporter', () => {
       value: 'staging.example.com',
       initial_value: 'staging.example.com',
       enabled: true,
+      is_secret: false,
     });
     expect(result.variables[1].enabled).toBe(false);
   });

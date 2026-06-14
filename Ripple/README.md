@@ -115,7 +115,7 @@ A beautiful, modern API testing tool built with Tauri 2.0, Rust, and SvelteKit.
 ```bash
 # Clone the repository
 git clone <repo-url>
-cd PostBoy/PostBoy
+cd Ripple
 
 # Install dependencies
 yarn install
@@ -135,7 +135,7 @@ yarn test:ui     # UI mode
 ## 🗂️ Project Structure
 
 ```
-PostBoy/PostBoy/
+Ripple/
 ├── src/
 │   ├── lib/
 │   │   ├── api/          # Tauri command wrappers

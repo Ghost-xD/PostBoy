@@ -28,7 +28,7 @@ describe('globalVariableStore', () => {
   it('sets a global variable in memory and persists it', async () => {
     await globalVariables.load();
     await globalVariables.set('localApi', 'http://localhost:8080');
-    expect(db.setGlobalVariable).toHaveBeenCalledWith('localApi', 'http://localhost:8080');
+    expect(db.setGlobalVariable).toHaveBeenCalledWith('localApi', 'http://localhost:8080', false);
     expect(globalVariables.getAll().map((v) => v.key)).toContain('localApi');
   });
 });

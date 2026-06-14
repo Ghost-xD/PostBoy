@@ -1,6 +1,6 @@
 # Ripple - How to Run Tests
 
-All commands run from `PostBoy/PostBoy/`.
+All commands run from `Ripple/`.
 
 ## Commands
 

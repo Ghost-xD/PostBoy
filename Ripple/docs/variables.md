@@ -1,6 +1,6 @@
-# Variables in PostBoy
+# Variables in Ripple
 
-PostBoy supports multiple types of variables for dynamic request configuration.
+Ripples supports multiple types of variables for dynamic request configuration.
 
 ## Variable Scopes
 

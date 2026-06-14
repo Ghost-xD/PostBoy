@@ -2,7 +2,7 @@
 
 A fast, native desktop API client built with **Tauri 2**, **Rust**, and **SvelteKit**. All data stays local in **SQLite** — no accounts, no cloud, no telemetry.
 
-![Ripple](PostBoy/PostBoy/app-icon.png)
+![Ripple](Ripple/app-icon.png)
 
 ## Features
 

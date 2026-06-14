@@ -168,4 +168,4 @@ Ripple now has **Postman-style named environments** (SQLite `environments` + `en
 
 ---
 
-*Last verified: June 2026 against the PostBoyFork codebase. Environments, collection export (Ripple v2 / Postman v2.1), and chain environment picker verified in this pass.*
+*Last verified: June 2026 against the Fork codebase. Environments, collection export (Ripple v2 / Postman v2.1), and chain environment picker verified in this pass.*

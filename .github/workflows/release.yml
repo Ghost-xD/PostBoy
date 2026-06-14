@@ -35,12 +35,12 @@ jobs:
   #     - name: Rust cache
   #       uses: swatinem/rust-cache@v2
   #       with:
-  #         workspaces: PostBoy/PostBoy/src-tauri -> target
+  #         workspaces: Ripple/src-tauri -> target
   #         save-if: true
   #         shared-key: release-windows
 
   #     - name: Install frontend dependencies
-  #       working-directory: PostBoy/PostBoy
+  #       working-directory: Ripple
   #       run: yarn install --frozen-lockfile
 
   #     - name: Build Tauri app
@@ -53,9 +53,9 @@ jobs:
   #         # Belt-and-suspenders: tauri-env skips Vulkan/llama when this is set.
   #         RIPPLE_NO_CHATBOT: '1'
   #       with:
-  #         projectPath: PostBoy/PostBoy
+  #         projectPath: Ripple
   #         tagName: ${{ github.ref_name }}
-  #         releaseName: 'PostBoy ${{ github.ref_name }}'
+  #         releaseName: 'Ripple ${{ github.ref_name }}'
   #         releaseBody: |
   #           Download the installer for your platform below.
 
@@ -95,12 +95,12 @@ jobs:
   #     - name: Rust cache
   #       uses: swatinem/rust-cache@v2
   #       with:
-  #         workspaces: PostBoy/PostBoy/src-tauri -> target
+  #         workspaces: Ripple/src-tauri -> target
   #         save-if: true
   #         shared-key: release-${{ matrix.target }}
 
   #     - name: Install frontend dependencies
-  #       working-directory: PostBoy/PostBoy
+  #       working-directory: Ripple
   #       run: yarn install --frozen-lockfile
 
   #     - name: Build Tauri app
@@ -114,9 +114,9 @@ jobs:
   #         # below macOS 10.15. Apple Silicon's floor is 11.0, so target that.
   #         MACOSX_DEPLOYMENT_TARGET: '11.0'
   #       with:
-  #         projectPath: PostBoy/PostBoy
+  #         projectPath: Ripple
   #         tagName: ${{ github.ref_name }}
-  #         releaseName: 'PostBoy ${{ github.ref_name }}'
+  #         releaseName: 'Ripple ${{ github.ref_name }}'
   #         releaseBody: 'Download the installer for your platform below.'
   #         releaseDraft: false
   #         prerelease: false

@@ -1,4 +1,4 @@
-# PostBoy — Development Guide
+# Ripple — Development Guide
 NEVER USE NPM. USE YARN.
 Follow existing code patterns. When in doubt, look at how a similar feature was built and mirror that approach.
 
@@ -32,7 +32,7 @@ TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/postboy.key)" TAURI_SIGNING_PRIVATE_KE
 ## Build & Deploy
 
 ```bash
-cd PostBoy/PostBoy
+cd Ripple
 yarn dev              # dev server
 cargo check           # Rust type-check
 npx vitest run        # run all tests

@@ -130,7 +130,7 @@ wrangler whoami       # expect: your email + Account ID
 
 ### Step 3 — Clone the repo on the personal machine
 
-**You.** You'll edit files in this repo, commit, push. The actual implementation lives in a new top-level `cloudflare/` directory (sibling of `PostBoy/`).
+**You.** You'll edit files in this repo, commit, push. The actual implementation lives in a new top-level `cloudflare/` directory (sibling of `Ripple/`).
 
 ```bash
 git clone https://github.com/moodysaroha/PostBoyFork.git
@@ -140,7 +140,7 @@ mkdir cloudflare
 cd cloudflare
 ```
 
-**Verify:** `pwd` shows `…/PostBoyFork/cloudflare` and `ls ..` shows `PostBoy/` (the Tauri app) as a sibling.
+**Verify:** `pwd` shows `…/PostBoyFork/cloudflare` and `ls ..` shows `Ripple/` (the Tauri app) as a sibling.
 
 ### Step 4 — Initialize the Worker project
 
@@ -992,7 +992,7 @@ curl https://ripple-backend.<username>.workers.dev/healthz
 
 ### Step 13 — Build Tauri release + generate signing keys
 
-**You.** From the existing `PostBoy/PostBoy/` directory:
+**You.** From the existing `Ripple/` directory:
 
 ```bash
 # One-time: generate the updater keypair. Keep the private key SAFE.
@@ -1000,7 +1000,7 @@ curl https://ripple-backend.<username>.workers.dev/healthz
 npx tauri signer generate -w ~/.tauri/ripple-updater.key
 ```
 
-Copy the printed **public** key. Paste it into `cloudflare/wrangler.toml` under `TAURI_UPDATER_PUBKEY` AND into `PostBoy/PostBoy/src-tauri/tauri.conf.json` under `plugins.updater.pubkey`.
+Copy the printed **public** key. Paste it into `cloudflare/wrangler.toml` under `TAURI_UPDATER_PUBKEY` AND into `Ripple/src-tauri/tauri.conf.json` under `plugins.updater.pubkey`.
 
 Now configure the updater endpoint in `tauri.conf.json`:
 
@@ -1030,7 +1030,7 @@ $env:TAURI_SIGNING_PRIVATE_KEY = Get-Content ~/.tauri/ripple-updater.key -Raw
 yarn tauri build
 ```
 
-**Verify:** `PostBoy/PostBoy/src-tauri/target/release/bundle/nsis/Ripple_<version>_x64-setup.exe` exists, AND a `.sig` file sits next to it.
+**Verify:** `Ripple/src-tauri/target/release/bundle/nsis/Ripple_<version>_x64-setup.exe` exists, AND a `.sig` file sits next to it.
 
 ### Step 14 — Upload the release
 
@@ -1038,7 +1038,7 @@ yarn tauri build
 
 ```bash
 npx tsx scripts/upload-release.ts \
-  "../PostBoy/PostBoy/src-tauri/target/release/bundle/nsis/Ripple_0.1.0_x64-setup.exe" \
+  "../Ripple/src-tauri/target/release/bundle/nsis/Ripple_0.1.0_x64-setup.exe" \
   0.1.0
 ```
 

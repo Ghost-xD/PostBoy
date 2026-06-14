@@ -257,7 +257,7 @@ let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 /** When true, debounced/immediate IPC saves are suppressed (page is reloading/closing). */
 let ipcTabSavePaused = false;
 
-const SAVED_TABS_LOCAL_KEY = 'postboy_saved_tabs_backup';
+const SAVED_TABS_LOCAL_KEY = 'ripple_saved_tabs_backup';
 
 function buildSavedTabsData(uiState?: Partial<SavedTabsData>): SavedTabsData {
   return {
@@ -358,7 +358,9 @@ export async function restoreTabs(): Promise<SavedTabsData | null> {
 
     if (!saved) {
       try {
-        const backup = localStorage.getItem(SAVED_TABS_LOCAL_KEY);
+        const backup =
+          localStorage.getItem(SAVED_TABS_LOCAL_KEY) ??
+          localStorage.getItem('postboy_saved_tabs_backup');
         if (backup) saved = backup;
       } catch {
         /* ignore */

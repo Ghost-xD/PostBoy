@@ -12,8 +12,8 @@ describe('formatShortcut', () => {
     });
     vi.resetModules();
     const { formatShortcut, shortcutTitle } = await import('$lib/utils/platform');
-    expect(formatShortcut('Ctrl+Shift+A')).toBe('⌘+⇧+A');
-    expect(shortcutTitle('Authorization', 'Ctrl+Shift+A')).toBe('Authorization (⌘+⇧+A)');
+    expect(formatShortcut('Ctrl+Shift+A')).toBe('⌘ ⇧ A');
+    expect(shortcutTitle('Authorization', 'Ctrl+Shift+A')).toBe('Authorization (⌘ ⇧ A)');
   });
 
   it('keeps + separators on Windows-style combos', async () => {
