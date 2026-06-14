@@ -304,6 +304,15 @@ pub fn get_migrations() -> Vec<Migration> {
             ",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 15,
+            description: "add_secret_variable_support",
+            sql: "
+                ALTER TABLE environment_variables 
+                ADD COLUMN is_secret INTEGER NOT NULL DEFAULT 0;
+            ",
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
@@ -564,6 +573,10 @@ pub fn initialize_database(db_path: PathBuf) -> Result<(), String> {
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
+        "),
+        (15, "add_secret_variable_support", "
+            ALTER TABLE environment_variables 
+            ADD COLUMN is_secret INTEGER NOT NULL DEFAULT 0;
         "),
     ];
 
