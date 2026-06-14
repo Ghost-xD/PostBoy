@@ -116,3 +116,6 @@ curl = { version = "0.4", default-features = false, features = ["openssl-sys"] }
 openssl-sys = { version = "0.9", features = ["vendored"] }
 llama-cpp-2 = { version = "0.1", optional = true, default-features = false, features = ["vulkan"] }
 
+[dev-dependencies]
+tempfile = "3"
+

@@ -600,3 +600,143 @@ pub fn initialize_database(db_path: PathBuf) -> Result<(), String> {
     println!("Database initialization complete");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+    use std::path::Path;
+    use tempfile::NamedTempFile;
+
+    fn setup_database_at_version(db_path: &Path, target_version: i64) {
+        let conn = Connection::open(db_path).expect("open database");
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS _migrations (
+                version INTEGER PRIMARY KEY,
+                description TEXT NOT NULL,
+                applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )",
+            [],
+        )
+        .expect("create migrations table");
+
+        for migration in get_migrations() {
+            if migration.version > target_version {
+                break;
+            }
+            conn.execute_batch(&migration.sql)
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "failed to apply migration {} ({}): {}",
+                        migration.version, migration.description, e
+                    )
+                });
+            conn.execute(
+                "INSERT INTO _migrations (version, description) VALUES (?, ?)",
+                rusqlite::params![migration.version, migration.description],
+            )
+            .expect("record migration");
+        }
+    }
+
+    fn migration_version(conn: &Connection) -> i64 {
+        conn.query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM _migrations",
+            [],
+            |row| row.get(0),
+        )
+        .expect("query migration version")
+    }
+
+    fn has_column(conn: &Connection, table: &str, column: &str) -> bool {
+        let sql = format!("PRAGMA table_info({})", table);
+        let mut stmt = conn.prepare(&sql).expect("prepare pragma");
+        let column_names: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .expect("query columns")
+            .filter_map(Result::ok)
+            .collect();
+        column_names.iter().any(|name| name == column)
+    }
+
+    #[test]
+    fn get_migrations_includes_secret_variable_support() {
+        let migrations = get_migrations();
+        let secret_migration = migrations
+            .iter()
+            .find(|m| m.version == 15)
+            .expect("migration version 15 should exist");
+
+        assert_eq!(
+            secret_migration.description, "add_secret_variable_support",
+            "migration 15 should add secret variable support"
+        );
+        assert!(
+            secret_migration.sql.contains("is_secret"),
+            "migration 15 SQL should add is_secret column"
+        );
+
+        let versions: Vec<i64> = migrations.iter().map(|m| m.version).collect();
+        for expected in 1..=15 {
+            assert!(
+                versions.contains(&expected),
+                "missing migration version {}",
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn initialize_database_applies_full_migration_chain_on_fresh_db() {
+        let db_file = NamedTempFile::new().expect("create temp db");
+        let db_path = db_file.path().to_path_buf();
+
+        initialize_database(db_path.clone()).expect("initialize fresh database");
+
+        let conn = Connection::open(&db_path).expect("reopen database");
+        assert_eq!(migration_version(&conn), 15);
+        assert!(has_column(&conn, "environment_variables", "is_secret"));
+    }
+
+    #[test]
+    fn initialize_database_upgrades_v14_db_and_defaults_is_secret_to_zero() {
+        let db_file = NamedTempFile::new().expect("create temp db");
+        let db_path = db_file.path();
+
+        setup_database_at_version(db_path, 14);
+
+        {
+            let conn = Connection::open(db_path).expect("open v14 database");
+            assert_eq!(migration_version(&conn), 14);
+            assert!(!has_column(&conn, "environment_variables", "is_secret"));
+
+            conn.execute(
+                "INSERT INTO environments (name) VALUES ('Test Env')",
+                [],
+            )
+            .expect("insert environment");
+            let env_id = conn.last_insert_rowid();
+            conn.execute(
+                "INSERT INTO environment_variables (environment_id, key, value, initial_value, enabled)
+                 VALUES (?, 'apiKey', 'secret-value', 'secret-value', 1)",
+                rusqlite::params![env_id],
+            )
+            .expect("insert environment variable");
+        }
+
+        initialize_database(db_path.to_path_buf()).expect("upgrade database to v15");
+
+        let conn = Connection::open(db_path).expect("reopen upgraded database");
+        assert_eq!(migration_version(&conn), 15);
+        assert!(has_column(&conn, "environment_variables", "is_secret"));
+
+        let is_secret: i64 = conn
+            .query_row(
+                "SELECT is_secret FROM environment_variables WHERE key = 'apiKey'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query is_secret for existing row");
+        assert_eq!(is_secret, 0, "existing rows should default is_secret to 0");
+    }
+}
